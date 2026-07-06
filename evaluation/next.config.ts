@@ -50,13 +50,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  output: "standalone", // optimized Docker image
+  // NOTE: `output: "standalone"` removed — this app is served via PM2 + `next
+  // start`, which serves /_next/static and public/ automatically. (Re-add it
+  // only if you switch to the Docker/standalone server: node .next/standalone/server.js.)
   // TEMP: shadcn/Radix UI wrapper components emit type-only friction under
-  // React 19 (className/children on Radix props). The app is runtime-correct
-  // (it renders/works); this only unblocks `next build` until the Radix types
-  // are upgraded. It does NOT change any runtime behavior.
+  // React 19. The app is runtime-correct; this only unblocks `next build`.
   typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
   turbopack: { root: path.resolve(__dirname) },
   serverExternalPackages: ["argon2", "@prisma/client"],
   experimental: {
