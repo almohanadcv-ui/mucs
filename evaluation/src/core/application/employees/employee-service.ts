@@ -140,8 +140,11 @@ export async function createEmployee(
   // Supervisors can only create employees on their own team.
   const supervisorId =
     user.role === Role.SUPERVISOR ? user.id : input.supervisorId ?? null;
+  // Evaluators can only create employees linked to themselves.
+  const evaluatorId =
+    user.role === Role.EVALUATOR ? user.id : input.evaluatorId ?? null;
 
-  await assertRefs(user, { ...input, supervisorId });
+  await assertRefs(user, { ...input, supervisorId, evaluatorId });
 
   const clash = await prisma.employee.findFirst({
     where: { tenantId: user.tenantId, employeeNo: input.employeeNo, deletedAt: null },
@@ -163,7 +166,7 @@ export async function createEmployee(
       branchId: input.branchId ?? null,
       departmentId: input.departmentId ?? null,
       supervisorId,
-      evaluatorId: input.evaluatorId ?? null,
+      evaluatorId,
     },
     include: EMPLOYEE_INCLUDE,
   });

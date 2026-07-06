@@ -26,7 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "الموظفون", href: "/dashboard/employees", icon: Users, permission: Permission.EMPLOYEE_VIEW, ready: true },
   { label: "الهيكل التنظيمي", href: "/dashboard/organization", icon: Building2, permission: Permission.DEPARTMENT_MANAGE, ready: true },
   { label: "التقييمات", href: "/dashboard/evaluations", icon: ClipboardList, permission: Permission.EVALUATION_VIEW_OWN, ready: true },
-  { label: "نماذج التقييم", href: "/dashboard/templates", icon: FileText, permission: Permission.TEMPLATE_VIEW, ready: true },
+  { label: "نماذج التقييم", href: "/dashboard/templates", icon: FileText, permission: Permission.TEMPLATE_MANAGE, ready: true },
   { label: "الاعتمادات", href: "/dashboard/approvals", icon: CheckCircle2, permission: Permission.EVALUATION_REVIEW, ready: true },
   { label: "المستخدمون", href: "/dashboard/evaluators", icon: UserCog, permission: Permission.USER_MANAGE, ready: true },
   { label: "التقارير", href: "/dashboard/reports", icon: BarChart3, permission: Permission.REPORT_VIEW, ready: true },

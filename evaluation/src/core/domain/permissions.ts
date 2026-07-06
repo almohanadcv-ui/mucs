@@ -54,7 +54,8 @@ const SUPERVISOR: Permission[] = [
 
 const EVALUATOR: Permission[] = [
   Permission.EMPLOYEE_VIEW,
-  Permission.TEMPLATE_VIEW,
+  Permission.EMPLOYEE_MANAGE, // can add employees (auto-linked to themselves)
+  Permission.TEMPLATE_VIEW, // needed to pick a template when creating an evaluation
   Permission.EVALUATION_CREATE,
   Permission.EVALUATION_VIEW_OWN,
 ];

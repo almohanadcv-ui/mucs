@@ -9,6 +9,6 @@ export const metadata: Metadata = { title: "نماذج التقييم" };
 export default async function TemplatesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!can(user.role, Permission.TEMPLATE_VIEW)) redirect("/dashboard");
+  if (!can(user.role, Permission.TEMPLATE_MANAGE)) redirect("/dashboard");
   return <TemplatesClient />;
 }
