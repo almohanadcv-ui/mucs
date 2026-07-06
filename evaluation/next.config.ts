@@ -10,7 +10,10 @@ const isProd = process.env.NODE_ENV === "production";
  */
 const csp = [
   `default-src 'self'`,
-  `script-src 'self' ${isProd ? "" : "'unsafe-eval' 'unsafe-inline'"}`,
+  // Next.js injects inline bootstrap/hydration scripts. Without 'unsafe-inline'
+  // (or a nonce) a strict prod CSP blocks them → client components never
+  // hydrate (e.g. the login form renders blank). 'unsafe-eval' stays dev-only.
+  `script-src 'self' 'unsafe-inline' ${isProd ? "" : "'unsafe-eval'"}`,
   `style-src 'self' 'unsafe-inline'`, // Tailwind/inline styles
   `img-src 'self' data: blob:`,
   `font-src 'self' data:`,
