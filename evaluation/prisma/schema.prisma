@@ -218,6 +218,11 @@ model Employee {
   status       EmployeeStatus @default(ACTIVE)
   joinedAt     DateTime?
 
+  // Contract & probation tracking (all optional — additive, no data loss)
+  contractStartDate DateTime?
+  contractMonths    Int? // total contract length in months (e.g. 12/24/36/48)
+  probationMonths   Int? // probation length in months (e.g. 3/6/12 or custom)
+
   branchId     String?  @db.Uuid
   departmentId String?  @db.Uuid
   supervisorId String?  @db.Uuid

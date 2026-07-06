@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { addMonths, differenceInCalendarDays } from "date-fns";
 import { Plus, Search, Pencil, Trash2, Loader2, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +24,43 @@ import {
   useDeleteEmployee,
   type EmployeeRow,
 } from "./use-employees";
+
+/**
+ * Remaining time until a contract/probation ends, with a color that escalates
+ * as the deadline approaches: green (>90d) → amber (30–90d) → red (<30d/ended).
+ */
+function remaining(startISO: string | null, months: number | null) {
+  if (!startISO || !months) return null;
+  const end = addMonths(new Date(startISO), months);
+  const days = differenceInCalendarDays(end, new Date());
+  const color =
+    days < 30
+      ? "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300"
+      : days <= 90
+        ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300";
+  return { color, text: days < 0 ? "منتهٍ" : `${days} يوم` };
+}
+
+function ContractCell({ e }: { e: EmployeeRow }) {
+  const prob = remaining(e.contractStartDate, e.probationMonths);
+  const contract = remaining(e.contractStartDate, e.contractMonths);
+  if (!prob && !contract) return <span className="text-muted-foreground">—</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      {prob && (
+        <span className={cn("inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium", prob.color)}>
+          التجربة: {prob.text}
+        </span>
+      )}
+      {contract && (
+        <span className={cn("inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium", contract.color)}>
+          العقد: {contract.text}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function EmployeesClient({ canManage }: { canManage: boolean }) {
   const [search, setSearch] = useState("");
@@ -104,6 +143,7 @@ export function EmployeesClient({ canManage }: { canManage: boolean }) {
                     <th className="px-3 py-2 font-medium">الرقم</th>
                     <th className="px-3 py-2 font-medium">الاسم</th>
                     <th className="px-3 py-2 font-medium">القسم</th>
+                    <th className="px-3 py-2 font-medium">العقد / التجربة</th>
                     <th className="px-3 py-2 font-medium">المشرف</th>
                     <th className="px-3 py-2 font-medium">المقيّم</th>
                     <th className="px-3 py-2 font-medium">الحالة</th>
@@ -116,6 +156,7 @@ export function EmployeesClient({ canManage }: { canManage: boolean }) {
                       <td className="px-3 py-3 tabular-nums">{e.employeeNo}</td>
                       <td className="px-3 py-3 font-medium">{e.name}</td>
                       <td className="px-3 py-3 text-muted-foreground">{e.department?.name ?? "—"}</td>
+                      <td className="px-3 py-3"><ContractCell e={e} /></td>
                       <td className="px-3 py-3 text-muted-foreground">{e.supervisor?.name ?? "—"}</td>
                       <td className="px-3 py-3 text-muted-foreground">{e.evaluator?.name ?? "—"}</td>
                       <td className="px-3 py-3"><EmployeeStatusBadge status={e.status} /></td>

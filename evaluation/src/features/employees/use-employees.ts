@@ -14,6 +14,9 @@ export interface EmployeeRow {
   status: string;
   avatarUrl: string | null;
   joinedAt: string | null;
+  contractStartDate: string | null;
+  contractMonths: number | null;
+  probationMonths: number | null;
   branchId: string | null;
   departmentId: string | null;
   supervisorId: string | null;

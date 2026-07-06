@@ -34,11 +34,29 @@ interface FormValues {
   name: string;
   status: string;
   joinedAt: string;
+  contractStartDate: string;
+  contractMonths: string; // "12" | "24" | "36" | "48" | NONE
+  probationSel: string; // "3" | "6" | "12" | "custom" | NONE
+  probationCustom: string; // months as text when probationSel === "custom"
   branchId: string;
   departmentId: string;
   supervisorId: string;
   evaluatorId: string;
 }
+
+const CONTRACT_OPTIONS = [
+  { value: "12", label: "سنة" },
+  { value: "24", label: "سنتان" },
+  { value: "36", label: "3 سنوات" },
+  { value: "48", label: "4 سنوات" },
+];
+const PROBATION_OPTIONS = [
+  { value: "3", label: "3 أشهر" },
+  { value: "6", label: "6 أشهر" },
+  { value: "12", label: "سنة" },
+  { value: "custom", label: "مخصّص…" },
+];
+const PRESET_PROBATION = ["3", "6", "12"];
 
 const STATUS_OPTIONS = [
   { value: "ACTIVE", label: "نشط" },
@@ -71,6 +89,19 @@ export function EmployeeFormDialog({
         name: employee?.name ?? "",
         status: employee?.status ?? "ACTIVE",
         joinedAt: employee?.joinedAt ? employee.joinedAt.slice(0, 10) : "",
+        contractStartDate: employee?.contractStartDate
+          ? employee.contractStartDate.slice(0, 10)
+          : "",
+        contractMonths: employee?.contractMonths ? String(employee.contractMonths) : NONE,
+        probationSel: employee?.probationMonths
+          ? PRESET_PROBATION.includes(String(employee.probationMonths))
+            ? String(employee.probationMonths)
+            : "custom"
+          : NONE,
+        probationCustom:
+          employee?.probationMonths && !PRESET_PROBATION.includes(String(employee.probationMonths))
+            ? String(employee.probationMonths)
+            : "",
         branchId: employee?.branchId ?? NONE,
         departmentId: employee?.departmentId ?? NONE,
         supervisorId: employee?.supervisorId ?? NONE,
@@ -89,6 +120,19 @@ export function EmployeeFormDialog({
       name: v.name,
       status: v.status,
       joinedAt: v.joinedAt ? new Date(v.joinedAt).toISOString() : null,
+      contractStartDate: v.contractStartDate
+        ? new Date(v.contractStartDate).toISOString()
+        : null,
+      contractMonths:
+        v.contractMonths && v.contractMonths !== NONE ? Number(v.contractMonths) : null,
+      probationMonths:
+        v.probationSel === "custom"
+          ? v.probationCustom
+            ? Number(v.probationCustom)
+            : null
+          : v.probationSel && v.probationSel !== NONE
+            ? Number(v.probationSel)
+            : null,
       branchId: clean(v.branchId),
       departmentId: clean(v.departmentId),
       supervisorId: clean(v.supervisorId),
@@ -149,6 +193,60 @@ export function EmployeeFormDialog({
             <Label>تاريخ الانضمام</Label>
             <Input type="date" dir="ltr" {...register("joinedAt")} />
           </div>
+
+          <div className="space-y-2">
+            <Label>تاريخ بدء العقد</Label>
+            <Input type="date" dir="ltr" {...register("contractStartDate")} />
+          </div>
+          <div className="space-y-2">
+            <Label>مدة العقد</Label>
+            <Select
+              defaultValue={employee?.contractMonths ? String(employee.contractMonths) : NONE}
+              onValueChange={(v) => setValue("contractMonths", v)}
+            >
+              <SelectTrigger><SelectValue placeholder="اختر المدة" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>—</SelectItem>
+                {CONTRACT_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>فترة التجربة</Label>
+            <Select
+              defaultValue={
+                employee?.probationMonths
+                  ? PRESET_PROBATION.includes(String(employee.probationMonths))
+                    ? String(employee.probationMonths)
+                    : "custom"
+                  : NONE
+              }
+              onValueChange={(v) => setValue("probationSel", v)}
+            >
+              <SelectTrigger><SelectValue placeholder="اختر الفترة" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>—</SelectItem>
+                {PROBATION_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {watch("probationSel") === "custom" && (
+            <div className="space-y-2">
+              <Label>فترة التجربة (عدد الأشهر)</Label>
+              <Input
+                type="number"
+                min={1}
+                max={60}
+                dir="ltr"
+                placeholder="مثال: 9"
+                {...register("probationCustom")}
+              />
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>الفرع</Label>
