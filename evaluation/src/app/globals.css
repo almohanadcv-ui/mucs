@@ -18,7 +18,7 @@
   --popover: 0 0% 100%;
   --popover-foreground: 222 24% 12%;
 
-  --primary: 231 62% 55%; /* indigo — brand */
+  --primary: 206 75% 42%; /* MAB brand blue (#1b76bd) */
   --primary-foreground: 0 0% 100%;
 
   --secondary: 220 16% 96%;
@@ -65,7 +65,7 @@
   --popover: 224 28% 11%;
   --popover-foreground: 220 14% 92%;
 
-  --primary: 231 70% 66%;
+  --primary: 206 72% 58%; /* MAB brand blue (dark mode) */
   --primary-foreground: 224 32% 8%;
 
   --secondary: 223 20% 18%;

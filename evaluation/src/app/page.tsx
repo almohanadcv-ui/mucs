@@ -88,9 +88,6 @@ export default function Home() {
             <Button asChild size="lg">
               <Link href="/dashboard">ابدأ الآن</Link>
             </Button>
-            <Button asChild size="lg" variant="outline">
-              <Link href="/login">تسجيل الدخول</Link>
-            </Button>
           </div>
         </section>
 
