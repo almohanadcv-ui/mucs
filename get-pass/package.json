@@ -1,0 +1,36 @@
+{
+  "name": "pams",
+  "version": "1.0.0",
+  "description": "نظام إدارة التصاريح والموافقات - Permit & Approval Management System",
+  "type": "module",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/db/seed.js",
+    "reset": "node src/db/reset.js",
+    "fresh": "node src/db/reset.js && node src/db/seed.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.3.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
+    "nanoid": "^5.0.7",
+    "nodemailer": "^6.9.14",
+    "pdf-parse": "^2.4.5",
+    "qrcode-terminal": "^0.12.0",
+    "tesseract.js": "^7.0.0",
+    "whatsapp-web.js": "^1.26.0"
+  },
+  "license": "MIT"
+}

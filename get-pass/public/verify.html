@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>التحقق من تصريح — MAB</title>
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="icon" type="image/png" href="/assets/logo.png?v=1" />
+  <link rel="apple-touch-icon" href="/assets/logo.png?v=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=49" />
+</head>
+<body>
+  <div class="auth-wrap">
+    <div class="auth-card" style="max-width:460px">
+      <img class="auth-logo" src="/assets/logo.png" onerror="this.onerror=null;this.src='/assets/mab-logo.svg'" alt="MAB" />
+      <h1>التحقق من تصريح</h1>
+      <p class="sub">تأكد من صلاحية التصريح عبر رمز التحقق</p>
+      <div class="field">
+        <label>رمز التحقق</label>
+        <input id="token" placeholder="الصق رمز التحقق هنا" />
+      </div>
+      <button class="btn block" onclick="check()">تحقّق</button>
+      <div id="result" style="margin-top:20px"></div>
+    </div>
+  </div>
+  <script>
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    async function check() {
+      const token = document.getElementById('token').value.trim();
+      const box = document.getElementById('result');
+      if (!token) return;
+      box.innerHTML = 'جارٍ التحقق…';
+      try {
+        const res = await fetch('/api/verify/' + encodeURIComponent(token));
+        const d = await res.json();
+        if (!res.ok || !d.permit) { box.innerHTML = `<div class="card" style="border-color:#fecaca;background:#fef2f2"><b style="color:#991b1b">✗ ${esc(d.error || 'لا يوجد تصريح بهذا الرمز')}</b></div>`; return; }
+        const p = d.permit;
+        const ok = d.valid;
+        box.innerHTML = `<div class="card" style="border-color:${ok?'#bbf7d0':'#fde68a'};background:${ok?'#f0fdf4':'#fffbeb'}">
+          <h3 style="color:${ok?'#166534':'#92400e'}">${ok ? '✓ تصريح ساري المفعول' : '⚠ التصريح غير فعّال'}</h3>
+          <p><b>رقم التصريح:</b> ${esc(p.permit_number)}</p>
+          <p><b>صاحب التصريح:</b> ${esc(p.holder_name)}</p>
+          <p><b>الهوية:</b> ${esc(p.national_id_masked)}</p>
+          <p><b>الصلاحية:</b> ${esc(p.valid_from)} → ${esc(p.valid_to)}</p>
+        </div>`;
+      } catch (e) { box.innerHTML = '<div class="card">تعذّر الاتصال.</div>'; }
+    }
+    // تعبئة الرمز من الرابط تلقائياً
+    const t = new URLSearchParams(location.search).get('token');
+    if (t) { document.getElementById('token').value = t; check(); }
+  </script>
+</body>
+</html>

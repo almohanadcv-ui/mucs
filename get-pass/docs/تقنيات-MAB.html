@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MAB — نظرة تقنية شاملة</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+<style>
+:root{--blue:#2563EB;--purple:#7C3AED;--ink:#0f172a;--muted:#475569;--line:#e2e8f0;--soft:#f1f5f9}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Cairo',sans-serif;color:var(--ink);background:#eef2f7;line-height:1.85;padding:24px}
+.sheet{max-width:860px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.1);padding:46px 50px}
+.print-bar{max-width:860px;margin:0 auto 16px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.btn{background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff;border:none;padding:12px 22px;border-radius:10px;font-family:inherit;font-weight:800;font-size:15px;cursor:pointer}
+.hint{color:var(--muted);font-size:13px}
+header.doc{text-align:center;border-bottom:3px solid var(--blue);padding-bottom:22px;margin-bottom:28px}
+.logo{display:inline-flex;align-items:center;gap:10px;font-weight:900;font-size:30px;color:var(--blue);letter-spacing:-1px}
+.logo .d{width:0;height:0;border-left:13px solid transparent;border-right:13px solid transparent;border-bottom:26px solid var(--blue)}
+header.doc h1{font-size:24px;margin-top:10px}
+header.doc p{color:var(--muted);font-size:14px;margin-top:4px}
+h2{font-size:19px;color:var(--blue);margin:28px 0 12px;padding-right:12px;border-right:5px solid var(--blue);page-break-after:avoid}
+h3{font-size:15.5px;margin:16px 0 6px;color:var(--ink)}
+p,li{font-size:14px;color:#1e293b}
+ul{padding-right:22px;margin:6px 0}
+li{margin-bottom:4px}
+table{width:100%;border-collapse:collapse;margin:10px 0 6px;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:right;vertical-align:top}
+th{background:var(--soft);font-weight:800}
+tr:nth-child(even) td{background:#fafcff}
+.en{direction:ltr;unicode-bidi:isolate;font-family:Consolas,monospace}
+.box{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin:12px 0;font-size:13.5px}
+.flow{background:#0f172a;color:#e2e8f0;border-radius:10px;padding:16px 18px;font-family:Consolas,monospace;font-size:12.5px;direction:ltr;text-align:left;white-space:pre;overflow-x:auto;margin:12px 0}
+.tag{display:inline-block;background:#dbeafe;color:#1e40af;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:700;margin:2px}
+.warn{background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin:12px 0;font-size:13.5px}
+footer.doc{margin-top:34px;border-top:1px solid var(--line);padding-top:16px;text-align:center;color:var(--muted);font-size:12.5px}
+@media print{
+  body{background:#fff;padding:0}
+  .print-bar{display:none}
+  .sheet{box-shadow:none;border-radius:0;max-width:100%;padding:0 14mm}
+  h2{page-break-after:avoid}table,.flow,.box,.warn{page-break-inside:avoid}
+  @page{margin:14mm}
+}
+</style>
+</head>
+<body>
+<div class="print-bar">
+  <span class="hint">للحفظ كـ PDF: اضغط الزر ← ثم اختر «حفظ كـ PDF» (Save as PDF).</span>
+  <button class="btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button>
+</div>
+
+<div class="sheet">
+  <header class="doc">
+    <div class="logo">M<span class="d"></span>B</div>
+    <h1>MAB — نظرة تقنية شاملة على النظام والموقع</h1>
+    <p>نظام إدارة التصاريح والموافقات + الموقع التعريفي · وثيقة تقنية</p>
+  </header>
+
+  <h2>1) نظرة عامة</h2>
+  <p>تتكوّن المنظومة من جزأين منفصلين:</p>
+  <table>
+    <tr><th>المنصّة</th><th>الوصف</th></tr>
+    <tr><td><b>نظام PAMS</b></td><td>نظام إدارة تصاريح دخول العاملين (موقع ويب + وكيل واتساب + قراءة ذكية)</td></tr>
+    <tr><td><b>موقع MAB التعريفي</b></td><td>الموقع التسويقي للشركة (صفحة ثابتة منفصلة، تحوّل للنظام)</td></tr>
+  </table>
+
+  <h2>2) اللغات المستخدمة</h2>
+  <table>
+    <tr><th>اللغة</th><th>الاستخدام</th></tr>
+    <tr><td><b>JavaScript</b> (Node.js + المتصفّح)</td><td>اللغة الأساسية: منطق الخادم والواجهة والموقع</td></tr>
+    <tr><td><b>HTML5</b></td><td>هيكل الصفحات</td></tr>
+    <tr><td><b>CSS3</b></td><td>التصميم والحركات</td></tr>
+    <tr><td><b>SQL</b></td><td>استعلامات قاعدة البيانات</td></tr>
+    <tr><td><b>JSON</b></td><td>تبادل البيانات بين الواجهة والخادم</td></tr>
+  </table>
+
+  <h2>3) التقنيات والمكتبات</h2>
+  <h3>الخادم (Backend) — Node.js 20+</h3>
+  <p><span class="tag en">express</span><span class="tag en">better-sqlite3</span><span class="tag en">bcryptjs</span><span class="tag en">jsonwebtoken</span><span class="tag en">cookie-parser</span><span class="tag en">helmet</span><span class="tag en">express-rate-limit</span><span class="tag en">multer</span><span class="tag en">dotenv</span><span class="tag en">nanoid</span></p>
+  <h3>وكيل واتساب والقراءة الذكية</h3>
+  <p><span class="tag en">whatsapp-web.js</span><span class="tag en">Puppeteer/Chromium</span><span class="tag en">qrcode-terminal</span><span class="tag en">OCR.space</span><span class="tag en">tesseract.js</span><span class="tag en">pdf-parse</span></p>
+  <h3>الواجهة (Frontend)</h3>
+  <p><span class="tag">JavaScript نقي (SPA)</span><span class="tag">HTML + CSS</span><span class="tag en">Fetch API</span><span class="tag">خط Cairo</span></p>
+  <h3>التشغيل والبنية التحتية</h3>
+  <p><span class="tag">VPS — Hostinger (Linux)</span><span class="tag en">PM2</span><span class="tag en">Nginx</span><span class="tag en">Git + GitHub</span></p>
+
+  <h2>4) الخادم (Backend)</h2>
+  <p>برنامج <b>Node.js/Express</b> مبني بطبقات منفصلة:</p>
+  <ul>
+    <li><b>routes/</b> — نقاط النهاية (الدخول، الطلبات، التصاريح، المستخدمون، إدارة واتساب).</li>
+    <li><b>middleware/</b> — بوابات قبل المعالجة (تحقّق الجلسة، الصلاحيات، رفع الملفات، الأخطاء).</li>
+    <li><b>services/</b> — منطق العمل (حالات الطلب، الإصدار، التدقيق، الإشعارات).</li>
+    <li><b>db/</b> — الوصول لقاعدة البيانات والمخطّط.</li>
+  </ul>
+
+  <h2>5) الواجهة (Frontend)</h2>
+  <p>تطبيق صفحة واحدة (SPA) بـ<b>JavaScript نقي</b> بلا أطر ثقيلة: ملف واحد <span class="en">index.html</span> + <span class="en">app.js</span> يرسم الشاشات ويتواصل مع الخادم عبر <span class="en">/api</span>، و<span class="en">styles.css</span> للتصميم. لا إعادة تحميل — يتغيّر المحتوى فقط.</p>
+
+  <h2>6) قاعدة البيانات</h2>
+  <p><b>SQLite</b> في ملف واحد (<span class="en">pams.db</span>) عبر مكتبة <span class="en">better-sqlite3</span>، بوضع <b>WAL</b> للأمان، على قرص دائم منفصل عن الكود (<span class="en">/var/pams-data/data/</span>).</p>
+  <table>
+    <tr><th>الجدول</th><th>يخزّن</th></tr>
+    <tr><td class="en">users / roles</td><td>المستخدمون والأدوار</td></tr>
+    <tr><td class="en">permit_requests</td><td>الطلبات</td></tr>
+    <tr><td class="en">permits</td><td>التصاريح المُصدرة</td></tr>
+    <tr><td class="en">attachments</td><td>المرفقات</td></tr>
+    <tr><td class="en">audit_logs</td><td>سجل التدقيق</td></tr>
+    <tr><td class="en">wa_jobs</td><td>طابور مهام الوكيل</td></tr>
+    <tr><td class="en">wa_documents / wa_distributions</td><td>ملفات واتساب الواردة وتوزيع التصاريح</td></tr>
+    <tr><td class="en">app_settings</td><td>الإعدادات القابلة للتعديل من الموقع</td></tr>
+  </table>
+
+  <h2>7) نظام الحماية</h2>
+  <table>
+    <tr><th>الطبقة</th><th>كيف تحمي</th></tr>
+    <tr><td>تشفير كلمات المرور <span class="en">(bcrypt)</span></td><td>تجزئة أحادية لا تُعكس</td></tr>
+    <tr><td><span class="en">JWT</span> في كوكي <span class="en">httpOnly</span></td><td>بطاقة دخول مشفّرة لا تصلها سكربتات الصفحة</td></tr>
+    <tr><td>جلسة واحدة فعّالة</td><td>دخول جديد يُلغي القديم؛ الخروج يُبطل الجلسة</td></tr>
+    <tr><td>الصلاحيات <span class="en">(RBAC)</span></td><td>كل دور يصل لما يخصّه فقط</td></tr>
+    <tr><td><span class="en">Helmet + CSP</span></td><td>رؤوس أمان تمنع حقن السكربتات</td></tr>
+    <tr><td>تحديد المعدّل <span class="en">(Rate-Limit)</span></td><td>منع تخمين كلمة المرور والإغراق</td></tr>
+    <tr><td>قائمة أرقام مسموحة</td><td>الوكيل يتجاهل أي رقم غير معتمد</td></tr>
+    <tr><td>سجل التدقيق</td><td>تسجيل كل عملية: من، ماذا، متى</td></tr>
+  </table>
+  <p><b>مسار الطلب عبر طبقات الحماية:</b></p>
+  <div class="flow">User → Nginx → Express → Helmet/CSP → Rate-Limit
+     → Auth (JWT + Session) → RBAC → Route → Database → Audit</div>
+  <div class="warn"><b>الخطوة القادمة:</b> تركيب <b>HTTPS</b> (شهادة SSL مجانية) لتشفير الاتصال — جاهز للتركيب فور تجهيز نطاق (دومين).</div>
+
+  <h2>8) كيف يعمل الوكيل (Agent)</h2>
+  <p>الفكرة الأساسية: استخدام <b>طابور مهام داخل قاعدة البيانات</b> لضمان الموثوقية (لا يفقد عملاً ولا يتعطّل عند الفشل).</p>
+  <div class="flow">① استقبال ملف عبر whatsapp-web.js
+② تحقّق القائمة المسموحة
+③ حفظ سجلّ + وضع مهمة في الطابور (wa_jobs)
+④ عامل (Worker) ينفّذ المهمة — مع إعادة محاولة وعزل للفشل
+⑤ قراءة الهوية والتاريخ (OCR.space / tesseract)
+⑥ مطابقة بطلب موجود → إصدار التصريح
+⑦ توزيعه للمهندس على واتساب + رابط دخول
+⑧ تقرير موحّد (صُدِر / سبق إصداره / غير موجود)</div>
+  <ul>
+    <li><b>الاتصال:</b> whatsapp-web.js يشغّل متصفّح Chromium مخفي مسجّل على رقم واتساب (الجلسة محفوظة).</li>
+    <li><b>الموثوقية:</b> طابور في قاعدة البيانات → يبقى بعد إعادة التشغيل + إعادة محاولة + عزل الفشل (Dead Letter).</li>
+    <li><b>الفصل:</b> الاستقبال ≠ المعالجة ≠ التوزيع، وكل جزء له تحديد معدّل مستقل (تفادي حظر واتساب).</li>
+  </ul>
+
+  <h2>9) توصيات التحسين</h2>
+  <ul>
+    <li>تفعيل <b>HTTPS</b> (الأولوية القصوى) عبر نطاق + شهادة SSL مجانية.</li>
+    <li>إضافة <b>Cloudflare</b> (مجاني): إخفاء عنوان الخادم + حماية DDoS + جدار حماية.</li>
+    <li>نسخ احتياطي <b>مجدول تلقائي</b> لقاعدة البيانات.</li>
+    <li>تقييد الوصول للخادم وقاعدة البيانات بقوة.</li>
+  </ul>
+
+  <footer class="doc">© 2026 MAB Trading &amp; Contracting — وثيقة تقنية داخلية</footer>
+</div>
+</body>
+</html>

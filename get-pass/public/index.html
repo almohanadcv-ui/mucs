@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#2563eb" />
+  <title>نظام إدارة التصاريح والموافقات — MAB</title>
+  <link rel="icon" type="image/png" href="/assets/logo.png?v=1" />
+  <link rel="shortcut icon" type="image/png" href="/assets/logo.png?v=1" />
+  <link rel="apple-touch-icon" href="/assets/logo.png?v=1" />
+  <meta property="og:title" content="نظام التصاريح والموافقات — MAB" />
+  <meta property="og:image" content="/assets/logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css?v=58" />
+</head>
+<body class="dark">
+  <div id="toasts"></div>
+
+  <!-- شاشة الدخول -->
+  <div id="auth" class="auth-wrap">
+    <div class="auth-fx" aria-hidden="true">
+      <div class="fx-ambient"></div>
+      <!-- مشهد القدية الحيّ -->
+      <span class="sky-overlay"></span>
+      <span class="sun"></span>
+      <span class="moon"></span>
+      <span class="stars"></span>
+      <div class="fx-dust d-a"></div>
+      <div class="fx-dust d-b"></div>
+      <span class="fx-dot" style="left:8%;--rd:15s;animation-delay:-2s"></span>
+      <span class="fx-dot" style="left:22%;--rd:19s;animation-delay:-9s"></span>
+      <span class="fx-dot" style="left:40%;--rd:13s;animation-delay:-5s"></span>
+      <span class="fx-dot" style="left:58%;--rd:21s;animation-delay:-12s"></span>
+      <span class="fx-dot" style="left:74%;--rd:16s;animation-delay:-7s"></span>
+      <span class="fx-dot" style="left:90%;--rd:18s;animation-delay:-3s"></span>
+
+      <!-- درون الأمن MAB -->
+      <div class="fx-drone" title="MAB Security Drone">
+        <div class="drone-inner">
+          <svg viewBox="0 0 96 50" width="96" height="50" fill="none">
+            <line x1="24" y1="22" x2="8" y2="11" stroke="#26384a" stroke-width="3" stroke-linecap="round"/>
+            <line x1="72" y1="22" x2="88" y2="11" stroke="#26384a" stroke-width="3" stroke-linecap="round"/>
+            <g class="rotor"><ellipse cx="8" cy="10" rx="12" ry="3" fill="rgba(150,225,255,.55)"/></g>
+            <g class="rotor r2"><ellipse cx="88" cy="10" rx="12" ry="3" fill="rgba(150,225,255,.55)"/></g>
+            <rect x="28" y="14" width="40" height="17" rx="8" fill="#1c4f86" stroke="#5aa6e0" stroke-width="1.5"/>
+            <text x="48" y="24" text-anchor="middle" font-size="8" font-weight="800" fill="#dcefff">MAB</text>
+            <circle cx="48" cy="33" r="6" fill="#0e2740" stroke="#5aa6e0" stroke-width="1.5"/>
+            <circle class="drone-eye" cx="48" cy="33" r="2.4" fill="#7fe3ff"/>
+          </svg>
+          <span class="drone-beam"></span>
+          <span class="drone-ring"></span>
+        </div>
+      </div>
+
+    </div>
+    <div class="fx-clock" aria-hidden="true"><div class="c-time">--:--</div><div class="c-date"></div></div>
+    <div class="auth-topbar">
+      <span class="auth-logo-wrap" title="MAB"><img src="/assets/logo.png" onerror="this.onerror=null;this.src='/assets/mab-logo.svg'" alt="MAB" /><span class="logo-sweep"></span></span>
+      <span class="auth-topbar-div"></span>
+      <img src="/assets/qiddiya.svg?v=1" alt="Qiddiya" class="auth-topbar-q-img" />
+    </div>
+
+    <div class="auth-main">
+      <div class="auth-card glass">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+        <span class="card-holo"></span>
+        <span class="card-scan"></span>
+        <h1>نظام التصاريح</h1>
+
+        <form id="login-form" onsubmit="return App.login(event)">
+          <div class="field">
+            <label>Email</label>
+            <div class="input-icon">
+              <span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6.5 8-6.5s8 2.5 8 6.5"/></svg></span>
+              <input type="email" name="email" required autocomplete="username" placeholder="name@pams.local" dir="ltr" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Password</label>
+            <div class="input-icon">
+              <span class="ic" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+              <input type="password" id="login-pw" name="password" required autocomplete="current-password" placeholder="••••••••" dir="ltr" />
+              <button type="button" class="pw-eye" title="إظهار/إخفاء كلمة المرور" onclick="App.togglePw('login-pw', this)">👁</button>
+            </div>
+          </div>
+          <button class="btn block neon" type="submit">تسجيل الدخول</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- التطبيق -->
+  <div id="app" class="app hidden">
+    <div id="backdrop" class="backdrop" onclick="App.toggleNav(false)"></div>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <img src="/assets/logo.png" onerror="this.onerror=null;this.src='/assets/mab-logo.svg'" alt="MAB" class="brand-logo" />
+        <div class="brand-text"><span class="brand-name">نظام التصاريح</span><small>والموافقات</small></div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="user">
+        <div class="name" id="user-name"></div>
+        <div class="role" id="user-role"></div>
+        <button class="btn ghost sm" style="margin-top:10px;width:100%" onclick="App.logout()">تسجيل الخروج</button>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-start">
+          <button class="hamburger" onclick="App.toggleNav()" aria-label="القائمة">☰</button>
+          <div><h2 id="page-title"></h2><div id="page-subtitle" class="page-sub"></div></div>
+        </div>
+        <div class="actions">
+          <span id="page-actions"></span>
+          <div class="fontsize">
+            <button onclick="App.fontSize(1)" title="تكبير الخط">+A</button>
+            <span id="fs-label">100%</span>
+            <button onclick="App.fontSize(-1)" title="تصغير الخط">A-</button>
+          </div>
+          <button class="bell" id="refresh-btn" title="تحديث الصفحة" onclick="App.refresh()">⟳</button>
+          <button class="bell" id="bell" title="الإشعارات" onclick="App.route('notifications')">🔔<span class="bell-badge hidden" id="bell-count">0</span></button>
+        </div>
+      </header>
+      <div id="banner"></div>
+      <div id="content"></div>
+      <footer class="footer">© 2026 MAB — جميع الحقوق محفوظة · نظام إدارة التصاريح والموافقات</footer>
+    </main>
+  </div>
+
+  <div id="modal-root"></div>
+  <script src="/app.js?v=66"></script>
+  <script src="/login-fx.js?v=49"></script>
+</body>
+</html>

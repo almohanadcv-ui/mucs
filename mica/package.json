@@ -1,0 +1,27 @@
+{
+  "name": "mica-mab",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "dev": "turbo run dev --filter=@mica-mab/api --filter=@mica-mab/web",
+    "dev:shared": "pnpm --filter @mica-mab/shared-types dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "prisma:generate": "pnpm --filter @mica-mab/api prisma:generate",
+    "prisma:migrate": "pnpm --filter @mica-mab/api prisma:migrate",
+    "prisma:seed": "pnpm --filter @mica-mab/api prisma:seed",
+    "prisma:studio": "pnpm --filter @mica-mab/api prisma:studio"
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "turbo": "2.10.0",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,876 @@
+// MICA MAB Fleet & Maintenance Management System — full domain schema (Phase 1).
+//
+// Conventions:
+// - id: cuid, safe to expose in URLs, no sequential-enumeration leakage.
+// - createdAt/updatedAt on every table; deletedAt for soft delete (app-layer
+//   default scope filters `deletedAt: null` — enforced in each module's service).
+// - createdById/updatedById are plain, UNENFORCED audit columns (no Prisma
+//   relation): they exist on every table, and modeling them as real relations
+//   would force a distinct named relation pair on User per table. They're
+//   informational (who did this), not a referential-integrity requirement —
+//   the same reasoning applies to Attachment/Comment/Favorite's entityId and
+//   the Setting-driven approval thresholds.
+// - Money fields use Decimal(12,2). Enums are used for small fixed sets;
+//   free-form/extensible concepts (Setting keys, notification types) are
+//   plain strings so adding one is a data change, not a migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity, RBAC, Org structure
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  INVITED
+}
+
+model User {
+  id                  String     @id @default(cuid())
+  email               String     @unique
+  passwordHash        String
+  firstName           String
+  lastName            String
+  phone               String?
+  avatarAttachmentId  String?
+  status              UserStatus @default(INVITED)
+  isTwoFactorEnabled  Boolean    @default(false)
+  twoFactorSecret     String?
+  branchId            String?
+  departmentId        String?
+  lastLoginAt         DateTime?
+  failedLoginAttempts Int        @default(0)
+  lockedUntil         DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  branch     Branch?     @relation(fields: [branchId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  roles           UserRole[]
+  sessions        Session[]
+  teamMemberships TeamMember[]
+
+  managedDepartments      Department[]         @relation("DepartmentManager")
+  ledTeams                Team[]               @relation("TeamLead")
+  reportedMaintenanceReqs MaintenanceRequest[] @relation("MaintenanceReportedBy")
+  assignedMaintenanceReqs MaintenanceRequest[] @relation("MaintenanceAssignedTo")
+  driverProfile           Driver?
+  assignedAppointments    Appointment[]        @relation("AppointmentAssignedTo")
+  notifications           Notification[]
+  savedFilters            SavedFilter[]
+  favorites               Favorite[]
+
+  @@index([branchId])
+  @@index([departmentId])
+  @@map("users")
+}
+
+model Role {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  isSystem    Boolean @default(false)
+  branchId    String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  branch      Branch?          @relation(fields: [branchId], references: [id])
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@unique([name, branchId])
+  @@index([branchId])
+  @@map("roles")
+}
+
+model Permission {
+  id       String @id @default(cuid())
+  resource String
+  action   String
+  key      String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roles RolePermission[]
+
+  @@index([resource])
+  @@map("permissions")
+}
+
+enum PermissionScope {
+  OWN
+  BRANCH
+  ALL
+}
+
+model RolePermission {
+  id           String          @id @default(cuid())
+  roleId       String
+  permissionId String
+  scope        PermissionScope @default(ALL)
+
+  createdAt DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model Branch {
+  id       String  @id @default(cuid())
+  name     String
+  code     String  @unique
+  address  String?
+  city     String?
+  country  String?
+  phone    String?
+  isActive Boolean @default(true)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  users               User[]
+  roles               Role[]
+  departments         Department[]
+  vehicles            Vehicle[]
+  drivers             Driver[]
+  spareParts          SparePart[]
+  maintenanceRequests MaintenanceRequest[]
+  appointments        Appointment[]
+
+  @@map("branches")
+}
+
+model Department {
+  id        String  @id @default(cuid())
+  name      String
+  branchId  String
+  managerId String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  branch  Branch @relation(fields: [branchId], references: [id])
+  manager User?  @relation("DepartmentManager", fields: [managerId], references: [id])
+  users   User[]
+  teams   Team[]
+
+  @@index([branchId])
+  @@map("departments")
+}
+
+model Team {
+  id           String  @id @default(cuid())
+  name         String
+  departmentId String
+  leadId       String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  department Department   @relation(fields: [departmentId], references: [id])
+  lead       User?        @relation("TeamLead", fields: [leadId], references: [id])
+  members    TeamMember[]
+
+  @@index([departmentId])
+  @@map("teams")
+}
+
+model TeamMember {
+  id     String @id @default(cuid())
+  teamId String
+  userId String
+
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+/// Refresh-token store; one row per active device/session — also the "device
+/// management" / "active sessions" facility (listable + individually revocable).
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  deviceLabel String?
+  userAgent   String?
+  ipAddress   String?
+  isRevoked   Boolean  @default(false)
+  expiresAt   DateTime
+  lastUsedAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ---------------------------------------------------------------------------
+// Vehicles & Drivers
+// ---------------------------------------------------------------------------
+
+enum VehicleStatus {
+  AWAITING_RECEPTION // بانتظار الاستلام
+  UNDER_INSPECTION // قيد الفحص
+  UNDER_MAINTENANCE // قيد الصيانة
+  AWAITING_PARTS // بانتظار قطع الغيار
+  READY // جاهزة
+  DELIVERED // تم التسليم
+  CANCELLED // ملغية
+}
+
+model Vehicle {
+  id                 String        @id @default(cuid())
+  plateNumber        String        @unique
+  vin                String        @unique
+  make               String
+  model              String
+  year               Int
+  trim               String?
+  color              String?
+  bodyType           String?
+  engine             String?
+  transmission       String?
+  fuelType           String?
+  odometer           Int           @default(0)
+  status             VehicleStatus @default(AWAITING_RECEPTION)
+  branchId           String
+  currentDriverId    String?
+  insuranceExpiry    DateTime?
+  registrationExpiry DateTime?
+  licenseExpiry      DateTime?
+  purchaseDate       DateTime?
+  purchasePrice      Decimal?      @db.Decimal(12, 2)
+  location           String?
+  notes              String?
+  qrCodeValue        String        @unique
+
+  // Workshop intake fields (Fleet Maintenance spec)
+  name              String? // اسم السيارة (display label)
+  oilMeter          Int? // عداد الزيت
+  oilChangeDueAt    DateTime? // موعد تغيير الزيت
+  nextMaintenanceAt DateTime? // موعد الصيانة القادمة
+  receiverName      String? // اسم المستلم
+  party             String? // الجهة
+
+  // Last time a due-soon reminder was sent for each schedule, so the daily
+  // cron notifies once per approaching due date rather than every day.
+  oilReminderSentAt         DateTime?
+  maintenanceReminderSentAt DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  branch              Branch               @relation(fields: [branchId], references: [id])
+  currentDriver       Driver?              @relation(fields: [currentDriverId], references: [id])
+  maintenanceRequests MaintenanceRequest[]
+  appointments        Appointment[]
+  invoices            Invoice[]
+
+  @@index([branchId, status])
+  // Trigram GIN indexes back the fuzzy global search (SearchService raw SQL) —
+  // Prisma can't express a WHERE-less similarity search itself, but declaring
+  // the indexes here keeps `prisma migrate dev` from thinking the ones added
+  // by the hand-written pg_trgm migration are drift to be reverted.
+  @@index([plateNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "vehicles_plateNumber_trgm_idx")
+  @@index([vin(ops: raw("gin_trgm_ops"))], type: Gin, map: "vehicles_vin_trgm_idx")
+  @@index([make(ops: raw("gin_trgm_ops"))], type: Gin, map: "vehicles_make_trgm_idx")
+  @@index([model(ops: raw("gin_trgm_ops"))], type: Gin, map: "vehicles_model_trgm_idx")
+  @@map("vehicles")
+}
+
+enum InvoiceStatus {
+  PENDING // بانتظار الاعتماد
+  ACCEPTED // مقبولة
+  REJECTED // مرفوضة
+}
+
+/// A maintenance invoice uploaded by a Mechanic against a vehicle. The file
+/// (PDF/PNG/JPG) is stored via the storage provider and served through a
+/// permission-gated endpoint. Management accepts or rejects it.
+model Invoice {
+  id           String        @id @default(cuid())
+  vehicleId    String
+  amount       Decimal       @db.Decimal(12, 2)
+  description  String?
+  workshopName String?
+  invoiceDate  DateTime?
+  fileKey      String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  status       InvoiceStatus @default(PENDING)
+
+  rejectionReason String?
+  decisionNotes   String?
+  decidedById     String?
+  decidedAt       DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id])
+
+  @@index([vehicleId, status])
+  @@index([status, createdAt])
+  @@map("invoices")
+}
+
+enum DriverStatus {
+  ACTIVE
+  SUSPENDED
+  ON_LEAVE
+}
+
+model Driver {
+  id                String       @id @default(cuid())
+  userId            String?      @unique
+  employeeCode      String       @unique
+  firstName         String
+  lastName          String
+  licenseNumber     String       @unique
+  licenseClass      String?
+  licenseExpiryDate DateTime?
+  phone             String?
+  emergencyContact  String?
+  status            DriverStatus @default(ACTIVE)
+  branchId          String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  user            User?         @relation(fields: [userId], references: [id])
+  branch          Branch        @relation(fields: [branchId], references: [id])
+  appointments    Appointment[]
+  currentVehicles Vehicle[]
+
+  @@index([branchId, status])
+  @@index([firstName(ops: raw("gin_trgm_ops"))], type: Gin, map: "drivers_firstName_trgm_idx")
+  @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin, map: "drivers_lastName_trgm_idx")
+  @@index([employeeCode(ops: raw("gin_trgm_ops"))], type: Gin, map: "drivers_employeeCode_trgm_idx")
+  @@index([licenseNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "drivers_licenseNumber_trgm_idx")
+  @@map("drivers")
+}
+
+enum EntityType {
+  VEHICLE
+  DRIVER
+  MAINTENANCE_REQUEST
+  APPOINTMENT
+}
+
+enum AttachmentKind {
+  IMAGE
+  VIDEO
+  DOCUMENT
+  AUDIO
+}
+
+/// Generic polymorphic-by-discriminator attachment table, reused by vehicles,
+/// drivers, and maintenance requests instead of three duplicate file tables.
+/// entityId is validated against entityType's table in the service layer —
+/// Prisma cannot enforce a polymorphic FK at the database level.
+model Attachment {
+  id           String         @id @default(cuid())
+  entityType   EntityType
+  entityId     String
+  fileKey      String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  kind         AttachmentKind
+  thumbnailKey String?
+  documentType String?
+  uploadedById String?
+
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  @@index([entityType, entityId])
+  @@map("attachments")
+}
+
+/// Polymorphic (entityType/entityId) general-purpose timeline note, reused by
+/// maintenance requests and vehicles.
+model Comment {
+  id         String     @id @default(cuid())
+  entityType EntityType
+  entityId   String
+  authorId   String?
+  body       String
+  mentions   String[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([entityType, entityId])
+  @@map("comments")
+}
+
+// ---------------------------------------------------------------------------
+// Maintenance & Workflow
+// ---------------------------------------------------------------------------
+
+enum MaintenancePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum MaintenanceStatus {
+  DRAFT
+  REPORTED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SCHEDULED
+  ASSIGNED
+  IN_PROGRESS
+  WAITING_PARTS
+  QUALITY_INSPECTION
+  COMPLETED
+  DELIVERED
+  CANCELLED
+}
+
+/// Where a maintenance request originated. DRIVER_REPORT requests skip the
+/// cost-tier approval chain and land directly in the mechanic's inbox.
+enum MaintenanceSource {
+  INTERNAL
+  DRIVER_REPORT
+}
+
+model MaintenanceRequest {
+  id                String              @id @default(cuid())
+  requestNumber     String              @unique
+  vehicleId         String
+  reportedById      String
+  assignedToId      String?
+  branchId          String
+  title             String
+  description       String
+  priority          MaintenancePriority @default(MEDIUM)
+  status            MaintenanceStatus   @default(DRAFT)
+  source            MaintenanceSource   @default(INTERNAL)
+  category          String?
+  estimatedCost     Decimal?            @db.Decimal(12, 2)
+  actualCost        Decimal?            @db.Decimal(12, 2)
+  laborHours        Decimal?            @db.Decimal(6, 2)
+  odometerAtRequest Int?
+  scheduledDate     DateTime?
+  completedAt       DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  vehicle    Vehicle @relation(fields: [vehicleId], references: [id])
+  reportedBy User    @relation("MaintenanceReportedBy", fields: [reportedById], references: [id])
+  assignedTo User?   @relation("MaintenanceAssignedTo", fields: [assignedToId], references: [id])
+  branch     Branch  @relation(fields: [branchId], references: [id])
+
+  statusHistory MaintenanceStatusHistory[]
+  approvals     MaintenanceApproval[]
+  spareParts    MaintenanceSparePart[]
+  appointments  Appointment[]
+
+  @@index([branchId, status, createdAt])
+  @@index([vehicleId])
+  @@index([requestNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "maintenance_requests_requestNumber_trgm_idx")
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "maintenance_requests_title_trgm_idx")
+  @@map("maintenance_requests")
+}
+
+/// Append-only transition log — doubles as the visual timeline for a request.
+model MaintenanceStatusHistory {
+  id                   String             @id @default(cuid())
+  maintenanceRequestId String
+  fromStatus           MaintenanceStatus?
+  toStatus             MaintenanceStatus
+  changedById          String?
+  note                 String?
+
+  changedAt DateTime @default(now())
+
+  maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+
+  @@index([maintenanceRequestId])
+  @@map("maintenance_status_history")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+/// Multi-level approval chain. A request advances only once all required
+/// levels for its cost/priority tier (tier thresholds configured via Setting)
+/// are APPROVED.
+model MaintenanceApproval {
+  id                   String         @id @default(cuid())
+  maintenanceRequestId String
+  level                Int
+  approverRoleId       String?
+  approverUserId       String?
+  status               ApprovalStatus @default(PENDING)
+  decidedAt            DateTime?
+  comment              String?
+
+  createdAt DateTime @default(now())
+
+  maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+
+  @@index([maintenanceRequestId])
+  @@map("maintenance_approvals")
+}
+
+model SparePart {
+  id               String  @id @default(cuid())
+  sku              String  @unique
+  name             String
+  category         String?
+  unitCost         Decimal @db.Decimal(12, 2)
+  quantityOnHand   Int     @default(0)
+  reorderThreshold Int     @default(0)
+  branchId         String
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  branch Branch                 @relation(fields: [branchId], references: [id])
+  usages MaintenanceSparePart[]
+
+  @@index([branchId])
+  @@map("spare_parts")
+}
+
+/// Snapshots unit cost at time of use rather than relying on the live
+/// SparePart.unitCost, so historical request cost stays accurate.
+model MaintenanceSparePart {
+  id                   String  @id @default(cuid())
+  maintenanceRequestId String
+  sparePartId          String
+  quantityUsed         Int
+  unitCostAtUse        Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+
+  maintenanceRequest MaintenanceRequest @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+  sparePart          SparePart          @relation(fields: [sparePartId], references: [id])
+
+  @@index([maintenanceRequestId])
+  @@index([sparePartId])
+  @@map("maintenance_spare_parts")
+}
+
+// ---------------------------------------------------------------------------
+// Scheduling, Notifications, Search, Settings, Ops
+// ---------------------------------------------------------------------------
+
+enum AppointmentType {
+  MAINTENANCE
+  INSPECTION
+  DELIVERY
+  OTHER
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Appointment {
+  id                   String            @id @default(cuid())
+  title                String
+  type                 AppointmentType   @default(OTHER)
+  vehicleId            String?
+  driverId             String?
+  maintenanceRequestId String?
+  startAt              DateTime
+  endAt                DateTime
+  allDay               Boolean           @default(false)
+  branchId             String
+  assignedToId         String?
+  status               AppointmentStatus @default(SCHEDULED)
+  colorTag             String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  createdById String?
+  updatedById String?
+
+  vehicle            Vehicle?            @relation(fields: [vehicleId], references: [id])
+  driver             Driver?             @relation(fields: [driverId], references: [id])
+  maintenanceRequest MaintenanceRequest? @relation(fields: [maintenanceRequestId], references: [id])
+  branch             Branch              @relation(fields: [branchId], references: [id])
+  assignedTo         User?               @relation("AppointmentAssignedTo", fields: [assignedToId], references: [id])
+
+  @@index([startAt, endAt])
+  @@index([branchId])
+  @@map("appointments")
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+model Notification {
+  id          String              @id @default(cuid())
+  recipientId String
+  type        String
+  title       String
+  body        String
+  payload     Json?
+  channel     NotificationChannel @default(IN_APP)
+  status      NotificationStatus  @default(PENDING)
+  readAt      DateTime?
+  sentAt      DateTime?
+
+  createdAt DateTime @default(now())
+
+  recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([recipientId, status, createdAt])
+  @@map("notifications")
+}
+
+/// Append-only, immutable by design — no updatedAt/soft-delete. Indexed for
+/// both entity-history lookups and per-user activity lookups.
+model AuditLog {
+  id            String  @id @default(cuid())
+  userId        String?
+  action        String
+  entityType    String?
+  entityId      String?
+  ipAddress     String?
+  userAgent     String?
+  method        String?
+  path          String?
+  statusCode    Int?
+  requestId     String?
+  changesBefore Json?
+  changesAfter  Json?
+  metadata      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+/// Single flexible key/value table rather than one rigid table per settings
+/// category — adding a new setting is a data change, not a migration.
+model Setting {
+  id       String @id @default(cuid())
+  key      String @unique
+  value    Json
+  category String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  @@index([category])
+  @@map("settings")
+}
+
+enum BackupType {
+  MANUAL
+  SCHEDULED
+}
+
+enum BackupStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model BackupRecord {
+  id            String       @id @default(cuid())
+  fileKey       String?
+  sizeBytes     Int?
+  status        BackupStatus @default(IN_PROGRESS)
+  triggeredById String?
+  type          BackupType   @default(MANUAL)
+  restoredAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("backup_records")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  name        String
+  keyHash     String    @unique
+  prefix      String
+  scopes      String[]
+  createdById String?
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@map("api_keys")
+}
+
+model Webhook {
+  id              String    @id @default(cuid())
+  url             String
+  secret          String
+  events          String[]
+  isActive        Boolean   @default(true)
+  lastTriggeredAt DateTime?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String?
+
+  deliveries WebhookDelivery[]
+
+  @@map("webhooks")
+}
+
+enum WebhookDeliveryStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model WebhookDelivery {
+  id             String                @id @default(cuid())
+  webhookId      String
+  event          String
+  payload        Json
+  responseStatus Int?
+  attempt        Int                   @default(1)
+  deliveredAt    DateTime?
+  status         WebhookDeliveryStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@map("webhook_deliveries")
+}
+
+model SavedFilter {
+  id         String  @id @default(cuid())
+  userId     String
+  name       String
+  module     String
+  filterJson Json
+  isShared   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, module])
+  @@map("saved_filters")
+}
+
+/// Generic "star this record" facility.
+model Favorite {
+  id         String     @id @default(cuid())
+  userId     String
+  entityType EntityType
+  entityId   String
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entityType, entityId])
+  @@map("favorites")
+}

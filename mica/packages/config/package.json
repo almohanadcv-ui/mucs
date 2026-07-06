@@ -1,0 +1,20 @@
+{
+  "name": "@mica-mab/config",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "exports": {
+    "./eslint-base": "./eslint-base.js",
+    "./eslint-nestjs": "./eslint-nestjs.js",
+    "./eslint-nextjs": "./eslint-nextjs.js",
+    "./tsconfig-base.json": "./tsconfig-base.json",
+    "./tsconfig-nestjs.json": "./tsconfig-nestjs.json",
+    "./tsconfig-nextjs.json": "./tsconfig-nextjs.json",
+    "./tailwind-theme.css": "./tailwind-theme.css"
+  },
+  "dependencies": {
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.18.0",
+    "eslint-config-prettier": "^9.1.0"
+  }
+}

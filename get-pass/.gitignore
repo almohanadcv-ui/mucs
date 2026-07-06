@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data (must NOT be committed)
+data/
+uploads/
+wa-session/
+*.db
+*.db-wal
+*.db-shm
+
+# Logs / OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Local tooling
+.claude/

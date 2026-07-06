@@ -1,0 +1,35 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@scarf/scarf': false
+  argon2: true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  sharp: true
+  unrs-resolver: true
+
+# Approve postinstall/build scripts for known-legitimate native deps
+# (sharp: Next.js image optimization; unrs-resolver: oxc-based resolver used by
+# eslint/tailwind tooling; @tailwindcss/oxide: Tailwind v4's native engine;
+# argon2: password hashing native binding; msgpackr-extract: fast binary
+# (de)serialization used by BullMQ/ioredis; @nestjs/core, @prisma/client,
+# @prisma/engines, prisma, esbuild: framework/build essentials. @scarf/scarf
+# (Prisma's anonymous telemetry beacon) intentionally excluded — not required
+# for functionality.
+onlyBuiltDependencies:
+  - "@nestjs/core"
+  - "@prisma/client"
+  - "@prisma/engines"
+  - argon2
+  - esbuild
+  - msgpackr-extract
+  - prisma
+  - sharp
+  - unrs-resolver
+  - "@tailwindcss/oxide"

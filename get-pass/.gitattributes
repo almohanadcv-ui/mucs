@@ -1,0 +1,3 @@
+# احفظ سكربتات الشل بنهايات أسطر LF دائماً (تعمل على Linux)
+*.sh text eol=lf
+deploy/* text eol=lf
