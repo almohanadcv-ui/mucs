@@ -1,0 +1,61 @@
+import type { NextConfig } from "next";
+import path from "node:path";
+
+const isProd = process.env.NODE_ENV === "production";
+
+/**
+ * Content Security Policy.
+ * 'unsafe-eval' / 'unsafe-inline' are only relaxed in dev for Next's HMR.
+ * In production a strict policy is enforced.
+ */
+const csp = [
+  `default-src 'self'`,
+  `script-src 'self' ${isProd ? "" : "'unsafe-eval' 'unsafe-inline'"}`,
+  `style-src 'self' 'unsafe-inline'`, // Tailwind/inline styles
+  `img-src 'self' data: blob:`,
+  `font-src 'self' data:`,
+  `connect-src 'self'`,
+  `frame-ancestors 'none'`,
+  `base-uri 'self'`,
+  `form-action 'self'`,
+  `object-src 'none'`,
+  isProd ? `upgrade-insecure-requests` : "",
+]
+  .filter(Boolean)
+  .join("; ");
+
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: csp },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
+  },
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+  ...(isProd
+    ? [
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=63072000; includeSubDomains; preload",
+        },
+      ]
+    : []),
+];
+
+const nextConfig: NextConfig = {
+  reactStrictMode: true,
+  poweredByHeader: false,
+  output: "standalone", // optimized Docker image
+  turbopack: { root: path.resolve(__dirname) },
+  serverExternalPackages: ["argon2", "@prisma/client"],
+  experimental: {
+    optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
+  },
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
+};
+
+export default nextConfig;

@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: ems_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ems
+      POSTGRES_PASSWORD: ems_password
+      POSTGRES_DB: ems
+    ports:
+      - "5432:5432"
+    volumes:
+      - ems_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ems -d ems"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ems_pgdata:

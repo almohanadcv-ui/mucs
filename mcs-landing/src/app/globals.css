@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/* next-themes toggles `class="dark"` on <html>; drive Tailwind's dark: from it. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------- Design tokens */
+:root {
+  --background: #ffffff;
+  --background-subtle: #f7f9fc;
+  --foreground: #0a0f1a;
+  --muted: #f1f4f9;
+  --muted-foreground: #5b6472;
+  --card: #ffffff;
+  --border: #e7ebf1;
+  --border-strong: #d7dde7;
+  --brand: #1877c9;
+  --brand-strong: #0f5fa8;
+  --ring: #2b8cd4;
+
+  --shadow-color: 220 40% 20%;
+}
+
+.dark {
+  --background: #070a12;
+  --background-subtle: #0b0f1a;
+  --foreground: #eef2f8;
+  --muted: #121826;
+  --muted-foreground: #98a2b3;
+  --card: #0d1220;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --brand: #4a9fe0;
+  --brand-strong: #2b8cd4;
+  --ring: #4a9fe0;
+
+  --shadow-color: 220 60% 2%;
+}
+
+/* --------------------------------------------------------------- Tailwind theme */
+@theme inline {
+  --color-background: var(--background);
+  --color-background-subtle: var(--background-subtle);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-sans);
+
+  --radius-4xl: 2rem;
+}
+
+/* Font family: Latin (Inter) by default, Arabic (Cairo) in RTL. */
+:root {
+  --font-sans: var(--font-latin), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+html[dir="rtl"] {
+  --font-sans: var(--font-arabic), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Tahoma, Arial, sans-serif;
+}
+
+/* ----------------------------------------------------------------------- Base */
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Offset in-page anchors so the sticky navbar never covers section titles. */
+  scroll-padding-top: 5.5rem;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--brand) 26%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------- Utilities */
+@utility container-page {
+  width: 100%;
+  max-width: 80rem; /* 1280px */
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+
+  @media (min-width: 1024px) {
+    padding-inline: 2.5rem;
+  }
+}
+
+/* Subtle animated grid + glow used by the hero background. */
+.bg-grid {
+  background-image: linear-gradient(
+      to right,
+      color-mix(in srgb, var(--foreground) 6%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--foreground) 6%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+}
+
+.text-gradient {
+  background: linear-gradient(
+    120deg,
+    var(--foreground) 0%,
+    color-mix(in srgb, var(--brand) 85%, var(--foreground)) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.glass {
+  background-color: color-mix(in srgb, var(--card) 70%, transparent);
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+}

@@ -1,0 +1,404 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// EMS — Evaluation Management System
+// Prisma schema. Multi-tenant ready, soft-delete everywhere, full audit trail.
+// Conventions:
+//   - UUID primary keys
+//   - createdAt / updatedAt / deletedAt (soft delete) on all domain tables
+//   - Every tenant-scoped row carries tenantId + composite indexes
+//   - Enums are mirrored in src/core/domain/enums.ts (keep values in sync)
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────────────────────── Enums ────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  SUPERVISOR
+  EVALUATOR
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum EvaluationStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum QuestionType {
+  STAR_RATING
+  SINGLE_CHOICE
+  MULTIPLE_CHOICE
+  TEXT
+  TEXTAREA
+  NUMBER
+  DATE
+  TIME
+  YES_NO
+  DROPDOWN
+  FILE_UPLOAD
+}
+
+enum NotificationType {
+  ASSIGNMENT
+  APPROVAL
+  REJECTION
+  REMINDER
+  SYSTEM
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  APPROVE
+  REJECT
+  EXPORT
+}
+
+// ───────────────────────────── Tenant ───────────────────────────────────────
+
+model Tenant {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  logoUrl   String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  users       User[]
+  branches    Branch[]
+  departments Department[]
+  employees   Employee[]
+  templates   EvaluationTemplate[]
+  evaluations Evaluation[]
+  auditLogs   AuditLog[]
+  notifications Notification[]
+
+  @@index([deletedAt])
+  @@map("tenants")
+}
+
+// ───────────────────────────── Auth / Users ─────────────────────────────────
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  tenantId     String    @db.Uuid
+  email        String
+  passwordHash String
+  name         String
+  role         Role
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+
+  emailVerifiedAt DateTime?
+
+  // Brute-force / lockout
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  lastLoginAt         DateTime?
+
+  // 2FA (secret stored encrypted at rest — never plaintext)
+  twoFactorEnabled       Boolean @default(false)
+  twoFactorSecretEnc     String?
+  twoFactorRecoveryCodes String? // encrypted JSON array of hashed codes
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  refreshTokens        RefreshToken[]
+  auditLogs            AuditLog[]
+  notifications        Notification[]
+  // Domain links: a User (SUPERVISOR/EVALUATOR) maps to an Employee record via profile
+  supervisedEmployees  Employee[] @relation("SupervisorOf")
+  evaluatedEmployees   Employee[] @relation("EvaluatorOf")
+  employeeProfile      Employee?  @relation("UserProfile")
+  createdTemplates     EvaluationTemplate[] @relation("TemplateCreator")
+  submittedEvaluations Evaluation[]         @relation("EvaluationSubmitter")
+  reviewedEvaluations  Evaluation[]         @relation("EvaluationReviewer")
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  // Only a hash of the token is stored; raw token lives in the httpOnly cookie.
+  tokenHash String   @unique
+  family    String   @db.Uuid // rotation family for reuse-detection
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  ip        String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ───────────────────────────── Org structure ────────────────────────────────
+
+model Branch {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  name      String
+  code      String
+  address   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departments Department[]
+  employees   Employee[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, deletedAt])
+  @@map("branches")
+}
+
+model Department {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  branchId  String?   @db.Uuid
+  name      String
+  code      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch    Branch?    @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  employees Employee[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, deletedAt])
+  @@index([branchId])
+  @@map("departments")
+}
+
+// ───────────────────────────── Employees ────────────────────────────────────
+
+model Employee {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @db.Uuid
+  employeeNo   String
+  name         String
+  avatarUrl    String?
+  status       EmployeeStatus @default(ACTIVE)
+  joinedAt     DateTime?
+
+  branchId     String?  @db.Uuid
+  departmentId String?  @db.Uuid
+  supervisorId String?  @db.Uuid
+  evaluatorId  String?  @db.Uuid
+
+  // Optional link to a login account (when the employee is also a system user)
+  userId String? @unique @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch      Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  department  Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  supervisor  User?       @relation("SupervisorOf", fields: [supervisorId], references: [id], onDelete: SetNull)
+  evaluator   User?       @relation("EvaluatorOf", fields: [evaluatorId], references: [id], onDelete: SetNull)
+  user        User?       @relation("UserProfile", fields: [userId], references: [id], onDelete: SetNull)
+
+  evaluations Evaluation[]
+
+  @@unique([tenantId, employeeNo])
+  @@index([tenantId, deletedAt])
+  @@index([supervisorId])
+  @@index([evaluatorId])
+  @@index([departmentId])
+  @@index([branchId])
+  @@index([status])
+  @@map("employees")
+}
+
+// ───────────────────────────── Templates & Questions ────────────────────────
+
+model EvaluationTemplate {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  title       String
+  description String?
+  isActive    Boolean   @default(true)
+  createdById String    @db.Uuid
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation("TemplateCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  questions   Question[]
+  evaluations Evaluation[]
+
+  @@index([tenantId, deletedAt])
+  @@index([createdById])
+  @@map("evaluation_templates")
+}
+
+model Question {
+  id         String       @id @default(uuid()) @db.Uuid
+  templateId String       @db.Uuid
+  type       QuestionType
+  label      String
+  helpText   String?
+  required   Boolean      @default(false)
+  order      Int          @default(0)
+
+  // Type-specific config as JSON (options list, min/max, star scale, accepted
+  // file types/sizes, weight for scoring, etc.). Validated in the app layer.
+  config Json?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  template EvaluationTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  answers  Answer[]
+
+  @@index([templateId, order])
+  @@map("questions")
+}
+
+// ───────────────────────────── Evaluations & Answers ────────────────────────
+
+model Evaluation {
+  id         String           @id @default(uuid()) @db.Uuid
+  tenantId   String           @db.Uuid
+  templateId String           @db.Uuid
+  employeeId String           @db.Uuid
+  evaluatorId String          @db.Uuid // User who performs the evaluation
+  reviewerId  String?         @db.Uuid // Supervisor who approves/rejects
+
+  status      EvaluationStatus @default(DRAFT)
+  // Aggregate normalized score (0..100) computed on submit from weighted answers.
+  score       Float?
+  submittedAt DateTime?
+  reviewedAt  DateTime?
+  rejectionReason String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template  EvaluationTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  employee  Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  evaluator User               @relation("EvaluationSubmitter", fields: [evaluatorId], references: [id], onDelete: Restrict)
+  reviewer  User?              @relation("EvaluationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  answers   Answer[]
+
+  @@index([tenantId, status, deletedAt])
+  @@index([employeeId])
+  @@index([evaluatorId])
+  @@index([reviewerId])
+  @@index([templateId])
+  @@index([submittedAt])
+  @@map("evaluations")
+}
+
+model Answer {
+  id           String @id @default(uuid()) @db.Uuid
+  evaluationId String @db.Uuid
+  questionId   String @db.Uuid
+
+  // Polymorphic value storage — the relevant column is filled per question type.
+  valueNumber Float?
+  valueText   String?
+  valueBool   Boolean?
+  valueDate   DateTime?
+  valueJson   Json? // for MULTIPLE_CHOICE selections, file metadata, etc.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  question   Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluationId, questionId])
+  @@index([questionId])
+  @@map("answers")
+}
+
+// ───────────────────────────── Notifications ────────────────────────────────
+
+model Notification {
+  id       String           @id @default(uuid()) @db.Uuid
+  tenantId String           @db.Uuid
+  userId   String           @db.Uuid
+  type     NotificationType
+  title    String
+  body     String?
+  data     Json?
+  readAt   DateTime?
+  createdAt DateTime        @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([tenantId])
+  @@map("notifications")
+}
+
+// ───────────────────────────── Audit log ────────────────────────────────────
+
+model AuditLog {
+  id         String      @id @default(uuid()) @db.Uuid
+  tenantId   String?     @db.Uuid
+  actorId    String?     @db.Uuid
+  action     AuditAction
+  entity     String // e.g. "Employee", "Evaluation"
+  entityId   String?
+  before     Json?
+  after      Json?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime    @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor  User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@map("audit_logs")
+}
