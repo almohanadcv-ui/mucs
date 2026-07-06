@@ -8,6 +8,7 @@ import {
   Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MabLogo } from "@/components/mab-logo";
 import {
   Card,
   CardContent,
@@ -55,9 +56,7 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-accent/30">
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShieldCheck className="size-5" />
-          </div>
+          <MabLogo className="h-8 w-auto" />
           <span className="text-lg font-bold">EMS</span>
         </div>
         <div className="flex items-center gap-3">

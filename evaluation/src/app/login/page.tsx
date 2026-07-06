@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ShieldCheck } from "lucide-react";
+import { MabLogo } from "@/components/mab-logo";
 import { LoginForm } from "@/features/auth/login-form";
 import {
   Card,
@@ -20,9 +20,7 @@ export default function LoginPage() {
       {/* Brand panel */}
       <div className="relative hidden overflow-hidden bg-sidebar p-12 text-sidebar-foreground lg:flex lg:flex-col lg:justify-between">
         <div className="flex items-center gap-2">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <ShieldCheck className="size-5" />
-          </div>
+          <MabLogo className="h-8 w-auto" />
           <span className="text-lg font-bold">EMS</span>
         </div>
         <div className="space-y-4">
@@ -45,7 +43,10 @@ export default function LoginPage() {
       <div className="flex items-center justify-center p-6">
         <div className="w-full max-w-sm">
           <div className="mb-6 flex items-center justify-between lg:hidden">
-            <span className="text-lg font-bold">EMS</span>
+            <div className="flex items-center gap-2">
+              <MabLogo className="h-7 w-auto" />
+              <span className="text-lg font-bold">EMS</span>
+            </div>
             <ThemeToggle />
           </div>
           <Card>
@@ -56,7 +57,15 @@ export default function LoginPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Suspense fallback={null}>
+              <Suspense
+                fallback={
+                  <div className="space-y-4" aria-hidden>
+                    <div className="h-10 animate-pulse rounded-md bg-muted" />
+                    <div className="h-10 animate-pulse rounded-md bg-muted" />
+                    <div className="h-10 animate-pulse rounded-md bg-primary/30" />
+                  </div>
+                }
+              >
                 <LoginForm />
               </Suspense>
               <p className="mt-6 text-center text-xs text-muted-foreground">
