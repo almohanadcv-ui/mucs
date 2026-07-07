@@ -21,8 +21,11 @@ export class UsersController {
 
   @Get()
   @Permissions("users:view")
-  list(@Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery) {
-    return this.usersService.list(query);
+  list(
+    @Query(new ZodValidationPipe(paginationQuerySchema)) query: PaginationQuery,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.usersService.list(query, user.id);
   }
 
   @Get(":id")

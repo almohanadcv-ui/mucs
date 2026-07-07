@@ -39,6 +39,9 @@ export default function UsersPage() {
   const canInvite = usePermission("users:invite");
   const canSuspend = usePermission("users:suspend");
   const canDelete = usePermission("users:delete");
+  // Only a full manager (holds roles:view) may pick arbitrary roles; a Mechanic
+  // with users:invite can only create Driver logins, so lock the role picker.
+  const canAssignAnyRole = usePermission("roles:view");
 
   const { data, isLoading } = useQuery({
     queryKey: ["users"],
@@ -70,7 +73,9 @@ export default function UsersPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-muted-foreground">{t("subtitle")}</p>
         </div>
-        {canInvite && <InviteUserDialog />}
+        {canInvite && (
+          <InviteUserDialog lockedRoleName={canAssignAnyRole ? undefined : "Driver"} />
+        )}
       </div>
 
       <div className="rounded-md border">

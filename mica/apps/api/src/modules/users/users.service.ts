@@ -30,9 +30,71 @@ export class UsersService {
     @InjectQueue(EMAIL_QUEUE) private readonly emailQueue: Queue<EmailJobData>,
   ) {}
 
-  async list(query: PaginationQuery) {
+  /** The "Driver" system role id, or null if it hasn't been seeded yet. */
+  private async getDriverRoleId(): Promise<string | null> {
+    const role = await this.prisma.role.findFirst({ where: { name: "Driver", branchId: null } });
+    return role?.id ?? null;
+  }
+
+  /** A privileged creator (Technical Support) may assign any role and see every
+   *  user. Everyone else (e.g. a Mechanic granted users:invite) is restricted to
+   *  creating Driver logins and only sees the users they created themselves. */
+  private async isPrivilegedManager(actingUserId: string): Promise<boolean> {
+    const count = await this.prisma.userRole.count({
+      where: { userId: actingUserId, role: { name: "Technical Support" } },
+    });
+    return count > 0;
+  }
+
+  /**
+   * Every user holding the Driver role gets a Driver profile automatically, so
+   * the workshop no longer maintains a separate "drivers" list — a Driver login
+   * IS the driver. Vehicles, photo requests and appointments still reference the
+   * Driver row, so we create one on demand (idempotent) and reuse the account's
+   * name. License/employee code are auto-generated placeholders (unique per user)
+   * since those details aren't collected at invite time.
+   */
+  private async ensureDriverProfile(
+    user: { id: string; firstName: string; lastName: string; branchId: string | null },
+    actingUserId: string,
+  ): Promise<void> {
+    const existing = await this.prisma.driver.findFirst({ where: { userId: user.id } });
+    if (existing) {
+      if (existing.deletedAt) {
+        await this.prisma.driver.update({
+          where: { id: existing.id },
+          data: { deletedAt: null, status: "ACTIVE", updatedById: actingUserId },
+        });
+      }
+      return;
+    }
+
+    const branchId = user.branchId ?? (await this.prisma.branch.findFirst({ orderBy: { createdAt: "asc" } }))?.id;
+    if (!branchId) {
+      this.logger.warn(`Cannot create driver profile for ${user.id}: no branch exists.`);
+      return;
+    }
+
+    await this.prisma.driver.create({
+      data: {
+        userId: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        employeeCode: `DRV-${user.id.slice(-10).toUpperCase()}`,
+        licenseNumber: `AUTO-${user.id}`,
+        branchId,
+        status: "ACTIVE",
+        createdById: actingUserId,
+      },
+    });
+  }
+
+  async list(query: PaginationQuery, actingUserId?: string) {
+    const restrictToOwn =
+      actingUserId !== undefined && !(await this.isPrivilegedManager(actingUserId));
     const where = {
       deletedAt: null,
+      ...(restrictToOwn ? { createdById: actingUserId } : {}),
       ...(query.search
         ? {
             OR: [
@@ -82,6 +144,12 @@ export class UsersService {
     const temporaryPassword = randomBytes(9).toString("base64url");
     const passwordHash = await argon2.hash(temporaryPassword);
 
+    // A non-privileged creator (e.g. a Mechanic) may only create Driver logins —
+    // force the role server-side regardless of what was submitted.
+    const driverRoleId = await this.getDriverRoleId();
+    const privileged = await this.isPrivilegedManager(actingUserId);
+    const roleIds = privileged ? dto.roleIds : driverRoleId ? [driverRoleId] : [];
+
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
@@ -93,10 +161,15 @@ export class UsersService {
         passwordHash,
         status: "INVITED",
         createdById: actingUserId,
-        roles: { create: dto.roleIds.map((roleId) => ({ roleId })) },
+        roles: { create: roleIds.map((roleId) => ({ roleId })) },
       },
       include: { roles: { include: { role: true } }, branch: true, department: true },
     });
+
+    // Assigning the Driver role auto-provisions the matching Driver profile.
+    if (driverRoleId && roleIds.includes(driverRoleId)) {
+      await this.ensureDriverProfile(user, actingUserId);
+    }
 
     const inviteToken = this.jwtService.sign(
       { sub: user.id, purpose: INVITE_TOKEN_PURPOSE },
@@ -153,6 +226,14 @@ export class UsersService {
       },
       include: { roles: { include: { role: true } }, branch: true, department: true },
     });
+
+    // Keep the Driver profile in sync when roles change through an edit.
+    if (dto.roleIds) {
+      const driverRoleId = await this.getDriverRoleId();
+      if (driverRoleId && dto.roleIds.includes(driverRoleId)) {
+        await this.ensureDriverProfile(user, actingUserId);
+      }
+    }
 
     await this.permissionCache.invalidateUser(id);
     return this.toSafeUser(user);

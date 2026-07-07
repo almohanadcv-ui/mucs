@@ -57,6 +57,8 @@ const ROLE_BUNDLES: RoleBundle[] = [
       (def.resource === "departments" &&
         ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "drivers" && ["view", "create"].includes(def.action)) ||
+      // Can invite/list users, but only Driver logins (enforced in UsersService).
+      (def.resource === "users" && ["view", "invite"].includes(def.action)) ||
       (def.resource === "media" && ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "maintenance" &&
         ["view", "create", "update", "transition", "comment"].includes(def.action)) ||
