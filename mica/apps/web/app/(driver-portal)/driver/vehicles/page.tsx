@@ -37,7 +37,7 @@ export default function MyVehiclesPage() {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {vehicles?.map((vehicle) => {
-          const cancelled = vehicle.status === "CANCELLED";
+          const cancelled = vehicle.cancelled;
           return (
             <Card key={vehicle.id} className={cancelled ? "opacity-60" : undefined}>
               <CardHeader className="flex flex-row items-center gap-3 space-y-0">

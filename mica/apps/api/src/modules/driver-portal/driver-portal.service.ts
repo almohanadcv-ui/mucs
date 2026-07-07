@@ -27,10 +27,16 @@ export class DriverPortalService {
 
   async listVehicles(userId: string) {
     const driver = await this.getDriverOrThrow(userId);
-    return this.prisma.vehicle.findMany({
-      where: { currentDriverId: driver.id, deletedAt: null },
+    // Include vehicles the technician cancelled OR deleted so the driver still
+    // sees them — flagged as `cancelled` — instead of them silently vanishing.
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: { currentDriverId: driver.id },
       orderBy: { createdAt: "desc" },
     });
+    return vehicles.map((v) => ({
+      ...v,
+      cancelled: v.deletedAt !== null || v.status === "CANCELLED",
+    }));
   }
 
   async listReports(userId: string) {

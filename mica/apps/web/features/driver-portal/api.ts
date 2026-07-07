@@ -11,6 +11,7 @@ export interface DriverVehicle {
   name: string | null;
   year: number | null;
   status: string;
+  cancelled: boolean;
 }
 
 export interface DriverReportListItem {
