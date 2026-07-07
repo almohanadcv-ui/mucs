@@ -13,7 +13,7 @@ interface RoleBundle {
  * this is a single-workshop deployment (no multi-branch data isolation), so
  * access is gated by WHICH actions a role holds, not by which rows it can see.
  * The one exception is Driver: it holds none of the general resource
- * permissions at all (no vehicles:*/maintenance:*/media:*) — its narrow
+ * permissions at all (no vehicles, maintenance, or media actions) — its narrow
  * driver-portal:* actions are the only thing it can do, and the driver-portal
  * module enforces per-row ownership in the service layer itself, since the
  * generic ALL-scope permission model has no row-level enforcement to lean on.
@@ -51,6 +51,11 @@ const ROLE_BUNDLES: RoleBundle[] = [
     matches: (def) =>
       (def.resource === "vehicles" &&
         ["view", "create", "update", "print", "assign-driver"].includes(def.action)) ||
+      // Mechanic manages the org structure (branches/departments) freely.
+      (def.resource === "branches" &&
+        ["view", "create", "update", "delete"].includes(def.action)) ||
+      (def.resource === "departments" &&
+        ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "drivers" && ["view", "create"].includes(def.action)) ||
       (def.resource === "media" && ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "maintenance" &&

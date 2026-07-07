@@ -24,6 +24,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermission } from "@/lib/auth/use-permission";
 import { CreateDriverDialog } from "@/features/drivers/create-driver-dialog";
+import { LinkExistingUserDialog } from "@/features/drivers/link-existing-user-dialog";
 import { deleteDriver, listDrivers, updateDriver, type DriverListItem } from "@/features/drivers/api";
 import { InviteUserDialog } from "@/features/users/invite-user-dialog";
 
@@ -42,6 +43,7 @@ export default function DriversPage() {
   const canDelete = usePermission("drivers:delete");
   const canUpdate = usePermission("drivers:update");
   const [linkingDriver, setLinkingDriver] = useState<DriverListItem | null>(null);
+  const [linkingExistingDriver, setLinkingExistingDriver] = useState<DriverListItem | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["drivers"],
@@ -128,6 +130,11 @@ export default function DriversPage() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         {canUpdate && !driver.userId && (
+                          <DropdownMenuItem onClick={() => setLinkingExistingDriver(driver)}>
+                            ربط بحساب موجود
+                          </DropdownMenuItem>
+                        )}
+                        {canUpdate && !driver.userId && (
                           <DropdownMenuItem onClick={() => setLinkingDriver(driver)}>
                             {t("linkLoginAccount")}
                           </DropdownMenuItem>
@@ -149,6 +156,12 @@ export default function DriversPage() {
           </TableBody>
         </Table>
       </div>
+
+      <LinkExistingUserDialog
+        driver={linkingExistingDriver}
+        open={!!linkingExistingDriver}
+        onOpenChange={(next) => !next && setLinkingExistingDriver(null)}
+      />
 
       <InviteUserDialog
         trigger={null}

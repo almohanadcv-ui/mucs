@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { listBranches } from "@/features/branches/api";
-import { createDriver } from "./api";
+import { listUsers } from "@/features/users/api";
+import { createDriver, listDrivers } from "./api";
 
 export function CreateDriverDialog() {
   const [open, setOpen] = useState(false);
@@ -29,6 +30,25 @@ export function CreateDriverDialog() {
   const tc = useTranslations("common");
   const queryClient = useQueryClient();
   const { data: branches } = useQuery({ queryKey: ["branches"], queryFn: listBranches, enabled: open });
+  const { data: users } = useQuery({
+    queryKey: ["users", "all"],
+    queryFn: () => listUsers({ pageSize: 100 }),
+    enabled: open,
+  });
+  const { data: driversData } = useQuery({
+    queryKey: ["drivers", "for-link"],
+    queryFn: () => listDrivers({ pageSize: 100 }),
+    enabled: open,
+  });
+
+  // Only offer user accounts that hold the Driver role and aren't already
+  // linked to another driver — so a photo request always reaches a real login.
+  const linkedUserIds = new Set(
+    (driversData?.items ?? []).map((d) => d.userId).filter((id): id is string => !!id),
+  );
+  const linkableUsers = (users?.items ?? []).filter(
+    (u) => u.roles.some((r) => r.role.name === "Driver") && !linkedUserIds.has(u.id),
+  );
 
   const {
     register,
@@ -123,6 +143,35 @@ export function CreateDriverDialog() {
             {errors.branchId && (
               <p className="text-sm text-destructive">{errors.branchId.message}</p>
             )}
+          </div>
+          <div className="space-y-2">
+            <Label>حساب المستخدم (للتصوير)</Label>
+            <Controller
+              name="userId"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="اختر حساب المستخدم المرتبط" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {linkableUsers.length === 0 && (
+                      <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                        لا يوجد مستخدمون بدور «سائق» غير مرتبطين
+                      </div>
+                    )}
+                    {linkableUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.firstName} {u.lastName} — {u.email}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <p className="text-xs text-muted-foreground">
+              اربط السائق بحساب مستخدم مسجّل حتى تصله طلبات التصوير على حسابه.
+            </p>
           </div>
           <DialogFooter>
             <Button type="submit" disabled={isSubmitting || mutation.isPending}>

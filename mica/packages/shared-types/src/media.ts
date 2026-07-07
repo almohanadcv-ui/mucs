@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export const ENTITY_TYPES = ["VEHICLE", "DRIVER", "MAINTENANCE_REQUEST", "APPOINTMENT"] as const;
+export const ENTITY_TYPES = [
+  "VEHICLE",
+  "DRIVER",
+  "MAINTENANCE_REQUEST",
+  "APPOINTMENT",
+  "DRIVER_PHOTO_REQUEST",
+] as const;
 export type EntityTypeValue = (typeof ENTITY_TYPES)[number];
 
 export const ATTACHMENT_KINDS = ["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"] as const;

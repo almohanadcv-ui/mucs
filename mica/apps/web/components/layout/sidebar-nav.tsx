@@ -10,6 +10,7 @@ import {
   DatabaseBackup,
   FileText,
   Hammer,
+  History,
   IdCard,
   Inbox,
   KeyRound,
@@ -20,6 +21,7 @@ import {
   Users,
   Webhook,
   Wrench,
+  Building2,
   Cog,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,7 +29,8 @@ import { usePermission } from "@/lib/auth/use-permission";
 
 interface NavItem {
   href: string;
-  labelKey: "workshop" | "dashboard" | "vehicles" | "invoices" | "drivers" | "maintenance" | "myRequests" | "spareParts" | "appointments" | "reports" | "users" | "roles" | "settings" | "apiKeys" | "webhooks" | "backups" | "trash";
+  labelKey?: "workshop" | "dashboard" | "vehicles" | "invoices" | "drivers" | "maintenance" | "myRequests" | "spareParts" | "appointments" | "reports" | "users" | "roles" | "settings" | "apiKeys" | "webhooks" | "backups" | "trash";
+  label?: string; // literal fallback when there is no i18n key yet
   icon: React.ComponentType<{ className?: string }>;
   permission?: string;
 }
@@ -38,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/vehicles", labelKey: "vehicles", icon: Car, permission: "vehicles:view" },
   { href: "/invoices", labelKey: "invoices", icon: FileText, permission: "invoices:view" },
   { href: "/drivers", labelKey: "drivers", icon: IdCard, permission: "drivers:view" },
+  { href: "/organization", label: "الهيكل التنظيمي", icon: Building2, permission: "branches:view" },
   { href: "/my-requests", labelKey: "myRequests", icon: Inbox, permission: "maintenance:view" },
   { href: "/maintenance", labelKey: "maintenance", icon: Wrench, permission: "maintenance:view" },
   { href: "/spare-parts", labelKey: "spareParts", icon: Cog, permission: "spare-parts:view" },
@@ -49,6 +53,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/api-keys", labelKey: "apiKeys", icon: KeyRound, permission: "api-keys:view" },
   { href: "/webhooks", labelKey: "webhooks", icon: Webhook, permission: "webhooks:view" },
   { href: "/backups", labelKey: "backups", icon: DatabaseBackup, permission: "backups:view" },
+  { href: "/audit", label: "سجل الأحداث", icon: History, permission: "audit-log:view" },
   { href: "/trash", labelKey: "trash", icon: Trash2, permission: "vehicles:delete" },
 ];
 
@@ -104,7 +109,7 @@ function NavLink({
       )}
     >
       <Icon className="size-5" />
-      {t(item.labelKey)}
+      {item.label ?? (item.labelKey ? t(item.labelKey) : item.href)}
     </Link>
   );
 }

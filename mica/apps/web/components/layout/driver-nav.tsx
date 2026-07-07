@@ -3,15 +3,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Car, FilePlus, ListChecks, User } from "lucide-react";
+import { Camera, Car, FilePlus, ListChecks, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const NAV_ITEMS = [
+interface DriverNavItem {
+  href: string;
+  labelKey?: string;
+  label?: string; // literal fallback when there is no i18n key
+  icon: React.ComponentType<{ className?: string }>;
+}
+
+const NAV_ITEMS: DriverNavItem[] = [
   { href: "/driver/vehicles", labelKey: "myVehicles", icon: Car },
   { href: "/driver/reports/new", labelKey: "newReport", icon: FilePlus },
   { href: "/driver/reports", labelKey: "myReports", icon: ListChecks },
+  { href: "/driver/photo-requests", label: "طلبات التصوير", icon: Camera },
   { href: "/driver/profile", labelKey: "profile", icon: User },
-] as const;
+];
 
 export function DriverNav() {
   const pathname = usePathname();
@@ -35,7 +43,7 @@ export function DriverNav() {
               )}
             >
               <Icon className="size-5" />
-              <span>{t(item.labelKey)}</span>
+              <span>{item.label ?? (item.labelKey ? t(item.labelKey) : item.href)}</span>
             </Link>
           );
         })}

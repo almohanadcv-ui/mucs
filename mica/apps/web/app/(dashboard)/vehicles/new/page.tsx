@@ -1,19 +1,32 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isAxiosError } from "axios";
 import { useTranslations } from "next-intl";
-import { createVehicleSchema, type CreateVehicleInput } from "@mica-mab/shared-types";
+import {
+  createVehicleSchema,
+  FUEL_LEVELS,
+  FUEL_LEVEL_LABELS,
+  type CreateVehicleInput,
+} from "@mica-mab/shared-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { createVehicle } from "@/features/vehicles/api";
+import { listDrivers } from "@/features/drivers/api";
 
 export default function NewVehiclePage() {
   const router = useRouter();
@@ -24,11 +37,17 @@ export default function NewVehiclePage() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreateVehicleInput>({
     resolver: zodResolver(createVehicleSchema),
     defaultValues: { odometer: 0 },
   });
+
+  const { data: drivers } = useQuery({ queryKey: ["drivers"], queryFn: () => listDrivers({}) });
+  // Only drivers linked to a user account can receive photo requests, so the
+  // handover picker offers exactly those — not every driver record.
+  const linkedDrivers = (drivers?.items ?? []).filter((d) => d.userId);
 
   const mutation = useMutation({
     mutationFn: createVehicle,
@@ -108,6 +127,57 @@ export default function NewVehiclePage() {
             <div className="space-y-2">
               <Label htmlFor="oilMeter">{t("oilMeter")}</Label>
               <Input id="oilMeter" type="number" {...register("oilMeter")} />
+            </div>
+            <div className="space-y-2">
+              <Label>مستوى الوقود</Label>
+              <Controller
+                name="fuelLevel"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="—" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FUEL_LEVELS.map((f) => (
+                        <SelectItem key={f} value={f}>
+                          {FUEL_LEVEL_LABELS[f].ar}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>السائق</Label>
+              <Controller
+                name="currentDriverId"
+                control={control}
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? "__none__"}
+                    onValueChange={(v) => field.onChange(v === "__none__" ? undefined : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="بدون سائق" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">بدون سائق</SelectItem>
+                      {linkedDrivers.length === 0 && (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          لا يوجد سائق مرتبط بحساب مستخدم
+                        </div>
+                      )}
+                      {linkedDrivers.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.firstName} {d.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="oilChangeDueAt">{t("oilChangeDue")}</Label>

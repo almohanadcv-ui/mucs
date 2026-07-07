@@ -39,8 +39,24 @@ export class AuditLogService {
       this.prisma.auditLog.count({ where }),
     ]);
 
+    // Enrich with the actor's display name (AuditLog has no user relation).
+    const userIds = [...new Set(items.map((i) => i.userId).filter((v): v is string => !!v))];
+    const users = userIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, firstName: true, lastName: true, email: true },
+        })
+      : [];
+    const nameById = new Map(
+      users.map((u) => [u.id, [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email]),
+    );
+    const enriched = items.map((i) => ({
+      ...i,
+      userName: i.userId ? (nameById.get(i.userId) ?? null) : null,
+    }));
+
     return {
-      items,
+      items: enriched,
       meta: {
         page: query.page,
         pageSize: query.pageSize,

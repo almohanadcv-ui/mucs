@@ -71,9 +71,23 @@ export class VehiclesService {
     await this.assertUnique(dto.plateNumber, dto.vin);
     const branchId = dto.branchId ?? (await this.defaultBranchId());
 
+    // If a fuel level is set at intake, stamp who recorded it and when.
+    let fuelMeta: { fuelUpdatedAt?: Date; fuelUpdatedByName?: string } = {};
+    if (dto.fuelLevel) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actingUserId },
+        select: { firstName: true, lastName: true, email: true },
+      });
+      const name = actor
+        ? [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email
+        : undefined;
+      fuelMeta = { fuelUpdatedAt: new Date(), fuelUpdatedByName: name };
+    }
+
     const vehicle = await this.prisma.vehicle.create({
       data: {
         ...dto,
+        ...fuelMeta,
         branchId,
         insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
         registrationExpiry: dto.registrationExpiry ? new Date(dto.registrationExpiry) : undefined,
@@ -97,10 +111,23 @@ export class VehiclesService {
 
   async update(id: string, dto: UpdateVehicleInput, actingUserId: string) {
     await this.findById(id);
+    // When the fuel level is (re)set, stamp who changed it and when.
+    let fuelMeta: { fuelUpdatedAt?: Date; fuelUpdatedByName?: string } = {};
+    if (dto.fuelLevel !== undefined) {
+      const actor = await this.prisma.user.findUnique({
+        where: { id: actingUserId },
+        select: { firstName: true, lastName: true, email: true },
+      });
+      const name = actor
+        ? [actor.firstName, actor.lastName].filter(Boolean).join(" ") || actor.email
+        : undefined;
+      fuelMeta = { fuelUpdatedAt: new Date(), fuelUpdatedByName: name };
+    }
     return this.prisma.vehicle.update({
       where: { id },
       data: {
         ...dto,
+        ...fuelMeta,
         insuranceExpiry: dto.insuranceExpiry ? new Date(dto.insuranceExpiry) : undefined,
         registrationExpiry: dto.registrationExpiry ? new Date(dto.registrationExpiry) : undefined,
         licenseExpiry: dto.licenseExpiry ? new Date(dto.licenseExpiry) : undefined,

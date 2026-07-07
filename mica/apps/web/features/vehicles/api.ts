@@ -17,6 +17,9 @@ export interface VehicleListItem {
   color: string | null;
   status: string;
   odometer: number;
+  fuelLevel: string | null;
+  fuelUpdatedAt: string | null;
+  fuelUpdatedByName: string | null;
   oilMeter: number | null;
   oilChangeDueAt: string | null;
   nextMaintenanceAt: string | null;

@@ -23,6 +23,18 @@ export const VEHICLE_STATUS_LABELS: Record<VehicleStatusValue, { en: string; ar:
   CANCELLED: { en: "Cancelled", ar: "ملغية" },
 };
 
+/** Fuel level, high → low. */
+export const FUEL_LEVELS = ["FULL", "THREE_QUARTERS", "HALF", "QUARTER", "EMPTY"] as const;
+export type FuelLevelValue = (typeof FUEL_LEVELS)[number];
+
+export const FUEL_LEVEL_LABELS: Record<FuelLevelValue, { en: string; ar: string }> = {
+  FULL: { en: "Full", ar: "ممتلئ" },
+  THREE_QUARTERS: { en: "Three quarters", ar: "ثلاثة أرباع" },
+  HALF: { en: "Half", ar: "نصف" },
+  QUARTER: { en: "Quarter", ar: "ربع" },
+  EMPTY: { en: "Empty", ar: "فارغ" },
+};
+
 /** Accepts either a plain date (YYYY-MM-DD from a date input) or a full ISO datetime. */
 const optionalDateString = z
   .string()
@@ -42,6 +54,7 @@ export const createVehicleSchema = z.object({
   engine: z.string().optional(),
   transmission: z.string().optional(),
   fuelType: z.string().optional(),
+  fuelLevel: z.enum(FUEL_LEVELS).optional(), // مستوى الوقود
   odometer: z.coerce.number().int().min(0).default(0), // العداد الحالي
   oilMeter: z.coerce.number().int().min(0).optional(), // عداد الزيت
   oilChangeDueAt: optionalDateString, // موعد تغيير الزيت

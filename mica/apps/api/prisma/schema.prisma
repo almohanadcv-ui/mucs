@@ -272,6 +272,14 @@ enum VehicleStatus {
   CANCELLED // ملغية
 }
 
+enum FuelLevel {
+  FULL // ممتلئ
+  THREE_QUARTERS // ثلاثة أرباع
+  HALF // نصف
+  QUARTER // ربع
+  EMPTY // فارغ
+}
+
 model Vehicle {
   id                 String        @id @default(cuid())
   plateNumber        String        @unique
@@ -286,6 +294,9 @@ model Vehicle {
   transmission       String?
   fuelType           String?
   odometer           Int           @default(0)
+  fuelLevel          FuelLevel? // مستوى الوقود الحالي
+  fuelUpdatedAt      DateTime? // وقت آخر تحديث للوقود
+  fuelUpdatedByName  String? // اسم من حدّث الوقود
   status             VehicleStatus @default(AWAITING_RECEPTION)
   branchId           String
   currentDriverId    String?
@@ -419,6 +430,7 @@ enum EntityType {
   DRIVER
   MAINTENANCE_REQUEST
   APPOINTMENT
+  DRIVER_PHOTO_REQUEST
 }
 
 enum AttachmentKind {
@@ -426,6 +438,33 @@ enum AttachmentKind {
   VIDEO
   DOCUMENT
   AUDIO
+}
+
+enum PhotoRequestStatus {
+  PENDING // بانتظار رد السائق
+  ANSWERED // ردّ السائق بالصور
+  CANCELLED // أُلغي
+}
+
+/// Mechanic/Manager → Driver: "please photograph the meters". Reply photos are
+/// stored as Attachments (entityType = DRIVER_PHOTO_REQUEST, entityId = this id).
+model DriverPhotoRequest {
+  id              String             @id @default(cuid())
+  vehicleId       String
+  driverId        String // target Driver.id
+  requestedById   String // User.id (mechanic/manager)
+  requestedByName String?
+  message         String
+  status          PhotoRequestStatus @default(PENDING)
+  replyNote       String?
+  answeredAt      DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([driverId, status])
+  @@index([vehicleId])
+  @@index([requestedById])
+  @@map("driver_photo_requests")
 }
 
 /// Generic polymorphic-by-discriminator attachment table, reused by vehicles,

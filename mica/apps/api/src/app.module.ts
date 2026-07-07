@@ -44,6 +44,7 @@ import { BackupModule } from "@/modules/backup/backup.module";
 import { InvoicesModule } from "@/modules/invoices/invoices.module";
 import { RemindersModule } from "@/modules/reminders/reminders.module";
 import { DriverPortalModule } from "@/modules/driver-portal/driver-portal.module";
+import { PhotoRequestsModule } from "@/modules/photo-requests/photo-requests.module";
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { DriverPortalModule } from "@/modules/driver-portal/driver-portal.module
     InvoicesModule,
     RemindersModule,
     DriverPortalModule,
+    PhotoRequestsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

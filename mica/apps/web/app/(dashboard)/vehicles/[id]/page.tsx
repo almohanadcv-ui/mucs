@@ -13,7 +13,12 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { vehicleStatusLabel, vehicleStatusVariant } from "@/lib/vehicle-status";
 import { getVehicle } from "@/features/vehicles/api";
 import { VehicleStatusSelect } from "@/features/vehicles/vehicle-status-select";
+import { VehicleFuelSelect } from "@/features/vehicles/vehicle-fuel-select";
+import { VehicleDriverSelect } from "@/features/vehicles/vehicle-driver-select";
+import { RequestPhotosButton } from "@/features/photo-requests/request-photos-button";
 import { MediaGallery } from "@/components/media/media-gallery";
+import { VehicleGallery } from "@/features/vehicles/vehicle-gallery";
+import { VehicleReports } from "@/features/vehicles/vehicle-reports";
 
 function formatDate(value: string | null): string | undefined {
   return value ? new Date(value).toLocaleDateString() : undefined;
@@ -49,6 +54,21 @@ export default function VehicleDetailPage() {
               </Badge>
             )}
           </div>
+          {canUpdate && (
+            <div className="mt-2 flex flex-wrap items-end gap-3">
+              <VehicleFuelSelect
+                vehicleId={vehicle.id}
+                fuelLevel={vehicle.fuelLevel}
+                fuelUpdatedByName={vehicle.fuelUpdatedByName}
+                fuelUpdatedAt={vehicle.fuelUpdatedAt}
+              />
+              <VehicleDriverSelect
+                vehicleId={vehicle.id}
+                currentDriverId={vehicle.currentDriverId}
+              />
+              <RequestPhotosButton vehicleId={vehicle.id} />
+            </div>
+          )}
           <p className="text-muted-foreground">
             {vehicle.name ? `${vehicle.name} · ` : ""}
             {vehicle.year} {vehicle.make} {vehicle.model}
@@ -63,8 +83,18 @@ export default function VehicleDetailPage() {
       <Tabs defaultValue="info">
         <TabsList>
           <TabsTrigger value="info">{t("tabInfo")}</TabsTrigger>
+          <TabsTrigger value="gallery">معرض الصور</TabsTrigger>
+          <TabsTrigger value="reports">التقارير</TabsTrigger>
           <TabsTrigger value="media">{t("tabMedia")}</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="gallery">
+          <VehicleGallery vehicleId={vehicle.id} canManage={canUpload} />
+        </TabsContent>
+
+        <TabsContent value="reports">
+          <VehicleReports vehicleId={vehicle.id} canManage={canUpload} />
+        </TabsContent>
 
         <TabsContent value="info">
           <Card>

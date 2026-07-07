@@ -11,6 +11,25 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Make native controls (select option lists, date pickers) follow the active
+   theme. next-themes writes color-scheme inline on <html>, which beats a rule
+   set on :root — so we set it on the controls themselves, where the element's
+   own declaration wins over the inherited html value and the <option> popup is
+   painted dark (previously it rendered white → unreadable text). */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
+}
+.dark select,
+.dark input[type="date"],
+.dark input[type="datetime-local"],
+.dark input[type="time"],
+.dark input[type="number"] {
+  color-scheme: dark;
+}
+
 [dir="rtl"] {
   text-align: right;
 }
