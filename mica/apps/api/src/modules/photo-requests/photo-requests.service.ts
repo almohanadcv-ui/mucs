@@ -78,6 +78,21 @@ export class PhotoRequestsService {
     };
   }
 
+  /** Every photo request for one vehicle, each with its reply photos — so the
+   *  mechanic can see whether/what the driver sent back. */
+  async listForVehicle(vehicleId: string) {
+    const items = await this.prisma.driverPhotoRequest.findMany({
+      where: { vehicleId },
+      orderBy: { createdAt: "desc" },
+    });
+    return Promise.all(
+      items.map(async (r) => ({
+        ...r,
+        attachments: await this.media.listByEntity("DRIVER_PHOTO_REQUEST", r.id),
+      })),
+    );
+  }
+
   private async driverForUser(userId: string) {
     const driver = await this.prisma.driver.findFirst({
       where: { userId, deletedAt: null },

@@ -1,11 +1,5 @@
 import { apiClient } from "@/lib/api-client";
-
-export interface PhotoRequestAttachment {
-  id: string;
-  fileName: string;
-  mimeType: string;
-  url?: string;
-}
+import type { AttachmentItem } from "@/features/media/api";
 
 export interface PhotoRequestItem {
   id: string;
@@ -17,7 +11,7 @@ export interface PhotoRequestItem {
   replyNote: string | null;
   answeredAt: string | null;
   createdAt: string;
-  attachments?: PhotoRequestAttachment[];
+  attachments?: AttachmentItem[];
 }
 
 /** Mechanic / Manager: ask a vehicle's driver to photograph the meters. */
@@ -32,6 +26,12 @@ export async function createPhotoRequest(vehicleId: string, message: string) {
 /** Driver: my incoming photo requests (with any reply photos). */
 export async function listMyPhotoRequests() {
   const { data } = await apiClient.get<PhotoRequestItem[]>("/photo-requests/mine");
+  return data;
+}
+
+/** Mechanic / Manager: a vehicle's photo requests, each with the driver's reply. */
+export async function listVehiclePhotoRequests(vehicleId: string) {
+  const { data } = await apiClient.get<PhotoRequestItem[]>(`/photo-requests/vehicle/${vehicleId}`);
   return data;
 }
 

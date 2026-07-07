@@ -1,15 +1,39 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { CreateVehicleInput, PaginationQuery, UpdateVehicleInput } from "@mica-mab/shared-types";
+import { NotificationChannel } from "@prisma/client";
 import { PrismaService } from "@/database/prisma/prisma.service";
 import { WebhooksService } from "@/modules/webhooks/webhooks.service";
+import { NotificationsService } from "@/modules/notifications/notifications.service";
 
 @Injectable()
 export class VehiclesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly webhooks: WebhooksService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /** Tell a driver (via their user account) that a vehicle is now theirs. */
+  private async notifyDriverHandover(
+    driverId: string | null | undefined,
+    plateNumber: string,
+  ): Promise<void> {
+    if (!driverId) return;
+    const driver = await this.prisma.driver.findUnique({
+      where: { id: driverId },
+      select: { userId: true },
+    });
+    if (!driver?.userId) return;
+    await this.notifications.notify({
+      recipientId: driver.userId,
+      type: "vehicle.handover",
+      title: "تم تسليم مركبة لك",
+      body: `تم تسليم المركبة ${plateNumber} إليك.`,
+      payload: { plateNumber },
+      channels: [NotificationChannel.IN_APP],
+    });
+  }
 
   async list(query: PaginationQuery, filters: { branchId?: string; status?: string }) {
     const where = {
@@ -106,11 +130,14 @@ export class VehiclesService {
       branchId: vehicle.branchId,
     });
 
+    // If handed to a driver at intake, notify them right away.
+    await this.notifyDriverHandover(vehicle.currentDriverId, vehicle.plateNumber);
+
     return vehicle;
   }
 
   async update(id: string, dto: UpdateVehicleInput, actingUserId: string) {
-    await this.findById(id);
+    const before = await this.findById(id);
     // When the fuel level is (re)set, stamp who changed it and when.
     let fuelMeta: { fuelUpdatedAt?: Date; fuelUpdatedByName?: string } = {};
     if (dto.fuelLevel !== undefined) {
@@ -123,7 +150,7 @@ export class VehiclesService {
         : undefined;
       fuelMeta = { fuelUpdatedAt: new Date(), fuelUpdatedByName: name };
     }
-    return this.prisma.vehicle.update({
+    const vehicle = await this.prisma.vehicle.update({
       where: { id },
       data: {
         ...dto,
@@ -137,6 +164,17 @@ export class VehiclesService {
         updatedById: actingUserId,
       },
     });
+
+    // Notify the driver only when the vehicle is (re)assigned to a new one.
+    if (
+      dto.currentDriverId !== undefined &&
+      dto.currentDriverId &&
+      dto.currentDriverId !== before.currentDriverId
+    ) {
+      await this.notifyDriverHandover(dto.currentDriverId, vehicle.plateNumber);
+    }
+
+    return vehicle;
   }
 
   /** Single-workshop default: the primary (oldest) branch, so vehicle intake needn't pick one. */

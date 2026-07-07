@@ -16,6 +16,7 @@ import { VehicleStatusSelect } from "@/features/vehicles/vehicle-status-select";
 import { VehicleFuelSelect } from "@/features/vehicles/vehicle-fuel-select";
 import { VehicleDriverSelect } from "@/features/vehicles/vehicle-driver-select";
 import { RequestPhotosButton } from "@/features/photo-requests/request-photos-button";
+import { VehiclePhotoRequests } from "@/features/photo-requests/vehicle-photo-requests";
 import { MediaGallery } from "@/components/media/media-gallery";
 import { VehicleGallery } from "@/features/vehicles/vehicle-gallery";
 import { VehicleReports } from "@/features/vehicles/vehicle-reports";
@@ -85,11 +86,23 @@ export default function VehicleDetailPage() {
           <TabsTrigger value="info">{t("tabInfo")}</TabsTrigger>
           <TabsTrigger value="gallery">معرض الصور</TabsTrigger>
           <TabsTrigger value="reports">التقارير</TabsTrigger>
+          <TabsTrigger value="photo-requests">طلبات التصوير</TabsTrigger>
           <TabsTrigger value="media">{t("tabMedia")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="gallery">
           <VehicleGallery vehicleId={vehicle.id} canManage={canUpload} />
+        </TabsContent>
+
+        <TabsContent value="photo-requests">
+          <Card>
+            <CardHeader>
+              <CardTitle>طلبات التصوير وردود السائق</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VehiclePhotoRequests vehicleId={vehicle.id} />
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="reports">

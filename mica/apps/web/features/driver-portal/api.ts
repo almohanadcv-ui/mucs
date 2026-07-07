@@ -10,6 +10,7 @@ export interface DriverVehicle {
   model: string;
   name: string | null;
   year: number | null;
+  status: string;
 }
 
 export interface DriverReportListItem {

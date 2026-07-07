@@ -51,6 +51,13 @@ export class PhotoRequestsController {
     return this.service.listForDriver(user.id);
   }
 
+  /** Mechanic / Manager: photo requests for one vehicle, with reply photos. */
+  @Get("vehicle/:vehicleId")
+  @Permissions("vehicles:view")
+  byVehicle(@Param("vehicleId") vehicleId: string) {
+    return this.service.listForVehicle(vehicleId);
+  }
+
   /** Driver: reply to a request with photos (+ optional note). */
   @Post(":id/reply")
   @Permissions("driver-portal:create-report")
