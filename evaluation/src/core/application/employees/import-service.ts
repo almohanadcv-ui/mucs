@@ -288,6 +288,19 @@ export async function importEmployeesFromExcel(
     return id;
   };
 
+  // Preload existing employees in ONE query (avoid a lookup per row — the main
+  // cause of timeouts on large files against a cloud DB).
+  const existingList = await prisma.employee.findMany({
+    where: { tenantId: user.tenantId, deletedAt: null },
+    select: { id: true, employeeNo: true },
+  });
+  const existingByNo = new Map(existingList.map((e) => [e.employeeNo, e.id]));
+
+  type RowData = Record<string, unknown>;
+  const toCreate: RowData[] = [];
+  const toUpdate: { id: string; data: RowData }[] = [];
+  const seenNewNos = new Set<string>();
+
   const rowCount = ws.rowCount;
   for (let r = headerRowIdx + 1; r <= rowCount; r++) {
     const row = ws.getRow(r);
@@ -315,7 +328,7 @@ export async function importEmployeesFromExcel(
     const branchId = await resolveBranch(text("branch"));
     const departmentId = await resolveDept(text("department"), branchId);
 
-    const data = {
+    const data: RowData = {
       name,
       nameEn: text("nameEn") || null,
       email: text("email") || null,
@@ -335,19 +348,32 @@ export async function importEmployeesFromExcel(
       probationEndDate: toDate(get("probationEndDate")),
     };
 
-    const existing = await prisma.employee.findFirst({
-      where: { tenantId: user.tenantId, employeeNo, deletedAt: null },
-      select: { id: true },
-    });
-    if (existing) {
-      await prisma.employee.update({ where: { id: existing.id }, data });
+    const existingId = existingByNo.get(employeeNo);
+    if (existingId) {
+      toUpdate.push({ id: existingId, data });
       result.updated++;
-    } else {
-      await prisma.employee.create({
-        data: { tenantId: user.tenantId, employeeNo, ...data },
-      });
+    } else if (!seenNewNos.has(employeeNo)) {
+      seenNewNos.add(employeeNo);
+      toCreate.push({ tenantId: user.tenantId, employeeNo, ...data });
       result.created++;
+    } else {
+      result.skippedInvalid++; // duplicate employeeNo within the file
     }
+  }
+
+  // Bulk write: one createMany per 500, updates in transaction chunks of 50.
+  for (let i = 0; i < toCreate.length; i += 500) {
+    await prisma.employee.createMany({
+      data: toCreate.slice(i, i + 500) as never,
+      skipDuplicates: true,
+    });
+  }
+  for (let i = 0; i < toUpdate.length; i += 50) {
+    await prisma.$transaction(
+      toUpdate
+        .slice(i, i + 50)
+        .map((u) => prisma.employee.update({ where: { id: u.id }, data: u.data as never })),
+    );
   }
 
   await writeAudit({

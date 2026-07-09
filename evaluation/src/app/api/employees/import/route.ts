@@ -5,6 +5,7 @@ import { Permission } from "@/core/domain/permissions";
 import { importEmployeesFromExcel } from "@/core/application/employees/import-service";
 
 export const runtime = "nodejs";
+export const maxDuration = 300; // large master files can take a while to parse + upsert
 
 /** ADMIN-only: import/refresh the master employee file from an .xlsx upload. */
 export const POST = withAuth(
