@@ -55,7 +55,10 @@ export async function listEmployees(
       ? {
           OR: [
             { name: { contains: input.search, mode: "insensitive" } },
+            { nameEn: { contains: input.search, mode: "insensitive" } },
             { employeeNo: { contains: input.search, mode: "insensitive" } },
+            { nationalId: { contains: input.search, mode: "insensitive" } },
+            { jobTitle: { contains: input.search, mode: "insensitive" } },
           ],
         }
       : {}),
@@ -305,6 +308,17 @@ export async function createEmployee(
       departmentId: input.departmentId ?? null,
       supervisorId,
       evaluatorId,
+      nameEn: input.nameEn ?? null,
+      email: input.email || null,
+      nationalId: input.nationalId ?? null,
+      nationality: input.nationality ?? null,
+      gender: input.gender ?? null,
+      jobTitle: input.jobTitle ?? null,
+      directManager: input.directManager ?? null,
+      birthDate: input.birthDate ?? null,
+      contractEndDate: input.contractEndDate ?? null,
+      probationStartDate: input.probationStartDate ?? null,
+      probationEndDate: input.probationEndDate ?? null,
     },
     include: EMPLOYEE_INCLUDE,
   });
@@ -360,6 +374,17 @@ export async function updateEmployee(
         ? { supervisorId: input.supervisorId }
         : {}),
       ...(input.evaluatorId !== undefined ? { evaluatorId: input.evaluatorId } : {}),
+      ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
+      ...(input.email !== undefined ? { email: input.email || null } : {}),
+      ...(input.nationalId !== undefined ? { nationalId: input.nationalId } : {}),
+      ...(input.nationality !== undefined ? { nationality: input.nationality } : {}),
+      ...(input.gender !== undefined ? { gender: input.gender } : {}),
+      ...(input.jobTitle !== undefined ? { jobTitle: input.jobTitle } : {}),
+      ...(input.directManager !== undefined ? { directManager: input.directManager } : {}),
+      ...(input.birthDate !== undefined ? { birthDate: input.birthDate } : {}),
+      ...(input.contractEndDate !== undefined ? { contractEndDate: input.contractEndDate } : {}),
+      ...(input.probationStartDate !== undefined ? { probationStartDate: input.probationStartDate } : {}),
+      ...(input.probationEndDate !== undefined ? { probationEndDate: input.probationEndDate } : {}),
     },
     include: EMPLOYEE_INCLUDE,
   });

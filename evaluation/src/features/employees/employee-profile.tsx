@@ -11,7 +11,8 @@ import {
   ResponsiveContainer,
   CartesianGrid,
 } from "recharts";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Printer } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmployeeStatusBadge } from "@/features/dashboard/status-badges";
 
@@ -104,12 +105,17 @@ export function EmployeeProfile({ id }: { id: string }) {
             {e.employeeNo} · {e.department?.name ?? "—"} · {e.branch?.name ?? "—"}
           </p>
         </div>
-        <Link
-          href="/dashboard/employees"
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <ArrowRight className="size-4" /> رجوع
-        </Link>
+        <div className="flex items-center gap-2 print:hidden">
+          <Button variant="outline" size="sm" onClick={() => window.print()}>
+            <Printer className="size-4" /> طباعة التقرير
+          </Button>
+          <Link
+            href="/dashboard/employees"
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowRight className="size-4" /> رجوع
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

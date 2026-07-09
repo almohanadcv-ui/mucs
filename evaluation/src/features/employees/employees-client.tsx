@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/dialog";
 import { EmployeeStatusBadge } from "@/features/dashboard/status-badges";
 import { EmployeeFormDialog } from "./employee-form-dialog";
+import { CreateManagerDialog } from "./create-manager-dialog";
 import {
   useEmployees,
   useDeleteEmployee,
@@ -67,9 +68,13 @@ function ContractCell({ e }: { e: EmployeeRow }) {
 export function EmployeesClient({
   canManage,
   canImport,
+  canCreateManager,
+  isAdmin,
 }: {
   canManage: boolean;
   canImport?: boolean;
+  canCreateManager?: boolean;
+  isAdmin?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -137,7 +142,8 @@ export function EmployeesClient({
             {meta?.total ?? 0} موظف
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreateManager && <CreateManagerDialog canCreateSupervisor={isAdmin} />}
           {canImport && (
             <>
               <input

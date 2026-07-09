@@ -42,6 +42,14 @@ interface FormValues {
   departmentId: string;
   supervisorId: string;
   evaluatorId: string;
+  // HR fields
+  nameEn: string;
+  email: string;
+  nationalId: string;
+  nationality: string;
+  gender: string;
+  jobTitle: string;
+  directManager: string;
 }
 
 const CONTRACT_OPTIONS = [
@@ -81,6 +89,7 @@ export function EmployeeFormDialog({
   const create = useCreateEmployee();
   const update = useUpdateEmployee(employee?.id ?? "");
   const pending = create.isPending || update.isPending;
+  const ex = (employee ?? {}) as Record<string, string | null | undefined>;
 
   const { register, handleSubmit, setValue, watch, reset, formState } =
     useForm<FormValues>({
@@ -106,6 +115,13 @@ export function EmployeeFormDialog({
         departmentId: employee?.departmentId ?? NONE,
         supervisorId: employee?.supervisorId ?? NONE,
         evaluatorId: employee?.evaluatorId ?? NONE,
+        nameEn: ex.nameEn ?? "",
+        email: ex.email ?? "",
+        nationalId: ex.nationalId ?? "",
+        nationality: ex.nationality ?? "",
+        gender: ex.gender ?? "",
+        jobTitle: ex.jobTitle ?? "",
+        directManager: ex.directManager ?? "",
       },
     });
 
@@ -137,6 +153,13 @@ export function EmployeeFormDialog({
       departmentId: clean(v.departmentId),
       supervisorId: clean(v.supervisorId),
       evaluatorId: clean(v.evaluatorId),
+      nameEn: v.nameEn?.trim() || null,
+      email: v.email?.trim() || null,
+      nationalId: v.nationalId?.trim() || null,
+      nationality: v.nationality?.trim() || null,
+      gender: v.gender?.trim() || null,
+      jobTitle: v.jobTitle?.trim() || null,
+      directManager: v.directManager?.trim() || null,
     };
     try {
       if (isEdit) {
@@ -308,6 +331,35 @@ export function EmployeeFormDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label>الاسم الإنجليزي</Label>
+            <Input dir="ltr" {...register("nameEn")} />
+          </div>
+          <div className="space-y-2">
+            <Label>البريد الإلكتروني</Label>
+            <Input dir="ltr" type="email" {...register("email")} />
+          </div>
+          <div className="space-y-2">
+            <Label>رقم الهوية</Label>
+            <Input dir="ltr" {...register("nationalId")} />
+          </div>
+          <div className="space-y-2">
+            <Label>الجنسية</Label>
+            <Input {...register("nationality")} />
+          </div>
+          <div className="space-y-2">
+            <Label>الجنس</Label>
+            <Input {...register("gender")} />
+          </div>
+          <div className="space-y-2">
+            <Label>المسمى الوظيفي</Label>
+            <Input {...register("jobTitle")} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>المدير المباشر</Label>
+            <Input {...register("directManager")} />
           </div>
 
           <DialogFooter className="sm:col-span-2">

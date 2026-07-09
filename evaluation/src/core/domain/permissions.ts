@@ -21,6 +21,7 @@ export const Permission = {
   EMPLOYEE_VIEW_TEAM: "employee:view_team",
   EMPLOYEE_MANAGE: "employee:manage",
   EMPLOYEE_IMPORT: "employee:import", // ADMIN only — import/edit the master file
+  MANAGER_CREATE: "manager:create", // create an evaluator/manager login + auto-link their team
 
   // Templates
   TEMPLATE_VIEW: "template:view",
@@ -45,6 +46,7 @@ const ALL: Permission[] = Object.values(Permission);
 const SUPERVISOR: Permission[] = [
   Permission.EMPLOYEE_VIEW_TEAM,
   Permission.EMPLOYEE_MANAGE,
+  Permission.MANAGER_CREATE,
   Permission.TEMPLATE_VIEW,
   Permission.TEMPLATE_MANAGE,
   Permission.EVALUATION_VIEW_TEAM,
