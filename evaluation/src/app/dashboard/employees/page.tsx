@@ -10,5 +10,6 @@ export default async function EmployeesPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const canManage = can(user.role, Permission.EMPLOYEE_MANAGE);
-  return <EmployeesClient canManage={canManage} />;
+  const canImport = can(user.role, Permission.EMPLOYEE_IMPORT);
+  return <EmployeesClient canManage={canManage} canImport={canImport} />;
 }

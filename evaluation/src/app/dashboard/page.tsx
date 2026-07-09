@@ -9,11 +9,11 @@ import {
   Star,
   UserCog,
   CalendarDays,
-  Trophy,
 } from "lucide-react";
 import { getCurrentUser } from "@/infrastructure/auth/session";
 import { getDashboardStats } from "@/core/application/dashboard/dashboard-service";
 import { StatCard } from "@/features/dashboard/stat-card";
+import { TopEmployeesWidget } from "@/features/dashboard/top-employees-widget";
 import {
   RatingDonut,
   RatingBars,
@@ -92,36 +92,7 @@ export default async function DashboardHome() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Trophy className="size-4 text-warning" />
-              أفضل الموظفين
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {stats.topEmployees.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                لا توجد بيانات كافية بعد
-              </p>
-            ) : (
-              <ol className="space-y-3">
-                {stats.topEmployees.map((e, i) => (
-                  <li key={e.id} className="flex items-center gap-3">
-                    <span className="flex size-6 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
-                      {i + 1}
-                    </span>
-                    <span className="flex-1 truncate text-sm">{e.name}</span>
-                    <span className="flex items-center gap-1 text-sm font-semibold text-success">
-                      <Star className="size-3.5 fill-current" />
-                      {e.average}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </CardContent>
-        </Card>
+        <TopEmployeesWidget />
       </div>
     </div>
   );

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { addMonths, differenceInCalendarDays } from "date-fns";
-import { Plus, Search, Pencil, Trash2, Loader2, Users } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Loader2, Users, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,15 +64,45 @@ function ContractCell({ e }: { e: EmployeeRow }) {
   );
 }
 
-export function EmployeesClient({ canManage }: { canManage: boolean }) {
+export function EmployeesClient({
+  canManage,
+  canImport,
+}: {
+  canManage: boolean;
+  canImport?: boolean;
+}) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<EmployeeRow | null>(null);
   const [toDelete, setToDelete] = useState<EmployeeRow | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const qc = useQueryClient();
 
   const { data, isLoading, isError } = useEmployees({ page, search });
   const del = useDeleteEmployee();
+
+  async function onImportFile(file: File) {
+    setImporting(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/employees/import", { method: "POST", body: form });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error?.message ?? "تعذّر الاستيراد");
+      const d = body.data ?? body;
+      toast.success(
+        `تم الاستيراد: ${d.created} جديد، ${d.updated} محدّث، ${d.skippedInactive} غير نشط (تم تجاهله)`,
+      );
+      qc.invalidateQueries({ queryKey: ["employees"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "تعذّر الاستيراد");
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
 
   const rows = data?.items ?? [];
   const meta = data?.meta;
@@ -105,11 +137,39 @@ export function EmployeesClient({ canManage }: { canManage: boolean }) {
             {meta?.total ?? 0} موظف
           </p>
         </div>
-        {canManage && (
-          <Button onClick={openCreate}>
-            <Plus className="size-4" /> إضافة موظف
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canImport && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onImportFile(f);
+                }}
+              />
+              <Button
+                variant="outline"
+                disabled={importing}
+                onClick={() => fileRef.current?.click()}
+              >
+                {importing ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <FileUp className="size-4" />
+                )}
+                استيراد من Excel
+              </Button>
+            </>
+          )}
+          {canManage && (
+            <Button onClick={openCreate}>
+              <Plus className="size-4" /> إضافة موظف
+            </Button>
+          )}
+        </div>
       </div>
 
       <Card>
@@ -154,7 +214,14 @@ export function EmployeesClient({ canManage }: { canManage: boolean }) {
                   {rows.map((e) => (
                     <tr key={e.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="px-3 py-3 tabular-nums">{e.employeeNo}</td>
-                      <td className="px-3 py-3 font-medium">{e.name}</td>
+                      <td className="px-3 py-3 font-medium">
+                        <Link
+                          href={`/dashboard/employees/${e.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {e.name}
+                        </Link>
+                      </td>
                       <td className="px-3 py-3 text-muted-foreground">{e.department?.name ?? "—"}</td>
                       <td className="px-3 py-3"><ContractCell e={e} /></td>
                       <td className="px-3 py-3 text-muted-foreground">{e.supervisor?.name ?? "—"}</td>

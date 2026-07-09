@@ -90,6 +90,7 @@ model Tenant {
   branches    Branch[]
   departments Department[]
   employees   Employee[]
+  customEmployees CustomEmployee[]
   templates   EvaluationTemplate[]
   evaluations Evaluation[]
   auditLogs   AuditLog[]
@@ -139,6 +140,8 @@ model User {
   createdTemplates     EvaluationTemplate[] @relation("TemplateCreator")
   submittedEvaluations Evaluation[]         @relation("EvaluationSubmitter")
   reviewedEvaluations  Evaluation[]         @relation("EvaluationReviewer")
+  customEmployeesEvaluated CustomEmployee[] @relation("CustomEmployeeEvaluator")
+  customEmployeesCreated   CustomEmployee[] @relation("CustomEmployeeCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -223,6 +226,19 @@ model Employee {
   contractMonths    Int? // total contract length in months (e.g. 12/24/36/48)
   probationMonths   Int? // probation length in months (e.g. 3/6/12 or custom)
 
+  // HR master-data fields (populated by the Excel import; all optional/additive)
+  nameEn             String?
+  email              String?
+  nationalId         String?
+  nationality        String?
+  gender             String?
+  jobTitle           String?
+  directManager      String? // manager name as imported (free text)
+  birthDate          DateTime?
+  contractEndDate    DateTime?
+  probationStartDate DateTime?
+  probationEndDate   DateTime?
+
   branchId     String?  @db.Uuid
   departmentId String?  @db.Uuid
   supervisorId String?  @db.Uuid
@@ -252,6 +268,34 @@ model Employee {
   @@index([branchId])
   @@index([status])
   @@map("employees")
+}
+
+/// Employees added manually by a Reviewer/Evaluator when they aren't in the
+/// imported master file. Kept in a SEPARATE table so the company's authoritative
+/// employee data (populated only via the Excel import) is never mutated.
+model CustomEmployee {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @db.Uuid
+  employeeNo     String?
+  name           String
+  nameEn         String?
+  email          String?
+  nationalId     String?
+  departmentName String?
+  jobTitle       String?
+  evaluatorId    String?   @db.Uuid
+  createdById    String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  evaluator User?  @relation("CustomEmployeeEvaluator", fields: [evaluatorId], references: [id], onDelete: SetNull)
+  createdBy User   @relation("CustomEmployeeCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deletedAt])
+  @@index([evaluatorId])
+  @@map("custom_employees")
 }
 
 // ───────────────────────────── Templates & Questions ────────────────────────

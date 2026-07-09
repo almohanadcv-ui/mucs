@@ -20,6 +20,7 @@ export const Permission = {
   EMPLOYEE_VIEW: "employee:view",
   EMPLOYEE_VIEW_TEAM: "employee:view_team",
   EMPLOYEE_MANAGE: "employee:manage",
+  EMPLOYEE_IMPORT: "employee:import", // ADMIN only — import/edit the master file
 
   // Templates
   TEMPLATE_VIEW: "template:view",

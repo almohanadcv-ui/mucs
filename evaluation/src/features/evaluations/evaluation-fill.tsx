@@ -15,7 +15,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError } from "@/lib/api-client";
-import { useLookups, useEmployees } from "@/features/employees/use-employees";
+import { useLookups } from "@/features/employees/use-employees";
+import {
+  EmployeeSearchCombobox,
+  type PickerEmployee,
+} from "@/features/employees/employee-search-combobox";
 import { useTemplate } from "@/features/templates/use-templates";
 import { QuestionField, type AnswerValue } from "./question-field";
 import { useCreateEvaluation } from "./use-evaluations";
@@ -23,14 +27,13 @@ import { useCreateEvaluation } from "./use-evaluations";
 export function EvaluationFill() {
   const router = useRouter();
   const { data: lookups } = useLookups();
-  const { data: employeesPage } = useEmployees({ page: 1 });
-  const [employeeId, setEmployeeId] = useState("");
+  const [employee, setEmployee] = useState<PickerEmployee | null>(null);
   const [templateId, setTemplateId] = useState("");
   const { data: template, isLoading: loadingTemplate } = useTemplate(templateId || undefined);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
   const create = useCreateEvaluation();
 
-  const employees = employeesPage?.items ?? [];
+  const employeeId = employee?.id ?? "";
 
   async function save(submit: boolean) {
     if (!employeeId) return toast.error("اختر الموظف");
@@ -61,18 +64,9 @@ export function EvaluationFill() {
       <Card>
         <CardHeader><CardTitle>البيانات الأساسية</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
+          <div className="space-y-2 sm:col-span-2">
             <Label>الموظف</Label>
-            <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger><SelectValue placeholder="اختر الموظف" /></SelectTrigger>
-              <SelectContent>
-                {employees.map((e) => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.name} — {e.employeeNo}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <EmployeeSearchCombobox value={employee} onSelect={setEmployee} />
           </div>
           <div className="space-y-2">
             <Label>نموذج التقييم</Label>

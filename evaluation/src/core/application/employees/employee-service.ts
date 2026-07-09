@@ -73,6 +73,144 @@ export async function listEmployees(
   return { items, meta: buildMeta(input, total) };
 }
 
+/**
+ * Type-ahead search for the evaluation picker: matches name / English name /
+ * employee number / national id, role-scoped, capped for speed. Returns the
+ * minimal fields the dropdown needs so the evaluator picks once and everything
+ * auto-fills.
+ */
+export async function searchEmployeesForPicker(
+  user: SessionUser,
+  q: string,
+  limit = 20,
+) {
+  const term = q.trim();
+  if (!term) return [];
+  const where: Prisma.EmployeeWhereInput = {
+    tenantId: user.tenantId,
+    deletedAt: null,
+    ...scopeForRole(user),
+    OR: [
+      { name: { contains: term, mode: "insensitive" } },
+      { nameEn: { contains: term, mode: "insensitive" } },
+      { employeeNo: { contains: term, mode: "insensitive" } },
+      { nationalId: { contains: term, mode: "insensitive" } },
+    ],
+  };
+  return prisma.employee.findMany({
+    where,
+    take: Math.min(limit, 50),
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      employeeNo: true,
+      name: true,
+      nameEn: true,
+      jobTitle: true,
+      department: { select: { name: true } },
+      branch: { select: { name: true } },
+      evaluator: { select: { name: true } },
+    },
+  });
+}
+
+/** Full employee profile: master data + evaluation history + summary stats. */
+export async function getEmployeeProfile(user: SessionUser, id: string) {
+  const employee = await getEmployee(user, id); // enforces scope
+  const evaluations = await prisma.evaluation.findMany({
+    where: { employeeId: id, tenantId: user.tenantId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      score: true,
+      status: true,
+      submittedAt: true,
+      createdAt: true,
+      template: { select: { title: true } },
+      evaluator: { select: { name: true } },
+    },
+  });
+  const scored = evaluations.filter(
+    (e) => e.score != null && (e.status === "APPROVED" || e.status === "PENDING"),
+  );
+  const average =
+    scored.length > 0
+      ? Math.round((scored.reduce((s, e) => s + (e.score ?? 0), 0) / scored.length) * 10) / 10
+      : null;
+  return {
+    employee,
+    evaluations,
+    stats: {
+      count: evaluations.length,
+      scoredCount: scored.length,
+      average,
+      last: scored[0]?.score ?? null,
+    },
+  };
+}
+
+export interface TopEmployeesFilter {
+  threshold?: number;
+  departmentId?: string;
+  branchId?: string;
+  evaluatorId?: string;
+}
+
+/** Top 10 employees whose average (approved/pending) score meets a threshold. */
+export async function getTopEmployees(user: SessionUser, opts: TopEmployeesFilter) {
+  const threshold = opts.threshold ?? 90;
+  const grouped = await prisma.evaluation.groupBy({
+    by: ["employeeId"],
+    where: {
+      tenantId: user.tenantId,
+      deletedAt: null,
+      status: { in: ["APPROVED", "PENDING"] },
+      score: { not: null },
+      employee: {
+        deletedAt: null,
+        ...scopeForRole(user),
+        ...(opts.departmentId ? { departmentId: opts.departmentId } : {}),
+        ...(opts.branchId ? { branchId: opts.branchId } : {}),
+        ...(opts.evaluatorId ? { evaluatorId: opts.evaluatorId } : {}),
+      },
+    },
+    _avg: { score: true },
+    _count: { _all: true },
+  });
+
+  const qualified = grouped
+    .filter((g) => (g._avg.score ?? 0) >= threshold)
+    .sort((a, b) => (b._avg.score ?? 0) - (a._avg.score ?? 0))
+    .slice(0, 10);
+
+  const ids = qualified.map((g) => g.employeeId);
+  if (ids.length === 0) return [];
+  const emps = await prisma.employee.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      name: true,
+      employeeNo: true,
+      department: { select: { name: true } },
+    },
+  });
+  const byId = new Map(emps.map((e) => [e.id, e]));
+  return qualified
+    .map((g) => {
+      const e = byId.get(g.employeeId);
+      if (!e) return null;
+      return {
+        id: e.id,
+        name: e.name,
+        employeeNo: e.employeeNo,
+        department: e.department?.name ?? null,
+        average: Math.round((g._avg.score ?? 0) * 10) / 10,
+        count: g._count._all,
+      };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+}
+
 export async function getEmployee(user: SessionUser, id: string) {
   const employee = await prisma.employee.findFirst({
     where: {
