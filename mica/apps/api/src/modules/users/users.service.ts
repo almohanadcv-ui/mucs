@@ -55,17 +55,26 @@ export class UsersService {
    * since those details aren't collected at invite time.
    */
   private async ensureDriverProfile(
-    user: { id: string; firstName: string; lastName: string; branchId: string | null },
+    user: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone?: string | null;
+      branchId: string | null;
+    },
     actingUserId: string,
   ): Promise<void> {
     const existing = await this.prisma.driver.findFirst({ where: { userId: user.id } });
     if (existing) {
-      if (existing.deletedAt) {
-        await this.prisma.driver.update({
-          where: { id: existing.id },
-          data: { deletedAt: null, status: "ACTIVE", updatedById: actingUserId },
-        });
-      }
+      // Reactivate and/or keep the phone in sync with the account.
+      await this.prisma.driver.update({
+        where: { id: existing.id },
+        data: {
+          ...(existing.deletedAt ? { deletedAt: null, status: "ACTIVE" } : {}),
+          ...(user.phone ? { phone: user.phone } : {}),
+          updatedById: actingUserId,
+        },
+      });
       return;
     }
 
@@ -80,6 +89,7 @@ export class UsersService {
         userId: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
+        phone: user.phone ?? null,
         employeeCode: `DRV-${user.id.slice(-10).toUpperCase()}`,
         licenseNumber: `AUTO-${user.id}`,
         branchId,

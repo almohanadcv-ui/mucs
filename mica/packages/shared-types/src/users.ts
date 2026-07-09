@@ -7,7 +7,7 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   firstName: z.string().min(1),
   lastName: z.string().min(1),
-  phone: z.string().optional(),
+  phone: z.string().min(1, "رقم الجوال مطلوب"), // إجباري: للتواصل والإشعارات والتذكيرات
   branchId: z.string().optional(),
   departmentId: z.string().optional(),
   roleIds: z.array(z.string()).default([]),

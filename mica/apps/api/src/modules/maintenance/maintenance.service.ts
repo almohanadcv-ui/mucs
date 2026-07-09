@@ -154,6 +154,7 @@ export class MaintenanceService {
         description: dto.description,
         priority: "MEDIUM",
         source: "DRIVER_REPORT",
+        reportType: dto.reportType,
         status: "REPORTED",
         reportedById: driverUserId,
         createdById: driverUserId,

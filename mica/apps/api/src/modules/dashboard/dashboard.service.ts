@@ -23,6 +23,51 @@ export class DashboardService {
     return fresh;
   }
 
+  /** Vehicles whose next maintenance or inspection is overdue or due within a
+   *  week — surfaced as alert cards for technicians and managers. */
+  async getMaintenanceAlerts(branchId?: string) {
+    const branchFilter = branchId ? { branchId } : {};
+    const nowTs = Date.now();
+    const soon = new Date(nowTs + 7 * 24 * 60 * 60 * 1000);
+
+    const vehicles = await this.prisma.vehicle.findMany({
+      where: {
+        deletedAt: null,
+        status: { notIn: ["DELIVERED", "CANCELLED"] },
+        ...branchFilter,
+        OR: [
+          { nextMaintenanceAt: { not: null, lte: soon } },
+          { nextInspectionAt: { not: null, lte: soon } },
+        ],
+      },
+      select: {
+        id: true,
+        plateNumber: true,
+        make: true,
+        model: true,
+        nextMaintenanceAt: true,
+        nextInspectionAt: true,
+        currentDriver: { select: { firstName: true, lastName: true } },
+      },
+      take: 50,
+    });
+
+    return vehicles
+      .map((v) => {
+        const earliest = Math.min(
+          ...[v.nextMaintenanceAt, v.nextInspectionAt]
+            .filter((d): d is Date => !!d)
+            .map((d) => d.getTime()),
+        );
+        return {
+          ...v,
+          earliestDueAt: new Date(earliest).toISOString(),
+          urgency: earliest < nowTs ? ("overdue" as const) : ("soon" as const),
+        };
+      })
+      .sort((a, b) => a.earliestDueAt.localeCompare(b.earliestDueAt));
+  }
+
   private async computeKpis(branchId?: string) {
     const branchFilter = branchId ? { branchId } : {};
     const now = new Date();

@@ -26,6 +26,13 @@ export function useNotificationSocket() {
 
     socket.on("notification", (notification: NotificationItem) => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      // Live-refresh the request/maintenance surfaces ("طلباتي") so new reports,
+      // approvals, comments and status changes appear without a page refresh.
+      queryClient.invalidateQueries({ queryKey: ["maintenance"] });
+      queryClient.invalidateQueries({ queryKey: ["my-reports"] });
+      queryClient.invalidateQueries({ queryKey: ["my-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["driver-portal"] });
+      queryClient.invalidateQueries({ queryKey: ["photo-requests"] });
       if (notification.channel === "IN_APP") {
         toast.info(notification.title, { description: notification.body });
       }

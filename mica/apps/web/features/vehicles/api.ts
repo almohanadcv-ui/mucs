@@ -22,7 +22,11 @@ export interface VehicleListItem {
   fuelUpdatedByName: string | null;
   oilMeter: number | null;
   oilChangeDueAt: string | null;
+  lastOilChangeAt: string | null;
+  oilChangeOdometer: number | null;
   nextMaintenanceAt: string | null;
+  nextInspectionAt: string | null;
+  notes: string | null;
   receiverName: string | null;
   party: string | null;
   branchId: string;
@@ -53,6 +57,20 @@ export async function createVehicle(input: CreateVehicleInput) {
 
 export async function updateVehicle(id: string, input: UpdateVehicleInput) {
   const { data } = await apiClient.patch<VehicleListItem>(`/vehicles/${id}`, input);
+  return data;
+}
+
+export interface TimelineItem {
+  at: string;
+  kind: "maintenance" | "inspection" | "appointment" | "audit";
+  title: string;
+  detail: string;
+  status: string | null;
+  actor: string | null;
+}
+
+export async function getVehicleTimeline(id: string) {
+  const { data } = await apiClient.get<TimelineItem[]>(`/vehicles/${id}/timeline`);
   return data;
 }
 

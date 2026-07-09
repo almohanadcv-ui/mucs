@@ -17,6 +17,11 @@ import { VehicleFuelSelect } from "@/features/vehicles/vehicle-fuel-select";
 import { VehicleDriverSelect } from "@/features/vehicles/vehicle-driver-select";
 import { RequestPhotosButton } from "@/features/photo-requests/request-photos-button";
 import { VehiclePhotoRequests } from "@/features/photo-requests/vehicle-photo-requests";
+import { VehicleEditDialog } from "@/features/vehicles/vehicle-edit-dialog";
+import { VehicleTimeline } from "@/features/vehicles/vehicle-timeline";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { FileBarChart } from "lucide-react";
 import { MediaGallery } from "@/components/media/media-gallery";
 import { VehicleGallery } from "@/features/vehicles/vehicle-gallery";
 import { VehicleReports } from "@/features/vehicles/vehicle-reports";
@@ -67,6 +72,12 @@ export default function VehicleDetailPage() {
                 vehicleId={vehicle.id}
                 currentDriverId={vehicle.currentDriverId}
               />
+              <VehicleEditDialog vehicle={vehicle} />
+              <Button asChild variant="outline" size="sm" className="h-8 gap-1">
+                <Link href={`/vehicles/${vehicle.id}/report`}>
+                  <FileBarChart className="size-4" /> تقرير المركبة
+                </Link>
+              </Button>
               <RequestPhotosButton vehicleId={vehicle.id} />
             </div>
           )}
@@ -87,8 +98,20 @@ export default function VehicleDetailPage() {
           <TabsTrigger value="gallery">معرض الصور</TabsTrigger>
           <TabsTrigger value="reports">التقارير</TabsTrigger>
           <TabsTrigger value="photo-requests">طلبات التصوير</TabsTrigger>
+          <TabsTrigger value="timeline">السجل الزمني</TabsTrigger>
           <TabsTrigger value="media">{t("tabMedia")}</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="timeline">
+          <Card>
+            <CardHeader>
+              <CardTitle>السجل الزمني للمركبة</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VehicleTimeline vehicleId={vehicle.id} />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="gallery">
           <VehicleGallery vehicleId={vehicle.id} canManage={canUpload} />
@@ -122,8 +145,18 @@ export default function VehicleDetailPage() {
                 label={t("oilMeter")}
                 value={vehicle.oilMeter != null ? `${vehicle.oilMeter.toLocaleString()} km` : undefined}
               />
+              <Field label="تاريخ آخر تغيير زيت" value={formatDate(vehicle.lastOilChangeAt)} />
+              <Field
+                label="العداد عند تغيير الزيت"
+                value={
+                  vehicle.oilChangeOdometer != null
+                    ? `${vehicle.oilChangeOdometer.toLocaleString()} km`
+                    : undefined
+                }
+              />
               <Field label={t("oilChangeDue")} value={formatDate(vehicle.oilChangeDueAt)} />
               <Field label={t("nextMaintenance")} value={formatDate(vehicle.nextMaintenanceAt)} />
+              <Field label="موعد الفحص/التشييك القادم" value={formatDate(vehicle.nextInspectionAt)} />
               <Field label={t("receiver")} value={vehicle.receiverName ?? undefined} />
               <Field label={t("party")} value={vehicle.party ?? undefined} />
               <Field

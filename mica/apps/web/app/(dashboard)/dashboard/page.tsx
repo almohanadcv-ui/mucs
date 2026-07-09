@@ -15,12 +15,14 @@ import {
 } from "recharts";
 import { AlertTriangle, Calendar, Car, Droplet, FileText, DollarSign, Wrench } from "lucide-react";
 import { useTranslations } from "next-intl";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth/session-context";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { vehicleStatusLabel } from "@/lib/vehicle-status";
-import { getDashboardKpis } from "@/features/dashboard/api";
+import { getDashboardKpis, getMaintenanceAlerts } from "@/features/dashboard/api";
 
 const CHART_COLORS = ["#3b82f6", "#f59e0b", "#ef4444", "#22c55e", "#8b5cf6", "#06b6d4", "#eab308"];
 
@@ -33,6 +35,10 @@ export default function DashboardPage() {
     queryKey: ["dashboard", "kpis"],
     queryFn: () => getDashboardKpis(),
   });
+  const { data: alerts } = useQuery({
+    queryKey: ["dashboard", "alerts"],
+    queryFn: () => getMaintenanceAlerts(),
+  });
 
   return (
     <div className="space-y-6">
@@ -44,6 +50,39 @@ export default function DashboardPage() {
           {user?.roles.join("، ")} · {t("fleetOverview")}
         </p>
       </div>
+
+      {alerts && alerts.length > 0 && (
+        <Card className="border-amber-500/40">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="size-5 text-amber-500" /> تنبيهات الصيانة والفحص ({alerts.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {alerts.map((a) => (
+              <Link
+                key={a.id}
+                href={`/vehicles/${a.id}`}
+                className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm hover:bg-accent"
+              >
+                <div>
+                  <p className="font-medium">{a.plateNumber}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {a.currentDriver
+                      ? `${a.currentDriver.firstName} ${a.currentDriver.lastName}`
+                      : `${a.make} ${a.model}`}
+                    {" · "}
+                    {new Date(a.earliestDueAt).toLocaleDateString("ar-SA")}
+                  </p>
+                </div>
+                <Badge variant={a.urgency === "overdue" ? "destructive" : "secondary"}>
+                  {a.urgency === "overdue" ? "متأخّر" : "قريب"}
+                </Badge>
+              </Link>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

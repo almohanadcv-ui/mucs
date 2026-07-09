@@ -58,7 +58,10 @@ export const createVehicleSchema = z.object({
   odometer: z.coerce.number().int().min(0).default(0), // العداد الحالي
   oilMeter: z.coerce.number().int().min(0).optional(), // عداد الزيت
   oilChangeDueAt: optionalDateString, // موعد تغيير الزيت
+  lastOilChangeAt: optionalDateString, // تاريخ آخر تغيير زيت
+  oilChangeOdometer: z.coerce.number().int().min(0).optional(), // قراءة العداد عند تغيير الزيت
   nextMaintenanceAt: optionalDateString, // موعد الصيانة القادمة
+  nextInspectionAt: optionalDateString, // موعد الفحص/التشييك القادم
   receiverName: z.string().max(200).optional(), // اسم المستلم
   party: z.string().max(200).optional(), // الجهة
   // Optional in the single-workshop model: the API defaults it to the primary

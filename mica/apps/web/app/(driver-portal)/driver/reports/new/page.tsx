@@ -18,6 +18,7 @@ export default function NewDriverReportPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [vehicleId, setVehicleId] = useState("");
+  const [reportType, setReportType] = useState<"PERIODIC_MAINTENANCE" | "VEHICLE_FAULT" | "">("");
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
@@ -28,7 +29,11 @@ export default function NewDriverReportPage() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const report = await createMyReport({ vehicleId, description });
+      const report = await createMyReport({
+        vehicleId,
+        description,
+        reportType: reportType || undefined,
+      });
       for (const f of files) await uploadMyReportMedia(report.id, f);
       return report;
     },
@@ -66,6 +71,19 @@ export default function NewDriverReportPage() {
               {v.plateNumber} — {v.make} {v.model}
             </option>
           ))}
+        </select>
+      </div>
+
+      <div className="space-y-2">
+        <Label>نوع البلاغ</Label>
+        <select
+          value={reportType}
+          onChange={(e) => setReportType(e.target.value as typeof reportType)}
+          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+        >
+          <option value="">اختر النوع</option>
+          <option value="PERIODIC_MAINTENANCE">صيانة دورية</option>
+          <option value="VEHICLE_FAULT">عطل في المركبة</option>
         </select>
       </div>
 

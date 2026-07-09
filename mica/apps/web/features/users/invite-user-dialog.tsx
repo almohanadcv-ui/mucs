@@ -199,10 +199,17 @@ export function InviteUserDialog({
               )}
             </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">{t("email")}</Label>
-            <Input id="email" type="email" {...register("email")} />
-            {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">{t("email")}</Label>
+              <Input id="email" type="email" {...register("email")} />
+              {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">رقم الجوال *</Label>
+              <Input id="phone" type="tel" dir="ltr" placeholder="05xxxxxxxx" {...register("phone")} />
+              {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
+            </div>
           </div>
           <div className="space-y-2">
             <Label>{t("roles")}</Label>

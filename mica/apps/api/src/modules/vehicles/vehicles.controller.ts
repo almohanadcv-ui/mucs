@@ -54,6 +54,12 @@ export class VehiclesController {
     return this.service.findById(id);
   }
 
+  @Get(":id/timeline")
+  @Permissions("vehicles:view")
+  timeline(@Param("id") id: string) {
+    return this.service.timeline(id);
+  }
+
   @Post()
   @Permissions("vehicles:create")
   create(

@@ -21,3 +21,22 @@ export async function getDashboardKpis(branchId?: string) {
   const { data } = await apiClient.get<DashboardKpis>("/dashboard/kpis", { params: { branchId } });
   return data;
 }
+
+export interface MaintenanceAlert {
+  id: string;
+  plateNumber: string;
+  make: string;
+  model: string;
+  nextMaintenanceAt: string | null;
+  nextInspectionAt: string | null;
+  currentDriver: { firstName: string; lastName: string } | null;
+  earliestDueAt: string;
+  urgency: "overdue" | "soon";
+}
+
+export async function getMaintenanceAlerts(branchId?: string) {
+  const { data } = await apiClient.get<MaintenanceAlert[]>("/dashboard/alerts", {
+    params: { branchId },
+  });
+  return data;
+}

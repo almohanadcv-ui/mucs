@@ -11,4 +11,9 @@ export class DashboardController {
   getKpis(@Query("branchId") branchId?: string) {
     return this.service.getKpis(branchId);
   }
+
+  @Get("alerts")
+  getAlerts(@Query("branchId") branchId?: string) {
+    return this.service.getMaintenanceAlerts(branchId);
+  }
 }

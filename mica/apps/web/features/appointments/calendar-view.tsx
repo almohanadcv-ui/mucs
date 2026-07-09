@@ -57,6 +57,20 @@ const TYPE_COLOR: Record<string, string> = {
   OTHER: "#6b7280",
 };
 
+/**
+ * Colour appointments by urgency, not type:
+ *  🟢 done · 🔴 overdue · 🟠 due within 7 days · 🔵 scheduled (future).
+ */
+function urgencyColor(appt: AppointmentItem): string {
+  if (appt.status === "COMPLETED") return "#22c55e";
+  if (appt.status === "CANCELLED" || appt.status === "NO_SHOW") return "#6b7280";
+  const start = new Date(appt.startAt).getTime();
+  const now = Date.now();
+  if (start < now) return "#ef4444"; // overdue
+  if (start - now <= 7 * 24 * 60 * 60 * 1000) return "#f59e0b"; // approaching
+  return "#3b82f6"; // scheduled
+}
+
 function computeRange(date: Date, view: View): { start: Date; end: Date } {
   switch (view) {
     case "month":
@@ -160,7 +174,7 @@ export function CalendarView() {
                 </div>
                 <span
                   className="rounded-sm px-2 py-1 text-[10px] font-medium text-white"
-                  style={{ backgroundColor: TYPE_COLOR[event.resource.type] ?? TYPE_COLOR.OTHER }}
+                  style={{ backgroundColor: urgencyColor(event.resource) }}
                 >
                   {t(`types.${event.resource.type}`)}
                 </span>
@@ -193,7 +207,7 @@ export function CalendarView() {
         onEventResize={handleEventDrop}
         style={{ height: 700 }}
         eventPropGetter={(event) => ({
-          style: { backgroundColor: TYPE_COLOR[event.resource.type] ?? TYPE_COLOR.OTHER },
+          style: { backgroundColor: urgencyColor(event.resource) },
         })}
       />
 

@@ -64,9 +64,20 @@ export const approvalDecisionSchema = z.object({
 });
 export type ApprovalDecisionInput = z.infer<typeof approvalDecisionSchema>;
 
+export const MAINTENANCE_REPORT_TYPES = ["PERIODIC_MAINTENANCE", "VEHICLE_FAULT"] as const;
+export type MaintenanceReportTypeValue = (typeof MAINTENANCE_REPORT_TYPES)[number];
+export const MAINTENANCE_REPORT_TYPE_LABELS: Record<
+  MaintenanceReportTypeValue,
+  { ar: string; en: string }
+> = {
+  PERIODIC_MAINTENANCE: { ar: "صيانة دورية", en: "Periodic maintenance" },
+  VEHICLE_FAULT: { ar: "عطل في المركبة", en: "Vehicle fault" },
+};
+
 export const createDriverReportSchema = z.object({
   vehicleId: z.string().min(1),
   description: z.string().min(1),
+  reportType: z.enum(MAINTENANCE_REPORT_TYPES).optional(),
 });
 export type CreateDriverReportInput = z.infer<typeof createDriverReportSchema>;
 

@@ -1,5 +1,6 @@
 import type {
   CreateMaintenanceRequestInput,
+  MaintenanceReportTypeValue,
   MaintenanceStatusValue,
   PaginatedResult,
   PaginationQuery,
@@ -13,6 +14,7 @@ export interface MaintenanceListItem {
   title: string;
   description: string;
   status: MaintenanceStatusValue;
+  reportType: MaintenanceReportTypeValue | null;
   priority: string;
   estimatedCost: string | null;
   actualCost: string | null;

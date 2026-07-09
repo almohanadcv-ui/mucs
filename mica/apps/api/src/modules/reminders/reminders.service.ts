@@ -20,10 +20,49 @@ export class RemindersService {
   @Cron(CronExpression.EVERY_DAY_AT_7AM)
   async runDailyReminders() {
     const result = await this.sendDueDateReminders();
+    const appts = await this.sendAppointmentReminders();
     this.logger.log(
-      `Due-date reminders: ${result.oil} oil-change, ${result.maintenance} maintenance notifications sent.`,
+      `Due-date reminders: ${result.oil} oil, ${result.maintenance} maintenance; appointment reminders: ${appts}.`,
     );
-    return result;
+    return { ...result, appointments: appts };
+  }
+
+  /**
+   * A day before a scheduled maintenance/inspection appointment, remind both the
+   * driver (via their user account) and the assigned technician. Runs from the
+   * daily cron; the ~26h window keeps it to roughly one reminder per appointment.
+   */
+  async sendAppointmentReminders(): Promise<number> {
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + 26 * 60 * 60 * 1000);
+
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        deletedAt: null,
+        status: { in: ["SCHEDULED", "CONFIRMED"] },
+        startAt: { gte: now, lte: windowEnd },
+      },
+      include: { vehicle: true, driver: { select: { userId: true } } },
+    });
+
+    let sent = 0;
+    for (const appt of appointments) {
+      const recipients = new Set<string>();
+      if (appt.driver?.userId) recipients.add(appt.driver.userId);
+      if (appt.assignedToId) recipients.add(appt.assignedToId);
+      if (recipients.size === 0) continue;
+
+      const when = appt.startAt.toLocaleString("ar-SA");
+      const plate = appt.vehicle?.plateNumber ?? "";
+      await this.fanOut([...recipients], {
+        type: "appointment.reminder",
+        title: appt.type === "INSPECTION" ? "تذكير: موعد فحص قريب" : "تذكير: موعد صيانة قريب",
+        body: `${appt.title} — ${plate} بتاريخ ${when}.`,
+        vehicleId: appt.vehicleId ?? "",
+      });
+      sent += 1;
+    }
+    return sent;
   }
 
   /** Notifies the workshop about oil-change / next-maintenance dates coming due
