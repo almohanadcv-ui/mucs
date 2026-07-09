@@ -15,6 +15,7 @@ type Field =
   | "nationalId"
   | "nationality"
   | "gender"
+  | "jobTitle"
   | "department"
   | "branch"
   | "directManager"
@@ -97,6 +98,50 @@ const NORM_HEADER_MAP: Map<string, Field> = new Map(
   Object.entries(HEADER_MAP).map(([k, v]) => [norm(k), v]),
 );
 
+/**
+ * Classify a (normalized) header by keyword tokens, so descriptive real-world
+ * titles map correctly — e.g. «الاسم كاملاً باللغة العربية» → name, «الإدارة
+ * المسؤولة 1» → branch, «المسمى الوظيفي» → jobTitle. Order matters: more
+ * specific rules come first (English name before Arabic name; nationality
+ * before gender; employee-no before job-title). Falls back to the exact map.
+ */
+function classifyHeader(h: string): Field | null {
+  const inc = (...t: string[]) => t.some((x) => h.includes(x));
+  const exact = NORM_HEADER_MAP.get(h);
+  if (exact) return exact;
+  if (!h) return null;
+
+  // Names
+  if (inc("اسم") && inc("انجليزي", "الانجليزيه", "لاتيني", "english", "en")) return "nameEn";
+  if (inc("اسم") && inc("عربي", "العربيه", "arabic")) return "name";
+  // Employee number (before job title — both mention «الوظيفي»)
+  if ((h.includes("الرقم") && h.includes("الوظيفي")) || inc("رقم الموظف", "employee no", "employee number", "emp no"))
+    return "employeeNo";
+  // Job title
+  if (inc("المسمي", "المنصب", "الدرجه الوظيفيه", "job title", "position")) return "jobTitle";
+  // Plain «الاسم» fallback (after the more specific name/no/title rules)
+  if (inc("الاسم", "اسم الموظف")) return "name";
+  // Identity
+  if (inc("الجنسيه", "nationality")) return "nationality";
+  if (inc("الجنس", "gender", "النوع")) return "gender";
+  if (inc("الهويه", "الهويه الوطنيه", "national id", "id number")) return "nationalId";
+  if (inc("البريد", "ايميل", "email", "e mail")) return "email";
+  // Org
+  if (inc("القسم", "department", "الوحده")) return "department";
+  if (inc("الاداره", "الفرع", "branch", "division")) return "branch";
+  if (inc("المدير", "المباشر", "manager", "supervisor")) return "directManager";
+  // Dates
+  if (inc("ميلاد", "birth")) return "birthDate";
+  if (inc("الانضمام", "الالتحاق", "المباشره", "join", "hire")) return "joinedAt";
+  const isStart = inc("بدايه", "start", "من تاريخ");
+  const isEnd = inc("نهايه", "انتهاء", "end", "الى تاريخ");
+  if (inc("تجريبيه", "التجربه", "probation")) return isEnd ? "probationEndDate" : "probationStartDate";
+  if (inc("العقد", "contract")) return isEnd ? "contractEndDate" : "contractStartDate";
+  // Status
+  if (inc("الحاله", "حاله الموظف", "status", "الوضع")) return "status";
+  return null;
+}
+
 function cellText(cell: ExcelJS.Cell): string {
   const v = cell.value;
   if (v == null) return "";
@@ -165,7 +210,7 @@ export async function importEmployeesFromExcel(
     row.eachCell((cell, col) => {
       const raw = cellText(cell);
       if (raw) texts.push(raw);
-      const field = NORM_HEADER_MAP.get(norm(raw));
+      const field = classifyHeader(norm(raw));
       if (field && ![...map.values()].includes(field)) map.set(col, field);
     });
     if (map.size > colToField.size) {
@@ -277,6 +322,7 @@ export async function importEmployeesFromExcel(
       nationalId: text("nationalId") || null,
       nationality: text("nationality") || null,
       gender: text("gender") || null,
+      jobTitle: text("jobTitle") || null,
       directManager: text("directManager") || null,
       status,
       branchId: branchId ?? undefined,
