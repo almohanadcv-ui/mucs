@@ -29,11 +29,19 @@ type Field =
 /** Header text (normalized) → field. Supports Arabic + common English. */
 const HEADER_MAP: Record<string, Field> = {
   "الرقم الوظيفي": "employeeNo",
+  "رقم الموظف": "employeeNo",
+  "الرقم": "employeeNo",
   "employee no": "employeeNo",
   "employee number": "employeeNo",
+  "emp no": "employeeNo",
   "الاسم العربي": "name",
+  "اسم الموظف": "name",
+  "الاسم الكامل": "name",
+  "الاسم عربي": "name",
+  "الاسم بالعربي": "name",
   الاسم: "name",
   name: "name",
+  "arabic name": "name",
   "الاسم الإنجليزي": "nameEn",
   "name en": "nameEn",
   "البريد الإلكتروني": "email",
@@ -66,12 +74,28 @@ const HEADER_MAP: Record<string, Field> = {
   status: "status",
 };
 
+/** Normalize header/status text so matching survives Arabic spelling variants:
+ *  strips diacritics + tatweel, unifies alef/ya/ta-marbuta/hamza, collapses
+ *  whitespace. So "الإسم العربى" == "الاسم العربي". */
 function norm(v: unknown): string {
   return String(v ?? "")
+    .replace(/[ً-ْٰـ]/g, "") // tashkeel + superscript alef + tatweel
+    .replace(/[أإآٱ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/ء/g, "")
+    .replace(/ة/g, "ه")
+    .replace(/[_\-.]/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
+
+/** HEADER_MAP keyed by normalized header text (built once). */
+const NORM_HEADER_MAP: Map<string, Field> = new Map(
+  Object.entries(HEADER_MAP).map(([k, v]) => [norm(k), v]),
+);
 
 function cellText(cell: ExcelJS.Cell): string {
   const v = cell.value;
@@ -95,10 +119,10 @@ function toDate(cell: ExcelJS.Cell | undefined): Date | null {
 }
 
 function mapStatus(raw: string): EmployeeStatus | "SKIP" {
-  const s = norm(raw);
+  const s = norm(raw); // already alef/ya/ta-marbuta normalized
   if (!s) return EmployeeStatus.ACTIVE;
-  if (s.includes("غير نشط") || s === "inactive" || s.includes("inactive")) return "SKIP";
-  if (s.includes("إجاز") || s.includes("اجاز") || s.includes("leave")) return EmployeeStatus.ON_LEAVE;
+  if (s.includes("غير نشط") || s.includes("inactive")) return "SKIP";
+  if (s.includes("اجاز") || s.includes("leave")) return EmployeeStatus.ON_LEAVE;
   if (s.includes("منتهي") || s.includes("terminat")) return EmployeeStatus.TERMINATED;
   return EmployeeStatus.ACTIVE;
 }
@@ -127,15 +151,35 @@ export async function importEmployeesFromExcel(
   const ws = wb.worksheets[0];
   if (!ws) throw AppError.validation("الملف لا يحتوي على أي ورقة عمل");
 
-  // Build a column-index → field map from the header row.
-  const colToField = new Map<number, Field>();
-  const headerRow = ws.getRow(1);
-  headerRow.eachCell((cell, col) => {
-    const field = HEADER_MAP[norm(cellText(cell))];
-    if (field) colToField.set(col, field);
-  });
-  if (![...colToField.values()].includes("employeeNo") || ![...colToField.values()].includes("name")) {
-    throw AppError.validation("يجب أن يحتوي الملف على عمودي «الرقم الوظيفي» و«الاسم العربي» على الأقل");
+  // Find the header row: scan the first few rows (the real header isn't always
+  // row 1 — files often have a title/logo row on top) and keep the row that
+  // matches the most known columns.
+  let colToField = new Map<number, Field>();
+  let headerRowIdx = 1;
+  let seenHeaders: string[] = [];
+  const scanUpto = Math.min(8, ws.rowCount);
+  for (let r = 1; r <= scanUpto; r++) {
+    const row = ws.getRow(r);
+    const map = new Map<number, Field>();
+    const texts: string[] = [];
+    row.eachCell((cell, col) => {
+      const raw = cellText(cell);
+      if (raw) texts.push(raw);
+      const field = NORM_HEADER_MAP.get(norm(raw));
+      if (field && ![...map.values()].includes(field)) map.set(col, field);
+    });
+    if (map.size > colToField.size) {
+      colToField = map;
+      headerRowIdx = r;
+      seenHeaders = texts;
+    }
+  }
+  const fields = [...colToField.values()];
+  if (!fields.includes("employeeNo") || !fields.includes("name")) {
+    const preview = seenHeaders.slice(0, 12).join("، ") || "لا شيء";
+    throw AppError.validation(
+      `تعذّر التعرّف على أعمدة «الرقم الوظيفي» و«الاسم العربي». الأعمدة المقروءة: ${preview}. تأكد أن صف العناوين يحتوي هذين العمودين.`,
+    );
   }
 
   const result: ImportResult = {
@@ -200,7 +244,7 @@ export async function importEmployeesFromExcel(
   };
 
   const rowCount = ws.rowCount;
-  for (let r = 2; r <= rowCount; r++) {
+  for (let r = headerRowIdx + 1; r <= rowCount; r++) {
     const row = ws.getRow(r);
     const get = (field: Field): ExcelJS.Cell | undefined => {
       for (const [col, f] of colToField) if (f === field) return row.getCell(col);
