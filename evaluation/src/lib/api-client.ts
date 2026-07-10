@@ -22,9 +22,27 @@ export class ApiError extends Error {
   }
 }
 
+// Single-flight access-token refresh: the access token is short-lived (15m),
+// so when a request 401s we transparently refresh once and retry. Concurrent
+// 401s share one refresh call instead of stampeding the endpoint.
+let refreshing: Promise<boolean> | null = null;
+async function refreshSession(): Promise<boolean> {
+  if (!refreshing) {
+    refreshing = fetch("/api/auth/refresh", { method: "POST" })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        // Release on next tick so racing callers reuse this result.
+        setTimeout(() => (refreshing = null), 0);
+      });
+  }
+  return refreshing;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
+  retried = false,
 ): Promise<T> {
   const res = await fetch(path, {
     ...options,
@@ -33,6 +51,11 @@ async function request<T>(
       ...(options.headers ?? {}),
     },
   });
+
+  // Access token expired mid-session → refresh once and retry the request.
+  if (res.status === 401 && !retried && !path.startsWith("/api/auth/")) {
+    if (await refreshSession()) return request<T>(path, options, true);
+  }
 
   // 204 / empty
   const text = await res.text();
