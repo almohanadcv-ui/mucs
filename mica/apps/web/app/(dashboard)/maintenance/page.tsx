@@ -1,142 +1,215 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import {
+  MAINTENANCE_STATUSES,
+  MAINTENANCE_STATUS_LABELS,
+  MAINTENANCE_PRIORITY_META,
   MAINTENANCE_REPORT_TYPE_LABELS,
+  type MaintenancePriorityValue,
   type MaintenanceReportTypeValue,
-  type MaintenanceStatusValue,
 } from "@mica-mab/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermission } from "@/lib/auth/use-permission";
 import { listMaintenanceRequests } from "@/features/maintenance/api";
 import { StatusMoveMenu } from "@/features/maintenance/status-move-menu";
 
-const COLUMNS: MaintenanceStatusValue[] = [
-  "DRAFT",
-  "REPORTED",
-  "PENDING_APPROVAL",
-  "APPROVED",
-  "SCHEDULED",
-  "ASSIGNED",
-  "IN_PROGRESS",
-  "WAITING_PARTS",
-  "QUALITY_INSPECTION",
-  "COMPLETED",
-  "DELIVERED",
-  "REJECTED",
-  "CANCELLED",
-];
-
-const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  LOW: "outline",
-  MEDIUM: "secondary",
-  HIGH: "default",
-  CRITICAL: "destructive",
-};
-
 export default function MaintenancePage() {
   const canCreate = usePermission("maintenance:create");
   const t = useTranslations("maintenance");
+  const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<MaintenanceReportTypeValue | "ALL">("ALL");
+  const [priorityFilter, setPriorityFilter] = useState<MaintenancePriorityValue | "ALL">("ALL");
+  const [technicianFilter, setTechnicianFilter] = useState("ALL");
+  const [showEmpty, setShowEmpty] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["maintenance"],
-    queryFn: () => listMaintenanceRequests({ page: 1, pageSize: 100 }),
+    queryFn: () => listMaintenanceRequests({ page: 1, pageSize: 200 }),
   });
 
-  const filtered =
-    typeFilter === "ALL"
-      ? data?.items
-      : data?.items.filter((i) => i.reportType === typeFilter);
+  const technicians = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const i of data?.items ?? []) {
+      if (i.assignedTo) map.set(i.assignedTo.id, `${i.assignedTo.firstName} ${i.assignedTo.lastName}`);
+    }
+    return [...map.entries()];
+  }, [data]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (data?.items ?? []).filter((i) => {
+      if (typeFilter !== "ALL" && i.reportType !== typeFilter) return false;
+      if (priorityFilter !== "ALL" && i.priority !== priorityFilter) return false;
+      if (technicianFilter !== "ALL" && i.assignedTo?.id !== technicianFilter) return false;
+      if (
+        q &&
+        !`${i.requestNumber} ${i.title} ${i.vehicle?.plateNumber ?? ""}`.toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [data, search, typeFilter, priorityFilter, technicianFilter]);
+
+  const columns = MAINTENANCE_STATUSES.map((status) => ({
+    status,
+    items: filtered.filter((i) => i.status === status),
+  })).filter((c) => showEmpty || c.items.length > 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4" dir="rtl">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-          <p className="text-muted-foreground">{t("subtitle")}</p>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as MaintenanceReportTypeValue | "ALL")}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-          >
-            <option value="ALL">كل الأنواع</option>
-            <option value="PERIODIC_MAINTENANCE">صيانة دورية</option>
-            <option value="VEHICLE_FAULT">عطل في المركبة</option>
-          </select>
-          {canCreate && (
-            <Button asChild>
-              <Link href="/maintenance/new">{t("newRequest")}</Link>
-            </Button>
-          )}
-        </div>
+        {canCreate && (
+          <Button asChild>
+            <Link href="/maintenance/new">{t("newRequest")}</Link>
+          </Button>
+        )}
+      </div>
+
+      {/* Search + filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="بحث برقم الطلب أو العنوان أو اللوحة…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-9 max-w-xs"
+        />
+        <FilterSelect value={typeFilter} onChange={(v) => setTypeFilter(v as never)}>
+          <option value="ALL">كل الأنواع</option>
+          <option value="PERIODIC_MAINTENANCE">صيانة دورية</option>
+          <option value="VEHICLE_FAULT">عطل في المركبة</option>
+        </FilterSelect>
+        <FilterSelect value={priorityFilter} onChange={(v) => setPriorityFilter(v as never)}>
+          <option value="ALL">كل الأولويات</option>
+          {(Object.keys(MAINTENANCE_PRIORITY_META) as MaintenancePriorityValue[]).map((p) => (
+            <option key={p} value={p}>
+              {MAINTENANCE_PRIORITY_META[p].label}
+            </option>
+          ))}
+        </FilterSelect>
+        <FilterSelect value={technicianFilter} onChange={setTechnicianFilter}>
+          <option value="ALL">كل الفنيين</option>
+          {technicians.map(([id, name]) => (
+            <option key={id} value={id}>
+              {name}
+            </option>
+          ))}
+        </FilterSelect>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={showEmpty}
+            onChange={(e) => setShowEmpty(e.target.checked)}
+          />
+          إظهار الأعمدة الفارغة
+        </label>
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-32 w-full" />
+        <div className="flex gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 w-64" />
           ))}
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {COLUMNS.map((status) => {
-            const items = filtered?.filter((item) => item.status === status) ?? [];
-            return (
-              <div key={status} className="w-72 shrink-0 space-y-3">
-                <div className="flex items-center justify-between px-1">
-                  <h2 className="text-sm font-semibold">{status.replace(/_/g, " ")}</h2>
-                  <Badge variant="secondary">{items.length}</Badge>
-                </div>
-                <div className="space-y-2">
-                  {items.map((item) => (
-                    <Card key={item.id}>
-                      <CardHeader className="p-3 pb-0">
-                        <Link href={`/maintenance/${item.id}`} className="text-sm font-medium hover:underline">
-                          {item.requestNumber}
-                        </Link>
-                        <p className="text-xs text-muted-foreground">{item.title}</p>
-                        {item.reportType && (
-                          <Badge
-                            variant={item.reportType === "VEHICLE_FAULT" ? "destructive" : "secondary"}
-                            className="mt-1 w-fit text-[10px]"
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {columns.map(({ status, items }) => (
+            <div key={status} className="w-64 shrink-0 space-y-2">
+              <div className="flex items-center justify-between rounded-md bg-muted/60 px-3 py-1.5">
+                <h2 className="text-xs font-semibold">{MAINTENANCE_STATUS_LABELS[status]}</h2>
+                <Badge variant="secondary" className="h-5 min-w-5 justify-center text-[10px]">
+                  {items.length}
+                </Badge>
+              </div>
+              <div className="space-y-2">
+                {items.map((item) => {
+                  const pr = MAINTENANCE_PRIORITY_META[item.priority as MaintenancePriorityValue];
+                  return (
+                    <Card key={item.id} className="border-muted">
+                      <CardContent className="space-y-1.5 p-2.5 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <Link
+                            href={`/maintenance/${item.id}`}
+                            className="font-medium text-primary hover:underline"
                           >
-                            {MAINTENANCE_REPORT_TYPE_LABELS[item.reportType].ar}
-                          </Badge>
-                        )}
-                      </CardHeader>
-                      <CardContent className="space-y-2 p-3 pt-2">
-                        <div className="flex items-center justify-between">
-                          <Badge variant={PRIORITY_VARIANT[item.priority] ?? "secondary"} className="text-[10px]">
-                            {item.priority}
-                          </Badge>
-                          {item.vehicle && (
-                            <span className="text-xs text-muted-foreground">
-                              {item.vehicle.plateNumber}
+                            {item.requestNumber}
+                          </Link>
+                          {pr && (
+                            <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                              <span
+                                className="inline-block size-2 rounded-full"
+                                style={{ backgroundColor: pr.dot }}
+                              />
+                              {pr.label}
                             </span>
                           )}
                         </div>
+                        <p className="line-clamp-1 text-foreground/80">{item.title}</p>
+                        {item.vehicle && (
+                          <p className="text-muted-foreground">
+                            {item.vehicle.make} {item.vehicle.model}
+                            <span className="mx-1">·</span>
+                            <span dir="ltr">{item.vehicle.plateNumber}</span>
+                          </p>
+                        )}
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          {item.reportType && (
+                            <span>{MAINTENANCE_REPORT_TYPE_LABELS[item.reportType].ar}</span>
+                          )}
+                          <span>{new Date(item.createdAt).toLocaleDateString("ar-SA")}</span>
+                        </div>
+                        {item.assignedTo && (
+                          <p className="text-[10px] text-muted-foreground">
+                            الفني: {item.assignedTo.firstName} {item.assignedTo.lastName}
+                          </p>
+                        )}
                         <StatusMoveMenu requestId={item.id} currentStatus={item.status} />
                       </CardContent>
                     </Card>
-                  ))}
-                  {items.length === 0 && (
-                    <p className="px-1 text-xs text-muted-foreground">{t("emptyStatus")}</p>
-                  )}
-                </div>
+                  );
+                })}
+                {items.length === 0 && (
+                  <p className="px-1 text-[11px] text-muted-foreground">{t("emptyStatus")}</p>
+                )}
               </div>
-            );
-          })}
+            </div>
+          ))}
+          {columns.length === 0 && (
+            <p className="text-sm text-muted-foreground">لا توجد طلبات مطابقة.</p>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+    >
+      {children}
+    </select>
   );
 }

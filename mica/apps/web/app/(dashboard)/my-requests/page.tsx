@@ -23,8 +23,8 @@ import { attachmentFileUrl, listAttachments } from "@/features/media/api";
 export default function MyRequestsPage() {
   const t = useTranslations("myRequests");
   const { data, isLoading } = useQuery({
-    queryKey: ["maintenance", { status: "REPORTED" }],
-    queryFn: () => listMaintenanceRequests({ page: 1, pageSize: 100, status: "REPORTED" }),
+    queryKey: ["maintenance", { status: "PENDING_APPROVAL" }],
+    queryFn: () => listMaintenanceRequests({ page: 1, pageSize: 100, status: "PENDING_APPROVAL" }),
   });
 
   return (

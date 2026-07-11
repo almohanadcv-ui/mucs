@@ -133,9 +133,9 @@ export class MaintenanceService {
   }
 
   /**
-   * Driver-submitted issue reports skip the cost-tier approval chain
-   * entirely (they land straight in the mechanic's inbox as REPORTED) —
-   * unlike create(), which always routes through workflow.startApprovalForRequest.
+   * Driver-submitted issue reports enter the standard flow awaiting approval
+   * (PENDING_APPROVAL) so management can approve before work starts — unlike
+   * create(), which routes through workflow.startApprovalForRequest.
    */
   async createDriverReport(dto: CreateDriverReportInput, driverUserId: string, driverName: string) {
     const requestNumber = await this.generateRequestNumber();
@@ -155,7 +155,7 @@ export class MaintenanceService {
         priority: "MEDIUM",
         source: "DRIVER_REPORT",
         reportType: dto.reportType,
-        status: "REPORTED",
+        status: "PENDING_APPROVAL",
         reportedById: driverUserId,
         createdById: driverUserId,
       },

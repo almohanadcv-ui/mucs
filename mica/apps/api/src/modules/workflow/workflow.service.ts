@@ -56,10 +56,10 @@ export class WorkflowService {
       throw new ForbiddenException(`Missing permission: ${rule.permission}`);
     }
 
-    // Driver-report tickets have no mechanic assigned yet while REPORTED —
-    // whoever starts the work becomes the assignee.
+    // Whoever starts the work (moves it to In-progress) becomes the assignee if
+    // none was set yet.
     const assignOnTransition =
-      request.status === "REPORTED" && !request.assignedToId ? actingUserId : undefined;
+      toStatus === "IN_PROGRESS" && !request.assignedToId ? actingUserId : undefined;
 
     const updated = await this.applyTransition(
       request.id,
@@ -175,16 +175,17 @@ export class WorkflowService {
     });
 
     if (decision === "REJECTED") {
+      // Simplified flow has no "Rejected" state — a rejected request is cancelled.
       await this.applyTransition(
         requestId,
         "PENDING_APPROVAL",
-        "REJECTED",
-        `Rejected at approval level ${level}${comment ? `: ${comment}` : ""}`,
+        "CANCELLED",
+        `مرفوض عند مستوى الاعتماد ${level}${comment ? `: ${comment}` : ""}`,
         actingUserId,
       );
       await this.updateLinkedAppointment(requestId, "CANCELLED");
       await this.notifyReporter(request, "rejected", comment);
-      return { requestStatus: "REJECTED" as MaintenanceStatus };
+      return { requestStatus: "CANCELLED" as MaintenanceStatus };
     }
 
     const remainingPending = await this.prisma.maintenanceApproval.findFirst({

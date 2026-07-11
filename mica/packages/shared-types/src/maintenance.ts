@@ -1,24 +1,40 @@
 import { z } from "zod";
 
+// Simplified workflow: Draft → Pending approval → Approved → In progress →
+// Completed → Delivered, with Cancelled reachable from any active state.
 export const MAINTENANCE_STATUSES = [
   "DRAFT",
-  "REPORTED",
   "PENDING_APPROVAL",
   "APPROVED",
-  "REJECTED",
-  "SCHEDULED",
-  "ASSIGNED",
   "IN_PROGRESS",
-  "WAITING_PARTS",
-  "QUALITY_INSPECTION",
   "COMPLETED",
   "DELIVERED",
   "CANCELLED",
 ] as const;
 export type MaintenanceStatusValue = (typeof MAINTENANCE_STATUSES)[number];
 
+export const MAINTENANCE_STATUS_LABELS: Record<MaintenanceStatusValue, string> = {
+  DRAFT: "مسودة",
+  PENDING_APPROVAL: "بانتظار الاعتماد",
+  APPROVED: "تم الاعتماد",
+  IN_PROGRESS: "جاري التنفيذ",
+  COMPLETED: "مكتمل",
+  DELIVERED: "تم التسليم",
+  CANCELLED: "ملغي",
+};
+
 export const MAINTENANCE_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
 export type MaintenancePriorityValue = (typeof MAINTENANCE_PRIORITIES)[number];
+
+export const MAINTENANCE_PRIORITY_META: Record<
+  MaintenancePriorityValue,
+  { label: string; dot: string }
+> = {
+  LOW: { label: "منخفضة", dot: "#22c55e" },
+  MEDIUM: { label: "متوسطة", dot: "#f59e0b" },
+  HIGH: { label: "عالية", dot: "#ef4444" },
+  CRITICAL: { label: "حرجة", dot: "#a855f7" },
+};
 
 export const MAINTENANCE_SOURCES = ["INTERNAL", "DRIVER_REPORT"] as const;
 export type MaintenanceSourceValue = (typeof MAINTENANCE_SOURCES)[number];
