@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { EntityType, NotificationChannel } from "@prisma/client";
 import type {
   CreateDriverReportInput,
@@ -202,7 +202,22 @@ export class MaintenanceService {
   }
 
   async remove(id: string, actingUserId: string): Promise<void> {
-    await this.findById(id);
+    const request = await this.findById(id);
+
+    // Technical Support may delete a request in any state; everyone else (the
+    // Mechanic) only while it's still a Draft or awaiting approval — once
+    // approved/in-progress it can be edited but not deleted.
+    const isSuperAdmin =
+      (await this.prisma.userRole.count({
+        where: { userId: actingUserId, role: { name: "Technical Support" } },
+      })) > 0;
+    const deletableByMechanic = ["DRAFT", "PENDING_APPROVAL"];
+    if (!isSuperAdmin && !deletableByMechanic.includes(request.status)) {
+      throw new ForbiddenException(
+        "لا يمكن حذف الطلب بعد اعتماده أو بدء تنفيذه — يمكنك تعديله فقط",
+      );
+    }
+
     await this.prisma.maintenanceRequest.update({
       where: { id },
       data: { deletedAt: new Date(), updatedById: actingUserId },

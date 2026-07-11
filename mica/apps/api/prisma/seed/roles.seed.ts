@@ -61,7 +61,7 @@ const ROLE_BUNDLES: RoleBundle[] = [
       (def.resource === "users" && ["view", "invite"].includes(def.action)) ||
       (def.resource === "media" && ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "maintenance" &&
-        ["view", "create", "update", "transition", "comment"].includes(def.action)) ||
+        ["view", "create", "update", "transition", "comment", "delete"].includes(def.action)) ||
       (def.resource === "invoices" && ["view", "create", "update"].includes(def.action)) ||
       (def.resource === "spare-parts" && ["view", "create", "update"].includes(def.action)) ||
       (def.resource === "appointments" && ["view", "create", "update"].includes(def.action)) ||

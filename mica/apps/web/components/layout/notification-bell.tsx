@@ -17,11 +17,25 @@ import {
 import {
   listNotifications,
   markNotificationRead,
+  markAllNotificationsRead,
   unreadNotificationCount,
   type NotificationItem,
 } from "@/features/notifications/api";
 import { useNotificationSocket } from "@/lib/notifications/use-notification-socket";
 import { useSession } from "@/lib/auth/session-context";
+
+/** Route a notification to the exact entity it's about, by payload/type. */
+function notificationHref(n: NotificationItem, isDriver: boolean): string | null {
+  const p = n.payload ?? {};
+  if (typeof p.maintenanceRequestId === "string")
+    return isDriver ? `/driver/reports/${p.maintenanceRequestId}` : `/maintenance/${p.maintenanceRequestId}`;
+  if (typeof p.invoiceId === "string") return "/invoices";
+  if (n.type?.startsWith("appointment")) return "/appointments";
+  if (typeof p.photoRequestId === "string") return isDriver ? "/driver/photo-requests" : "/vehicles";
+  if (typeof p.vehicleId === "string") return isDriver ? "/driver/vehicles" : `/vehicles/${p.vehicleId}`;
+  if (n.type?.startsWith("vehicle")) return isDriver ? "/driver/vehicles" : "/vehicles";
+  return null;
+}
 
 export function NotificationBell() {
   useNotificationSocket();
@@ -45,13 +59,15 @@ export function NotificationBell() {
     mutationFn: markNotificationRead,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
   });
+  const markAllMutation = useMutation({
+    mutationFn: markAllNotificationsRead,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notifications"] }),
+  });
 
   const handleClick = (notification: NotificationItem) => {
     if (!notification.readAt) markReadMutation.mutate(notification.id);
-    const requestId = notification.payload?.maintenanceRequestId;
-    if (typeof requestId === "string") {
-      router.push(isDriver ? `/driver/reports/${requestId}` : `/maintenance/${requestId}`);
-    }
+    const href = notificationHref(notification, isDriver);
+    if (href) router.push(href);
   };
 
   return (
@@ -70,10 +86,24 @@ export function NotificationBell() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
-        <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+        <DropdownMenuLabel className="flex items-center justify-between">
+          <span>الإشعارات</span>
+          {!!unreadCount && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                markAllMutation.mutate();
+              }}
+              className="text-xs font-normal text-primary hover:underline"
+            >
+              تحديد الكل كمقروء
+            </button>
+          )}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {!data?.items.length && (
-          <p className="px-2 py-4 text-center text-sm text-muted-foreground">No notifications</p>
+          <p className="px-2 py-4 text-center text-sm text-muted-foreground">لا توجد إشعارات</p>
         )}
         {data?.items.map((notification) => (
           <DropdownMenuItem
@@ -90,7 +120,7 @@ export function NotificationBell() {
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href="/notifications" className="w-full text-center text-sm">
-            View all
+            عرض جميع الإشعارات
           </Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
