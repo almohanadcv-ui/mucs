@@ -8,6 +8,7 @@ import {
   type MaintenanceReportTypeValue,
 } from "@mica-mab/shared-types";
 import { Button } from "@/components/ui/button";
+import { formatSAR } from "@/lib/currency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getVehicle } from "@/features/vehicles/api";
@@ -64,7 +65,7 @@ export default function VehicleReportPage() {
     ["إجمالي البلاغات", items.length],
     ["بلاغات صيانة دورية", periodic],
     ["بلاغات أعطال", faults],
-    ["إجمالي التكلفة", totalCost ? `${totalCost.toLocaleString()} ريال` : "—"],
+    ["إجمالي التكلفة", totalCost ? formatSAR(totalCost) : "—"],
   ];
 
   const exportExcel = () => {

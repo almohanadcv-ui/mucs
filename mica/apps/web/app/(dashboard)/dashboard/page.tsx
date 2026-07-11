@@ -23,6 +23,8 @@ import { useSession } from "@/lib/auth/session-context";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { vehicleStatusLabel } from "@/lib/vehicle-status";
 import { getDashboardKpis, getMaintenanceAlerts } from "@/features/dashboard/api";
+import { usePermission } from "@/lib/auth/use-permission";
+import { formatSAR } from "@/lib/currency";
 
 const CHART_COLORS = ["#3b82f6", "#f59e0b", "#ef4444", "#22c55e", "#8b5cf6", "#06b6d4", "#eab308"];
 
@@ -30,6 +32,7 @@ export default function DashboardPage() {
   const { user } = useSession();
   const t = useTranslations("dashboard");
   const { locale } = useLocale();
+  const isManager = usePermission("invoices:approve");
 
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard", "kpis"],
@@ -108,7 +111,9 @@ export default function DashboardPage() {
             <KpiCard
               icon={DollarSign}
               label={t("maintenanceCostThisMonth")}
-              value={Number(data?.monthlyMaintenanceCost ?? 0).toLocaleString()}
+              value={formatSAR(
+                isManager ? data?.monthlyApprovedInvoiceCost : data?.monthlyMaintenanceCost,
+              )}
             />
           </div>
 

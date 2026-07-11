@@ -84,6 +84,7 @@ export class DashboardService {
       oilChangeDueSoon,
       maintenanceDueSoon,
       monthlyCost,
+      monthlyInvoiceCost,
       totalVehicles,
       totalDrivers,
     ] = await Promise.all([
@@ -150,6 +151,11 @@ export class DashboardService {
         },
         _sum: { actualCost: true },
       }),
+      // Management-facing spend: approved invoices this month only.
+      this.prisma.invoice.aggregate({
+        where: { deletedAt: null, status: "ACCEPTED", createdAt: { gte: startOfMonth } },
+        _sum: { amount: true },
+      }),
       this.prisma.vehicle.count({ where: { deletedAt: null, ...branchFilter } }),
       this.prisma.driver.count({ where: { deletedAt: null, ...branchFilter } }),
     ]);
@@ -172,6 +178,7 @@ export class DashboardService {
       oilChangeDueSoon,
       maintenanceDueSoon,
       monthlyMaintenanceCost: monthlyCost._sum.actualCost ?? 0,
+      monthlyApprovedInvoiceCost: monthlyInvoiceCost._sum.amount ?? 0,
     };
   }
 }

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isAxiosError } from "axios";
 import { useTranslations } from "next-intl";
+import { formatSAR } from "@/lib/currency";
 import { INVOICE_STATUS_LABELS, type InvoiceStatusValue } from "@mica-mab/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -121,7 +122,7 @@ export default function InvoicesPage() {
                 <TableCell className="font-medium">
                   {invoice.vehicle?.plateNumber ?? "—"}
                 </TableCell>
-                <TableCell>{Number(invoice.amount).toLocaleString()}</TableCell>
+                <TableCell>{formatSAR(invoice.amount)}</TableCell>
                 <TableCell>{invoice.workshopName ?? "—"}</TableCell>
                 <TableCell className="text-muted-foreground">
                   {invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString() : "—"}

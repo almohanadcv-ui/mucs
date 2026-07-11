@@ -42,16 +42,16 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/organization", label: "الهيكل التنظيمي", icon: Building2, permission: "branches:view" },
   { href: "/my-requests", labelKey: "myRequests", icon: Inbox, permission: "maintenance:view" },
   { href: "/maintenance", labelKey: "maintenance", icon: Wrench, permission: "maintenance:view" },
-  { href: "/spare-parts", labelKey: "spareParts", icon: Cog, permission: "spare-parts:view" },
   { href: "/appointments", labelKey: "appointments", icon: Calendar, permission: "appointments:view" },
   { href: "/reports", labelKey: "reports", icon: BarChart3, permission: "reports:view" },
+  { href: "/spare-parts", labelKey: "spareParts", icon: Cog, permission: "spare-parts:view" },
   { href: "/users", labelKey: "users", icon: Users, permission: "users:view" },
+  { href: "/audit", label: "سجل الأحداث", icon: History, permission: "audit-log:view" },
   { href: "/roles", labelKey: "roles", icon: ShieldCheck, permission: "roles:view" },
   { href: "/settings", labelKey: "settings", icon: Settings, permission: "settings:view" },
   { href: "/api-keys", labelKey: "apiKeys", icon: KeyRound, permission: "api-keys:view" },
   { href: "/webhooks", labelKey: "webhooks", icon: Webhook, permission: "webhooks:view" },
   { href: "/backups", labelKey: "backups", icon: DatabaseBackup, permission: "backups:view" },
-  { href: "/audit", label: "سجل الأحداث", icon: History, permission: "audit-log:view" },
   { href: "/trash", labelKey: "trash", icon: Trash2, permission: "vehicles:delete" },
 ];
 

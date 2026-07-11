@@ -61,6 +61,14 @@ const TYPE_COLOR: Record<string, string> = {
  * Colour appointments by urgency, not type:
  *  🟢 done · 🔴 overdue · 🟠 due within 7 days · 🔵 scheduled (future).
  */
+const APPOINTMENT_STATUS_LABEL: Record<string, string> = {
+  SCHEDULED: "مجدول",
+  CONFIRMED: "مؤكد",
+  COMPLETED: "منجز",
+  CANCELLED: "ملغى",
+  NO_SHOW: "لم يحضر",
+};
+
 function urgencyColor(appt: AppointmentItem): string {
   if (appt.status === "COMPLETED") return "#22c55e";
   if (appt.status === "CANCELLED" || appt.status === "NO_SHOW") return "#6b7280";
@@ -150,6 +158,9 @@ export function CalendarView() {
   };
 
   const handleSelectSlot = (slotInfo: SlotInfo) => {
+    // Focus the clicked day so the "day appointments" panel shows its events…
+    setDate(slotInfo.start);
+    // …and (with permission) offer to create a new appointment on that slot.
     if (!canCreate) return;
     setSlot({ start: slotInfo.start, end: slotInfo.end });
     setDialogOpen(true);
@@ -163,31 +174,47 @@ export function CalendarView() {
           <span className="text-xs text-muted-foreground">{format(date, "PP")}</span>
         </div>
         <div className="grid gap-2 md:grid-cols-2">
-          {selectedDayEvents.map((event) => (
-            <div key={event.id} className="rounded-md border bg-background p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">{event.title}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {format(event.start, "p")} - {format(event.end, "p")}
-                  </p>
+          {selectedDayEvents.map((event) => {
+            const a = event.resource;
+            return (
+              <div key={event.id} className="rounded-md border bg-background p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{event.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {format(event.start, "p")} - {format(event.end, "p")}
+                    </p>
+                  </div>
+                  <span
+                    className="rounded-sm px-2 py-1 text-[10px] font-medium text-white"
+                    style={{ backgroundColor: urgencyColor(a) }}
+                  >
+                    {t(`types.${a.type}`)}
+                  </span>
                 </div>
-                <span
-                  className="rounded-sm px-2 py-1 text-[10px] font-medium text-white"
-                  style={{ backgroundColor: urgencyColor(event.resource) }}
-                >
-                  {t(`types.${event.resource.type}`)}
-                </span>
+                <dl className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                  {a.vehicle && (
+                    <div>
+                      <span className="text-foreground/70">المركبة: </span>
+                      {a.vehicle.name ?? `${a.vehicle.make} ${a.vehicle.model}`}
+                      <span className="mx-1">·</span>
+                      <span dir="ltr">{a.vehicle.plateNumber}</span>
+                    </div>
+                  )}
+                  {a.assignedTo && (
+                    <div>
+                      <span className="text-foreground/70">الفني: </span>
+                      {a.assignedTo.firstName} {a.assignedTo.lastName}
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-foreground/70">الحالة: </span>
+                    {APPOINTMENT_STATUS_LABEL[a.status] ?? a.status}
+                  </div>
+                </dl>
               </div>
-              {event.resource.vehicle && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {event.resource.vehicle.plateNumber} -{" "}
-                  {event.resource.vehicle.name ??
-                    `${event.resource.vehicle.make} ${event.resource.vehicle.model}`}
-                </p>
-              )}
-            </div>
-          ))}
+            );
+          })}
           {selectedDayEvents.length === 0 && (
             <p className="text-sm text-muted-foreground">{t("noTasksForDay")}</p>
           )}

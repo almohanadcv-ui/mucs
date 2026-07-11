@@ -15,6 +15,7 @@ export interface DashboardKpis {
   oilChangeDueSoon: number;
   maintenanceDueSoon: number;
   monthlyMaintenanceCost: number;
+  monthlyApprovedInvoiceCost: number;
 }
 
 export async function getDashboardKpis(branchId?: string) {
