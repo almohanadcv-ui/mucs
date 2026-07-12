@@ -45,7 +45,7 @@ export function Topbar({
         size="icon"
         className="lg:hidden"
         onClick={onMenuClick}
-        aria-label="Open menu"
+        aria-label="فتح القائمة"
       >
         <Menu className="size-5" />
       </Button>
@@ -69,7 +69,7 @@ export function Topbar({
           variant="ghost"
           size="icon"
           onClick={() => setLocale(locale === "en" ? "ar" : "en")}
-          aria-label="Toggle language"
+          aria-label="تغيير اللغة"
           title={locale === "en" ? "العربية" : "English"}
         >
           <Languages className="size-4" />
