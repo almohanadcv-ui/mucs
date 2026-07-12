@@ -16,10 +16,8 @@ export const PHOTO_SLOT_GROUPS: { title: string; slots: { key: string; label: st
     title: "الصور الداخلية",
     slots: [
       { key: "INT_DASHBOARD", label: "لوحة القيادة" },
-      { key: "INT_STEERING", label: "المقود" },
       { key: "INT_FRONT_SEATS", label: "المقاعد الأمامية" },
       { key: "INT_BACK_SEATS", label: "المقاعد الخلفية" },
-      { key: "INT_GLOVEBOX", label: "الطبلون" },
     ],
   },
   {

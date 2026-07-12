@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isAxiosError } from "axios";
-import { ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   attachmentFileUrl,
@@ -116,25 +116,49 @@ export function VehicleGallery({
                       </div>
                     ))}
                     {canManage && (
-                      <label className="flex aspect-square cursor-pointer items-center justify-center rounded border border-dashed text-muted-foreground hover:bg-muted">
-                        {upload.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
+                      <div className="flex aspect-square flex-col overflow-hidden rounded border border-dashed">
+                        {/* Take a photo directly (camera). `capture` needs a
+                            single, non-multiple input to reliably open the camera. */}
+                        <label
+                          className="flex flex-1 cursor-pointer items-center justify-center text-muted-foreground hover:bg-muted"
+                          title="التقاط صورة بالكاميرا"
+                        >
+                          {upload.isPending ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Camera className="size-4" />
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (files.length) upload.mutate({ files, slot: slot.key });
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                        {/* Pick from the album (multiple). */}
+                        <label
+                          className="flex flex-1 cursor-pointer items-center justify-center border-t border-dashed text-muted-foreground hover:bg-muted"
+                          title="اختيار من الألبوم"
+                        >
                           <ImagePlus className="size-4" />
-                        )}
-                        <input
-                          type="file"
-                          accept="image/*,video/*"
-                          multiple
-                          capture="environment"
-                          className="hidden"
-                          onChange={(e) => {
-                            const files = Array.from(e.target.files ?? []);
-                            if (files.length) upload.mutate({ files, slot: slot.key });
-                            e.target.value = "";
-                          }}
-                        />
-                      </label>
+                          <input
+                            type="file"
+                            accept="image/*,video/*"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (files.length) upload.mutate({ files, slot: slot.key });
+                              e.target.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
                     )}
                   </div>
                 </div>

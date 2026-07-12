@@ -1,7 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -13,14 +16,26 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslations } from "next-intl";
 import { usePermission } from "@/lib/auth/use-permission";
+import { formatSAR } from "@/lib/currency";
 import { CreateSparePartDialog } from "@/features/spare-parts/create-spare-part-dialog";
-import { listSpareParts } from "@/features/spare-parts/api";
+import { listSpareParts, deleteSparePart } from "@/features/spare-parts/api";
 
 export default function SparePartsPage() {
   const canCreate = usePermission("spare-parts:create");
+  const canDelete = usePermission("spare-parts:delete");
   const t = useTranslations("spareParts");
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({ queryKey: ["spare-parts"], queryFn: () => listSpareParts() });
+
+  const del = useMutation({
+    mutationFn: deleteSparePart,
+    onSuccess: () => {
+      toast.success("تم حذف القطعة");
+      queryClient.invalidateQueries({ queryKey: ["spare-parts"] });
+    },
+    onError: () => toast.error("تعذّر الحذف"),
+  });
 
   return (
     <div className="space-y-6">
@@ -41,6 +56,7 @@ export default function SparePartsPage() {
               <TableHead>{t("colUnitCost")}</TableHead>
               <TableHead>{t("colOnHand")}</TableHead>
               <TableHead>{t("colStatus")}</TableHead>
+              {canDelete && <TableHead className="w-12" />}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -65,7 +81,7 @@ export default function SparePartsPage() {
               <TableRow key={part.id}>
                 <TableCell className="font-medium">{part.sku}</TableCell>
                 <TableCell>{part.name}</TableCell>
-                <TableCell>{part.unitCost}</TableCell>
+                <TableCell>{formatSAR(part.unitCost)}</TableCell>
                 <TableCell>{part.quantityOnHand}</TableCell>
                 <TableCell>
                   {part.quantityOnHand <= part.reorderThreshold ? (
@@ -74,6 +90,21 @@ export default function SparePartsPage() {
                     <Badge variant="secondary">{t("ok")}</Badge>
                   )}
                 </TableCell>
+                {canDelete && (
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-muted-foreground hover:text-destructive"
+                      disabled={del.isPending}
+                      onClick={() => {
+                        if (confirm(`حذف القطعة «${part.name}»؟`)) del.mutate(part.id);
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

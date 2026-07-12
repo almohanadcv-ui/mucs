@@ -33,6 +33,7 @@ type FormValues = {
   oilChangeDueAt: string;
   nextMaintenanceAt: string;
   nextInspectionAt: string;
+  receiverName: string;
   notes: string;
 };
 
@@ -50,6 +51,7 @@ export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
       oilChangeDueAt: toDateInput(vehicle.oilChangeDueAt),
       nextMaintenanceAt: toDateInput(vehicle.nextMaintenanceAt),
       nextInspectionAt: toDateInput(vehicle.nextInspectionAt),
+      receiverName: vehicle.receiverName ?? "",
       notes: vehicle.notes ?? "",
     },
   });
@@ -66,6 +68,7 @@ export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
         oilChangeDueAt: values.oilChangeDueAt || undefined,
         nextMaintenanceAt: values.nextMaintenanceAt || undefined,
         nextInspectionAt: values.nextInspectionAt || undefined,
+        receiverName: values.receiverName || undefined,
         notes: values.notes || undefined,
       }),
     onSuccess: () => {
@@ -145,6 +148,10 @@ export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
               <Label htmlFor="nextInspectionAt">موعد الفحص/التشييك القادم</Label>
               <Input id="nextInspectionAt" type="date" {...register("nextInspectionAt")} />
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="receiverName">اسم المستلم</Label>
+            <Input id="receiverName" {...register("receiverName")} />
           </div>
           <div className="space-y-1">
             <Label htmlFor="notes">ملاحظات إضافية</Label>

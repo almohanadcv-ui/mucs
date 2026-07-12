@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { usePermission } from "@/lib/auth/use-permission";
+import { formatSAR } from "@/lib/currency";
 import {
   downloadMaintenanceCostReport,
   getMaintenanceCostReport,
@@ -44,8 +45,8 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between print:hidden">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
-          <p className="text-muted-foreground">Maintenance cost by vehicle or branch.</p>
+          <h1 className="text-2xl font-semibold tracking-tight">التقارير</h1>
+          <p className="text-muted-foreground">تكلفة الصيانة حسب المركبة أو الفرع.</p>
         </div>
         <div className="flex gap-2">
           <Select value={groupBy} onValueChange={(v) => setGroupBy(v as MaintenanceCostQuery["groupBy"])}>
@@ -53,12 +54,12 @@ export default function ReportsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="vehicle">By vehicle</SelectItem>
-              <SelectItem value="branch">By branch</SelectItem>
+              <SelectItem value="vehicle">حسب المركبة</SelectItem>
+              <SelectItem value="branch">حسب الفرع</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={() => window.print()}>
-            <Printer className="size-4" /> Print
+            <Printer className="size-4" /> طباعة
           </Button>
           {canExport && (
             <>
@@ -78,16 +79,16 @@ export default function ReportsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Maintenance cost by {groupBy}</CardTitle>
+          <CardTitle>تكلفة الصيانة {groupBy === "vehicle" ? "حسب المركبة" : "حسب الفرع"}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{groupBy === "vehicle" ? "Vehicle" : "Branch"}</TableHead>
-                <TableHead className="text-right">Requests</TableHead>
-                <TableHead className="text-right">Estimated cost</TableHead>
-                <TableHead className="text-right">Actual cost</TableHead>
+                <TableHead>{groupBy === "vehicle" ? "المركبة" : "الفرع"}</TableHead>
+                <TableHead className="text-right">الطلبات</TableHead>
+                <TableHead className="text-right">التكلفة التقديرية</TableHead>
+                <TableHead className="text-right">التكلفة الفعلية</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -95,26 +96,24 @@ export default function ReportsPage() {
                 <TableRow key={row.groupId}>
                   <TableCell className="font-medium">{row.groupLabel}</TableCell>
                   <TableCell className="text-right">{row.requestCount}</TableCell>
-                  <TableCell className="text-right">
-                    ${row.totalEstimatedCost.toLocaleString()}
-                  </TableCell>
-                  <TableCell className="text-right">${row.totalActualCost.toLocaleString()}</TableCell>
+                  <TableCell className="text-right">{formatSAR(row.totalEstimatedCost)}</TableCell>
+                  <TableCell className="text-right">{formatSAR(row.totalActualCost)}</TableCell>
                 </TableRow>
               ))}
               {!data?.length && (
                 <TableRow>
                   <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No maintenance cost data for this grouping yet.
+                    لا توجد بيانات تكلفة صيانة لهذا التصنيف بعد.
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
             <TableFooter>
               <TableRow>
-                <TableCell>Total</TableCell>
+                <TableCell>الإجمالي</TableCell>
                 <TableCell className="text-right">{totals.requests}</TableCell>
-                <TableCell className="text-right">${totals.estimated.toLocaleString()}</TableCell>
-                <TableCell className="text-right">${totals.actual.toLocaleString()}</TableCell>
+                <TableCell className="text-right">{formatSAR(totals.estimated)}</TableCell>
+                <TableCell className="text-right">{formatSAR(totals.actual)}</TableCell>
               </TableRow>
             </TableFooter>
           </Table>
