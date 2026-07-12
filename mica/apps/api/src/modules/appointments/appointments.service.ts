@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import type { CreateAppointmentInput, UpdateAppointmentInput } from "@mica-mab/shared-types";
 import { PrismaService } from "@/database/prisma/prisma.service";
 
@@ -43,6 +43,21 @@ export class AppointmentsService {
   async create(dto: CreateAppointmentInput, actingUserId: string) {
     const conflicts = await this.findConflicts(dto.vehicleId, dto.driverId, dto.startAt, dto.endAt);
 
+    // Default the branch from the chosen vehicle, else the primary branch.
+    let branchId = dto.branchId;
+    if (!branchId && dto.vehicleId) {
+      branchId = (
+        await this.prisma.vehicle.findUnique({
+          where: { id: dto.vehicleId },
+          select: { branchId: true },
+        })
+      )?.branchId;
+    }
+    if (!branchId) {
+      branchId = (await this.prisma.branch.findFirst({ orderBy: { createdAt: "asc" } }))?.id;
+    }
+    if (!branchId) throw new BadRequestException("لا يوجد فرع لإسناد الموعد إليه");
+
     const appointment = await this.prisma.appointment.create({
       data: {
         title: dto.title,
@@ -53,7 +68,7 @@ export class AppointmentsService {
         startAt: new Date(dto.startAt),
         endAt: new Date(dto.endAt),
         allDay: dto.allDay,
-        branchId: dto.branchId,
+        branchId,
         assignedToId: dto.assignedToId ?? actingUserId,
         colorTag: dto.colorTag,
         createdById: actingUserId,

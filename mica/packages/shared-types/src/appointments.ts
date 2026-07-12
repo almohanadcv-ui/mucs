@@ -21,7 +21,7 @@ export const createAppointmentSchema = z.object({
   startAt: z.string().datetime(),
   endAt: z.string().datetime(),
   allDay: z.boolean().default(false),
-  branchId: z.string().min(1),
+  branchId: z.string().optional(), // defaults on the server (vehicle's branch)
   assignedToId: z.string().optional(),
   colorTag: z.string().optional(),
 });

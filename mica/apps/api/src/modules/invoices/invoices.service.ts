@@ -89,8 +89,8 @@ export class InvoicesService {
           this.notifications.notify({
             recipientId,
             type: "invoice.submitted",
-            title: "New invoice pending approval",
-            body: `An invoice of ${invoice.amount} for vehicle ${vehicle.plateNumber} needs review.`,
+            title: "فاتورة جديدة بانتظار الاعتماد",
+            body: `فاتورة بقيمة ${invoice.amount} ر.س للمركبة ${vehicle.plateNumber} تحتاج مراجعة.`,
             payload: { invoiceId: invoice.id, vehicleId: vehicle.id },
             channels: ["IN_APP", "EMAIL"],
           }),
@@ -183,11 +183,11 @@ export class InvoicesService {
     await this.notifications.notify({
       recipientId: invoice.createdById,
       type: `invoice.${outcome}`,
-      title: `Your invoice was ${outcome}`,
+      title: outcome === "rejected" ? "تم رفض فاتورتك" : "تم قبول فاتورتك",
       body:
         outcome === "rejected"
-          ? `Invoice for ${invoice.vehicle.plateNumber} was rejected: ${invoice.rejectionReason ?? ""}`
-          : `Invoice for ${invoice.vehicle.plateNumber} was accepted.`,
+          ? `فاتورة المركبة ${invoice.vehicle.plateNumber} مرفوضة: ${invoice.rejectionReason ?? ""}`
+          : `فاتورة المركبة ${invoice.vehicle.plateNumber} تم قبولها.`,
       payload: { invoiceId: invoice.id },
       channels: ["IN_APP", "EMAIL"],
     });

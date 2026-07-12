@@ -83,8 +83,8 @@ export class WorkflowService {
       await this.notifications.notify({
         recipientId: updated.assignedToId,
         type: "maintenance.assigned",
-        title: `You've been assigned ${updated.requestNumber}`,
-        body: `"${updated.title}" was assigned to you.`,
+        title: `تم إسناد الطلب ${updated.requestNumber} إليك`,
+        body: `تم إسناد «${updated.title}» إليك.`,
         payload: { maintenanceRequestId: updated.id },
         channels: ["IN_APP", "EMAIL"],
       });
@@ -218,8 +218,8 @@ export class WorkflowService {
         this.notifications.notify({
           recipientId,
           type: "maintenance.approval_required",
-          title: `Approval needed: ${requestNumber}`,
-          body: `"${title}" is awaiting your approval.`,
+          title: `طلب اعتماد جديد: ${requestNumber}`,
+          body: `الطلب «${title}» بانتظار اعتمادك.`,
           payload: { maintenanceRequestId: requestId },
           channels: ["IN_APP", "EMAIL"],
         }),
@@ -232,11 +232,12 @@ export class WorkflowService {
     outcome: "approved" | "rejected",
     comment?: string,
   ): Promise<void> {
+    const outcomeAr = outcome === "approved" ? "تم اعتماده" : "تم رفضه";
     await this.notifications.notify({
       recipientId: request.reportedById,
       type: `maintenance.${outcome}`,
-      title: `${request.requestNumber} was ${outcome}`,
-      body: comment ? `"${request.title}": ${comment}` : `"${request.title}" was ${outcome}.`,
+      title: `الطلب ${request.requestNumber} ${outcomeAr}`,
+      body: comment ? `«${request.title}»: ${comment}` : `الطلب «${request.title}» ${outcomeAr}.`,
       payload: { maintenanceRequestId: request.id },
       channels: ["IN_APP", "EMAIL"],
     });
@@ -282,19 +283,10 @@ export class WorkflowService {
     requestId: string,
     estimatedCost: Prisma.Decimal | null,
   ): Promise<void> {
-    const tiers = await this.settings.get<ApprovalTier[]>(
-      APPROVAL_TIERS_SETTING_KEY,
-      DEFAULT_APPROVAL_TIERS,
-    );
-    const cost = estimatedCost ? Number(estimatedCost) : 0;
-    const levels =
-      [...tiers]
-        .sort((a, b) => a.threshold - b.threshold)
-        .filter((tier) => cost >= tier.threshold)
-        .at(-1)?.levels ?? 1;
+    // Single-level approval: one accept/reject decision, no cost-based tiers.
+    const levels = 1;
 
-    // Resubmission after a REJECTED -> DRAFT -> PENDING_APPROVAL cycle should
-    // start the approval chain fresh rather than reusing decided rows.
+    // Start the approval fresh rather than reusing decided rows.
     await this.prisma.maintenanceApproval.deleteMany({ where: { maintenanceRequestId: requestId } });
     await this.prisma.maintenanceApproval.createMany({
       data: Array.from({ length: levels }, (_, i) => ({
