@@ -32,6 +32,7 @@ interface CreateAppointmentDialogProps {
   onOpenChange: (open: boolean) => void;
   initialStart?: Date;
   initialEnd?: Date;
+  initialVehicleId?: string;
 }
 
 export function CreateAppointmentDialog({
@@ -39,6 +40,7 @@ export function CreateAppointmentDialog({
   onOpenChange,
   initialStart,
   initialEnd,
+  initialVehicleId,
 }: CreateAppointmentDialogProps) {
   const queryClient = useQueryClient();
   const t = useTranslations("appointments");
@@ -65,7 +67,8 @@ export function CreateAppointmentDialog({
       setValue("startAt", initialStart.toISOString());
       setValue("endAt", initialEnd.toISOString());
     }
-  }, [open, initialStart, initialEnd, setValue]);
+    if (open && initialVehicleId) setValue("vehicleId", initialVehicleId);
+  }, [open, initialStart, initialEnd, initialVehicleId, setValue]);
 
   const mutation = useMutation({
     mutationFn: createAppointment,

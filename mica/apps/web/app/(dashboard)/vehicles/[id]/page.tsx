@@ -16,6 +16,7 @@ import { VehicleStatusSelect } from "@/features/vehicles/vehicle-status-select";
 import { VehicleFuelSelect } from "@/features/vehicles/vehicle-fuel-select";
 import { VehicleDriverSelect } from "@/features/vehicles/vehicle-driver-select";
 import { RequestPhotosButton } from "@/features/photo-requests/request-photos-button";
+import { BookAppointmentButton } from "@/features/appointments/book-appointment-button";
 import { VehiclePhotoRequests } from "@/features/photo-requests/vehicle-photo-requests";
 import { VehicleEditDialog } from "@/features/vehicles/vehicle-edit-dialog";
 import { VehicleTimeline } from "@/features/vehicles/vehicle-timeline";
@@ -79,6 +80,7 @@ export default function VehicleDetailPage() {
                 </Link>
               </Button>
               <RequestPhotosButton vehicleId={vehicle.id} />
+              <BookAppointmentButton vehicleId={vehicle.id} />
             </div>
           )}
           <p className="text-muted-foreground">

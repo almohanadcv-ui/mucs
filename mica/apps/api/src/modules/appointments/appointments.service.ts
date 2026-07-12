@@ -1,10 +1,15 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { NotificationChannel } from "@prisma/client";
 import type { CreateAppointmentInput, UpdateAppointmentInput } from "@mica-mab/shared-types";
 import { PrismaService } from "@/database/prisma/prisma.service";
+import { NotificationsService } from "@/modules/notifications/notifications.service";
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   async list(filters: { start?: string; end?: string; branchId?: string; vehicleId?: string }) {
     return this.prisma.appointment.findMany({
@@ -75,6 +80,26 @@ export class AppointmentsService {
       },
       include: { vehicle: true, driver: true, assignedTo: true },
     });
+
+    // Real-time: tell the vehicle's current driver a booking was made for them.
+    const driverUserId = appointment.vehicleId
+      ? (
+          await this.prisma.vehicle.findUnique({
+            where: { id: appointment.vehicleId },
+            select: { currentDriver: { select: { userId: true } } },
+          })
+        )?.currentDriver?.userId
+      : null;
+    if (driverUserId) {
+      await this.notifications.notify({
+        recipientId: driverUserId,
+        type: "appointment.booked",
+        title: "تم حجز موعد لمركبتك",
+        body: `${appointment.title} بتاريخ ${appointment.startAt.toLocaleString("ar-SA")}.`,
+        payload: { vehicleId: appointment.vehicleId },
+        channels: [NotificationChannel.IN_APP],
+      });
+    }
 
     return { appointment, conflicts };
   }

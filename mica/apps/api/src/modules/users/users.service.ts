@@ -104,16 +104,27 @@ export class UsersService {
       actingUserId !== undefined && !(await this.isPrivilegedManager(actingUserId));
     const where = {
       deletedAt: null,
-      ...(restrictToOwn ? { createdById: actingUserId } : {}),
-      ...(query.search
-        ? {
-            OR: [
-              { email: { contains: query.search, mode: "insensitive" as const } },
-              { firstName: { contains: query.search, mode: "insensitive" as const } },
-              { lastName: { contains: query.search, mode: "insensitive" as const } },
-            ],
-          }
-        : {}),
+      AND: [
+        // A non-privileged inviter (Mechanic) sees the users they created PLUS
+        // every Driver, so they know which driver to request photos/appointments from.
+        restrictToOwn
+          ? {
+              OR: [
+                { createdById: actingUserId },
+                { roles: { some: { role: { name: "Driver" } } } },
+              ],
+            }
+          : {},
+        query.search
+          ? {
+              OR: [
+                { email: { contains: query.search, mode: "insensitive" as const } },
+                { firstName: { contains: query.search, mode: "insensitive" as const } },
+                { lastName: { contains: query.search, mode: "insensitive" as const } },
+              ],
+            }
+          : {},
+      ],
     };
 
     const [items, totalItems] = await Promise.all([
