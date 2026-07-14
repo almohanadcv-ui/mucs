@@ -29,7 +29,20 @@ import { useTranslations } from "next-intl";
 import "react-big-calendar/lib/css/react-big-calendar.css";
 import "react-big-calendar/lib/addons/dragAndDrop/styles.css";
 import { usePermission } from "@/lib/auth/use-permission";
-import { listAppointments, updateAppointment, type AppointmentItem } from "./api";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  listAppointments,
+  updateAppointment,
+  deleteAppointment,
+  type AppointmentItem,
+} from "./api";
 import { CreateAppointmentDialog } from "./create-appointment-dialog";
 
 const localizer = dateFnsLocalizer({
@@ -101,10 +114,32 @@ export function CalendarView() {
   const canCreate = usePermission("appointments:create");
   const canReschedule = usePermission("appointments:reschedule");
 
+  const canDelete = usePermission("appointments:delete");
+  const canUpdate = usePermission("appointments:update");
   const [date, setDate] = useState(new Date());
   const [view, setView] = useState<View>("month");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [slot, setSlot] = useState<{ start: Date; end: Date } | undefined>();
+  const [selected, setSelected] = useState<AppointmentItem | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteAppointment,
+    onSuccess: () => {
+      toast.success("تم حذف الموعد");
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      setSelected(null);
+    },
+    onError: () => toast.error("تعذّر حذف الموعد"),
+  });
+  const completeMutation = useMutation({
+    mutationFn: (id: string) => updateAppointment(id, { status: "COMPLETED" }),
+    onSuccess: () => {
+      toast.success("تم تعليم الموعد كمنجز");
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      setSelected(null);
+    },
+    onError: () => toast.error("تعذّر التحديث"),
+  });
 
   const range = useMemo(() => computeRange(date, view), [date, view]);
 
@@ -229,6 +264,7 @@ export function CalendarView() {
         onView={setView}
         selectable={canCreate}
         resizable={canReschedule}
+        onSelectEvent={(event) => setSelected(event.resource)}
         onSelectSlot={handleSelectSlot}
         onEventDrop={handleEventDrop}
         onEventResize={handleEventDrop}
@@ -244,6 +280,57 @@ export function CalendarView() {
         initialStart={slot?.start}
         initialEnd={slot?.end}
       />
+
+      <Dialog open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
+        <DialogContent dir="rtl">
+          <DialogHeader>
+            <DialogTitle>{selected?.title}</DialogTitle>
+          </DialogHeader>
+          {selected && (
+            <div className="space-y-1 text-sm text-muted-foreground">
+              <p>النوع: {t(`types.${selected.type}`)}</p>
+              <p>
+                الوقت: {format(new Date(selected.startAt), "PPp")} —{" "}
+                {format(new Date(selected.endAt), "p")}
+              </p>
+              {selected.vehicle && (
+                <p>
+                  المركبة: {selected.vehicle.name ?? `${selected.vehicle.make} ${selected.vehicle.model}`}{" "}
+                  · <span dir="ltr">{selected.vehicle.plateNumber}</span>
+                </p>
+              )}
+              {selected.assignedTo && (
+                <p>
+                  الفني: {selected.assignedTo.firstName} {selected.assignedTo.lastName}
+                </p>
+              )}
+              <p>الحالة: {APPOINTMENT_STATUS_LABEL[selected.status] ?? selected.status}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            {canUpdate && selected?.status !== "COMPLETED" && (
+              <Button
+                variant="outline"
+                onClick={() => selected && completeMutation.mutate(selected.id)}
+                disabled={completeMutation.isPending}
+              >
+                تعليم كمنجز
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (selected && confirm("حذف هذا الموعد؟")) deleteMutation.mutate(selected.id);
+                }}
+                disabled={deleteMutation.isPending}
+              >
+                حذف الموعد
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
