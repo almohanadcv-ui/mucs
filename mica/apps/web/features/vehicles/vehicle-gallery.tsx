@@ -84,36 +84,34 @@ export function VehicleGallery({
                   </div>
                   <div className="grid grid-cols-3 gap-1">
                     {items.map((a) => (
-                      <div
-                        key={a.id}
-                        className="group relative aspect-square overflow-hidden rounded bg-muted"
-                      >
-                        {a.kind === "VIDEO" ? (
-                          <video
-                            src={attachmentFileUrl(a.fileKey)}
-                            className="size-full cursor-pointer object-cover"
-                            onClick={() => setPreview(a)}
-                          />
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={attachmentFileUrl(a.fileKey)}
-                            alt={slot.label}
-                            className="size-full cursor-pointer object-cover"
-                            onClick={() => setPreview(a)}
-                          />
-                        )}
+                      <div key={a.id} className="space-y-1">
+                        <div className="aspect-square overflow-hidden rounded bg-muted">
+                          {a.kind === "VIDEO" ? (
+                            <video
+                              src={attachmentFileUrl(a.fileKey)}
+                              className="size-full cursor-pointer object-cover"
+                              onClick={() => setPreview(a)}
+                            />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={attachmentFileUrl(a.fileKey)}
+                              alt={slot.label}
+                              className="size-full cursor-pointer object-cover"
+                              onClick={() => setPreview(a)}
+                            />
+                          )}
+                        </div>
                         {canManage && (
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                            onClick={() => {
                               if (confirm("حذف هذه الصورة؟")) del.mutate(a.id);
                             }}
-                            className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-black/70 text-white shadow hover:bg-destructive"
+                            className="flex w-full items-center justify-center gap-1 rounded bg-destructive/10 py-1 text-[10px] font-medium text-destructive hover:bg-destructive hover:text-white"
                             aria-label="حذف الصورة"
                           >
-                            <Trash2 className="size-3.5" />
+                            <Trash2 className="size-3" /> حذف
                           </button>
                         )}
                       </div>

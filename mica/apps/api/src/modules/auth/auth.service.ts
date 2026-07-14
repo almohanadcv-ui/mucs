@@ -10,6 +10,7 @@ import * as argon2 from "argon2";
 import ms from "@/common/utils/ms";
 import { PrismaService } from "@/database/prisma/prisma.service";
 import { PermissionCacheService } from "@/common/permission-cache/permission-cache.service";
+import { NotificationsService } from "@/modules/notifications/notifications.service";
 import { generateOpaqueToken, hashToken } from "./utils/token.util";
 import type { AccessTokenPayload } from "./types/request-user.type";
 import type { AuthUser } from "@mica-mab/shared-types";
@@ -32,6 +33,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly permissionCache: PermissionCacheService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async validateCredentials(email: string, password: string) {
@@ -202,11 +204,28 @@ export class AuthService {
     // which emails are registered.
     if (!user) return;
 
-    const token = this.createPasswordResetToken(user.id, "1h");
-
-    // Email delivery (Phase 7 / notifications module) isn't wired up yet;
-    // logging the link keeps this fully functional for local/dev use now.
-    this.logger.log(`Password reset requested for ${email}. Reset token: ${token}`);
+    // No public SMTP: instead of emailing the user, raise an in-app request to
+    // Technical Support so they reset the password and hand over the link.
+    const supportUsers = await this.prisma.user.findMany({
+      where: {
+        deletedAt: null,
+        roles: { some: { role: { name: "Technical Support" } } },
+      },
+      select: { id: true },
+    });
+    await Promise.all(
+      supportUsers.map((s) =>
+        this.notifications.notify({
+          recipientId: s.id,
+          type: "password.reset_requested",
+          title: "طلب استعادة كلمة المرور",
+          body: `طلب المستخدم ${user.firstName} ${user.lastName} (${email}) استعادة كلمة المرور — أعد تعيينها له من صفحة المستخدمين.`,
+          payload: { userId: user.id, email },
+          channels: ["IN_APP"],
+        }),
+      ),
+    );
+    this.logger.log(`Password reset requested for ${email} — notified ${supportUsers.length} support user(s).`);
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
