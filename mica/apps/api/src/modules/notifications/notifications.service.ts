@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { NotificationChannel as NotificationChannelEnum } from "@prisma/client";
 import { PrismaService } from "@/database/prisma/prisma.service";
 import type { NotificationChannel, NotificationPayload } from "./notification-channel.interface";
@@ -14,6 +14,7 @@ export interface NotifyOptions extends NotificationPayload {
 
 @Injectable()
 export class NotificationsService {
+  private readonly logger = new Logger(NotificationsService.name);
   private readonly channels: Record<NotificationChannelEnum, NotificationChannel>;
 
   constructor(
@@ -35,7 +36,23 @@ export class NotificationsService {
 
   async notify(options: NotifyOptions): Promise<void> {
     const { channels, ...payload } = options;
-    await Promise.all(channels.map((channel) => this.channels[channel].send(payload)));
+    // Await only the in-app channel (a single insert + socket emit) so user
+    // actions return immediately. Email/SMS/etc. are dispatched in the
+    // background — a slow SMTP/queue must never delay the request.
+    const inApp = channels.filter((c) => c === "IN_APP");
+    const background = channels.filter((c) => c !== "IN_APP");
+
+    await Promise.all(inApp.map((c) => this.channels[c].send(payload)));
+
+    if (background.length > 0) {
+      void Promise.all(
+        background.map((c) =>
+          this.channels[c]
+            .send(payload)
+            .catch((e) => this.logger.warn(`notify:${c} failed: ${(e as Error).message}`)),
+        ),
+      );
+    }
   }
 
   async list(userId: string, page: number, pageSize: number) {

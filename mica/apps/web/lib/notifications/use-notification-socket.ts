@@ -33,6 +33,10 @@ export function useNotificationSocket() {
       queryClient.invalidateQueries({ queryKey: ["my-requests"] });
       queryClient.invalidateQueries({ queryKey: ["driver-portal"] });
       queryClient.invalidateQueries({ queryKey: ["photo-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({ queryKey: ["appointments"] });
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       if (notification.channel === "IN_APP") {
         toast.info(notification.title, { description: notification.body });
       }
