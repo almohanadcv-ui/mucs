@@ -24,23 +24,40 @@ export function useNotificationSocket() {
       transports: ["websocket"],
     });
 
+    // Every live surface, refreshed together so the whole app is real-time.
+    const refreshAll = () => {
+      for (const key of [
+        "notifications",
+        "maintenance",
+        "my-reports",
+        "my-requests",
+        "driver-portal",
+        "photo-requests",
+        "invoices",
+        "appointments",
+        "vehicles",
+        "drivers",
+        "spare-parts",
+        "branches",
+        "departments",
+        "users",
+        "dashboard",
+        "audit",
+      ]) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    };
+
     socket.on("notification", (notification: NotificationItem) => {
-      queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      // Live-refresh the request/maintenance surfaces ("طلباتي") so new reports,
-      // approvals, comments and status changes appear without a page refresh.
-      queryClient.invalidateQueries({ queryKey: ["maintenance"] });
-      queryClient.invalidateQueries({ queryKey: ["my-reports"] });
-      queryClient.invalidateQueries({ queryKey: ["my-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["driver-portal"] });
-      queryClient.invalidateQueries({ queryKey: ["photo-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      queryClient.invalidateQueries({ queryKey: ["appointments"] });
-      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      refreshAll();
       if (notification.channel === "IN_APP") {
         toast.info(notification.title, { description: notification.body });
       }
     });
+
+    // Any mutation anywhere (add vehicle, edit, delete, status change …) pushes
+    // this so open lists/dashboards update instantly for everyone.
+    socket.on("data.changed", refreshAll);
 
     return () => {
       socket.disconnect();

@@ -52,6 +52,12 @@ export class NotificationsGateway implements OnGatewayConnection, OnGatewayDisco
     this.server.to(this.userRoom(userId)).emit(event, data);
   }
 
+  /** Broadcast a lightweight "something changed" signal to every connected
+   *  client so their open lists/dashboards refetch in real time. */
+  emitDataChanged(resource: string): void {
+    this.server?.emit("data.changed", { resource, at: Date.now() });
+  }
+
   private userRoom(userId: string): string {
     return `user:${userId}`;
   }

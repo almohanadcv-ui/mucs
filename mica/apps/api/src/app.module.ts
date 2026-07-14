@@ -17,6 +17,7 @@ import { PermissionCacheModule } from "@/common/permission-cache/permission-cach
 import { JwtAuthGuard } from "@/common/guards/jwt-auth.guard";
 import { PermissionsGuard } from "@/common/guards/permissions.guard";
 import { AuditLogInterceptor } from "@/common/interceptors/audit-log.interceptor";
+import { RealtimeInterceptor } from "@/common/interceptors/realtime.interceptor";
 import { RequestContextMiddleware } from "@/common/middleware/request-context.middleware";
 import { HealthModule } from "@/health/health.module";
 import { AuthModule } from "@/modules/auth/auth.module";
@@ -94,6 +95,7 @@ import { PhotoRequestsModule } from "@/modules/photo-requests/photo-requests.mod
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_INTERCEPTOR, useClass: AuditLogInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: RealtimeInterceptor },
   ],
 })
 export class AppModule implements NestModule {

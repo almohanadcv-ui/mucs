@@ -21,6 +21,6 @@ import { PushChannelAdapter } from "./adapters/push-channel.adapter";
     WhatsAppChannelAdapter,
     PushChannelAdapter,
   ],
-  exports: [NotificationsService],
+  exports: [NotificationsService, NotificationsGateway],
 })
 export class NotificationsModule {}
