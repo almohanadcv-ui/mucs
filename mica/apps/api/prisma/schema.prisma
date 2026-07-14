@@ -72,10 +72,27 @@ model User {
   notifications           Notification[]
   savedFilters            SavedFilter[]
   favorites               Favorite[]
+  passwordResetRequests   PasswordResetRequest[]
 
   @@index([branchId])
   @@index([departmentId])
   @@map("users")
+}
+
+/// A user's "forgot password" request. There is no public SMTP, so Technical
+/// Support handles these manually (generate a link, send it over WhatsApp).
+model PasswordResetRequest {
+  id          String    @id @default(cuid())
+  userId      String
+  status      String    @default("PENDING") // PENDING | HANDLED
+  handledById String?
+  createdAt   DateTime  @default(now())
+  handledAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@map("password_reset_requests")
 }
 
 model Role {

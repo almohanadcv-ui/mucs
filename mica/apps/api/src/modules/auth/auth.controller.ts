@@ -23,6 +23,7 @@ import {
   type UpdateOwnProfileInput,
 } from "@mica-mab/shared-types";
 import { Public } from "@/common/decorators/public.decorator";
+import { Permissions } from "@/common/decorators/permissions.decorator";
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe";
 import { UsersService } from "@/modules/users/users.service";
@@ -148,6 +149,20 @@ export class AuthController {
   ): Promise<{ message: string }> {
     await this.authService.requestPasswordReset(body.email);
     return { message: "If that email is registered, a reset link has been sent." };
+  }
+
+  /** Technical Support: pending "forgot password" requests. */
+  @Get("reset-requests")
+  @Permissions("users:update")
+  listResetRequests() {
+    return this.authService.listResetRequests();
+  }
+
+  /** Technical Support: issue a reset link for a request + get the user's phone. */
+  @Post("reset-requests/:id/handle")
+  @Permissions("users:update")
+  handleResetRequest(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.authService.handleResetRequest(id, user.id);
   }
 
   @Public()

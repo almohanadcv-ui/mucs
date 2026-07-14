@@ -30,7 +30,7 @@ function notificationHref(n: NotificationItem, isDriver: boolean): string | null
   if (typeof p.maintenanceRequestId === "string")
     return isDriver ? `/driver/reports/${p.maintenanceRequestId}` : `/maintenance/${p.maintenanceRequestId}`;
   if (typeof p.invoiceId === "string") return "/invoices";
-  if (n.type?.startsWith("password")) return "/users";
+  if (n.type?.startsWith("password")) return "/password-requests";
   if (n.type?.startsWith("appointment")) return "/appointments";
   if (typeof p.photoRequestId === "string") return isDriver ? "/driver/photo-requests" : "/vehicles";
   if (typeof p.vehicleId === "string") return isDriver ? "/driver/vehicles" : `/vehicles/${p.vehicleId}`;

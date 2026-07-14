@@ -204,8 +204,10 @@ export class AuthService {
     // which emails are registered.
     if (!user) return;
 
-    // No public SMTP: instead of emailing the user, raise an in-app request to
-    // Technical Support so they reset the password and hand over the link.
+    // No public SMTP: record a reset request Technical Support can action, and
+    // ping them in-app.
+    await this.prisma.passwordResetRequest.create({ data: { userId: user.id } });
+
     const supportUsers = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
@@ -226,6 +228,44 @@ export class AuthService {
       ),
     );
     this.logger.log(`Password reset requested for ${email} — notified ${supportUsers.length} support user(s).`);
+  }
+
+  /** Technical Support: list pending "forgot password" requests. */
+  async listResetRequests() {
+    return this.prisma.passwordResetRequest.findMany({
+      where: { status: "PENDING" },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+      },
+    });
+  }
+
+  /** Technical Support handles a request: issue a fresh reset link, mark the
+   *  request handled, and return the link + the user's phone so it can be sent
+   *  over WhatsApp. */
+  async handleResetRequest(id: string, actingUserId: string) {
+    const req = await this.prisma.passwordResetRequest.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, firstName: true, lastName: true, phone: true } } },
+    });
+    if (!req) throw new UnauthorizedException("الطلب غير موجود");
+
+    const token = this.createPasswordResetToken(req.userId, "24h");
+    const webOrigin = this.configService.get<string>("app.corsOrigin") ?? "http://localhost:3001";
+    const setPasswordUrl = `${webOrigin}/reset-password?token=${token}`;
+
+    await this.prisma.passwordResetRequest.update({
+      where: { id },
+      data: { status: "HANDLED", handledById: actingUserId, handledAt: new Date() },
+    });
+
+    return {
+      setPasswordUrl,
+      name: `${req.user.firstName} ${req.user.lastName}`.trim(),
+      phone: req.user.phone,
+    };
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {

@@ -46,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/reports", labelKey: "reports", icon: BarChart3, permission: "reports:view" },
   { href: "/spare-parts", labelKey: "spareParts", icon: Cog, permission: "spare-parts:view" },
   { href: "/users", labelKey: "users", icon: Users, permission: "users:view" },
+  { href: "/password-requests", label: "طلبات الاستعادة", icon: KeyRound, permission: "users:update" },
   { href: "/audit", label: "سجل الأحداث", icon: History, permission: "audit-log:view" },
   { href: "/roles", labelKey: "roles", icon: ShieldCheck, permission: "roles:view" },
   { href: "/settings", labelKey: "settings", icon: Settings, permission: "settings:view" },
