@@ -106,11 +106,14 @@ export function VehicleGallery({
                         {canManage && (
                           <button
                             type="button"
-                            onClick={() => del.mutate(a.id)}
-                            className="absolute left-0.5 top-0.5 hidden rounded bg-black/60 p-0.5 text-white group-hover:block"
-                            aria-label="حذف"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm("حذف هذه الصورة؟")) del.mutate(a.id);
+                            }}
+                            className="absolute left-1 top-1 grid size-6 place-items-center rounded-full bg-black/70 text-white shadow hover:bg-destructive"
+                            aria-label="حذف الصورة"
                           >
-                            <Trash2 className="size-3" />
+                            <Trash2 className="size-3.5" />
                           </button>
                         )}
                       </div>

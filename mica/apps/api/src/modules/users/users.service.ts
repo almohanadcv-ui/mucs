@@ -158,6 +158,22 @@ export class UsersService {
     return this.toSafeUser(user);
   }
 
+  /** Admin-triggered password reset: issue a fresh set-password link for a user
+   *  (same mechanism as an invite) so support can hand it over. */
+  async createPasswordResetLink(id: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, email: true },
+    });
+    if (!user) throw new NotFoundException("User not found");
+    const token = this.jwtService.sign(
+      { sub: user.id, purpose: INVITE_TOKEN_PURPOSE },
+      { secret: this.configService.get<string>("jwt.accessSecret"), expiresIn: "7d" },
+    );
+    const webOrigin = this.configService.get<string>("app.corsOrigin") ?? "http://localhost:3001";
+    return { email: user.email, setPasswordUrl: `${webOrigin}/reset-password?token=${token}` };
+  }
+
   async create(dto: CreateUserInput, actingUserId: string) {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException("A user with this email already exists");

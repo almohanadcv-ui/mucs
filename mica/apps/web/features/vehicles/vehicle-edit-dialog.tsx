@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isAxiosError } from "axios";
 import { Pencil } from "lucide-react";
@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { updateVehicle, type VehicleListItem } from "./api";
+import { listBranches } from "@/features/branches/api";
 
 /** yyyy-MM-dd for <input type=date>, or "" */
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
@@ -34,12 +35,14 @@ type FormValues = {
   nextMaintenanceAt: string;
   nextInspectionAt: string;
   receiverName: string;
+  branchId: string;
   notes: string;
 };
 
 export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { data: branches } = useQuery({ queryKey: ["branches"], queryFn: listBranches, enabled: open });
 
   const { register, handleSubmit, reset } = useForm<FormValues>({
     values: {
@@ -52,6 +55,7 @@ export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
       nextMaintenanceAt: toDateInput(vehicle.nextMaintenanceAt),
       nextInspectionAt: toDateInput(vehicle.nextInspectionAt),
       receiverName: vehicle.receiverName ?? "",
+      branchId: vehicle.branchId ?? "",
       notes: vehicle.notes ?? "",
     },
   });
@@ -69,6 +73,7 @@ export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
         nextMaintenanceAt: values.nextMaintenanceAt || undefined,
         nextInspectionAt: values.nextInspectionAt || undefined,
         receiverName: values.receiverName || undefined,
+        branchId: values.branchId || undefined,
         notes: values.notes || undefined,
       }),
     onSuccess: () => {
@@ -148,6 +153,21 @@ export function VehicleEditDialog({ vehicle }: { vehicle: VehicleListItem }) {
               <Label htmlFor="nextInspectionAt">موعد الفحص/التشييك القادم</Label>
               <Input id="nextInspectionAt" type="date" {...register("nextInspectionAt")} />
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="branchId">الفرع</Label>
+            <select
+              id="branchId"
+              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+              {...register("branchId")}
+            >
+              <option value="">—</option>
+              {(branches ?? []).map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1">
             <Label htmlFor="receiverName">اسم المستلم</Label>

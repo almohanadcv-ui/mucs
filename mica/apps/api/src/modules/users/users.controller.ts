@@ -53,6 +53,12 @@ export class UsersController {
     return this.usersService.update(id, body, user.id);
   }
 
+  @Post(":id/reset-password")
+  @Permissions("users:update")
+  resetPassword(@Param("id") id: string) {
+    return this.usersService.createPasswordResetLink(id);
+  }
+
   @Post(":id/suspend")
   @Permissions("users:suspend")
   @HttpCode(204)

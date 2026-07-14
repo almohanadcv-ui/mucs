@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { createVehicle } from "@/features/vehicles/api";
 import { listDrivers } from "@/features/drivers/api";
+import { listBranches } from "@/features/branches/api";
 
 export default function NewVehiclePage() {
   const router = useRouter();
@@ -45,6 +46,7 @@ export default function NewVehiclePage() {
   });
 
   const { data: drivers } = useQuery({ queryKey: ["drivers"], queryFn: () => listDrivers({}) });
+  const { data: branches } = useQuery({ queryKey: ["branches"], queryFn: listBranches });
   // Only drivers linked to a user account can receive photo requests, so the
   // handover picker offers exactly those — not every driver record.
   const linkedDrivers = (drivers?.items ?? []).filter((d) => d.userId);
@@ -142,6 +144,27 @@ export default function NewVehiclePage() {
                       {FUEL_LEVELS.map((f) => (
                         <SelectItem key={f} value={f}>
                           {FUEL_LEVEL_LABELS[f].ar}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>الفرع</Label>
+              <Controller
+                name="branchId"
+                control={control}
+                render={({ field }) => (
+                  <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="اختر الفرع" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(branches ?? []).map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.name}
                         </SelectItem>
                       ))}
                     </SelectContent>

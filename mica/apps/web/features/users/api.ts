@@ -50,3 +50,10 @@ export async function suspendUser(id: string) {
 export async function deleteUser(id: string) {
   await apiClient.delete(`/users/${id}`);
 }
+
+export async function resetUserPassword(id: string) {
+  const { data } = await apiClient.post<{ email: string; setPasswordUrl: string }>(
+    `/users/${id}/reset-password`,
+  );
+  return data;
+}

@@ -23,7 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermission } from "@/lib/auth/use-permission";
 import { InviteUserDialog } from "@/features/users/invite-user-dialog";
-import { deleteUser, listUsers, suspendUser } from "@/features/users/api";
+import { deleteUser, listUsers, suspendUser, resetUserPassword } from "@/features/users/api";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
   ACTIVE: "default",
@@ -39,6 +39,7 @@ export default function UsersPage() {
   const canInvite = usePermission("users:invite");
   const canSuspend = usePermission("users:suspend");
   const canDelete = usePermission("users:delete");
+  const canResetPassword = usePermission("users:update");
   // Only a full manager (holds roles:view) may pick arbitrary roles; a Mechanic
   // with users:invite can only create Driver logins, so lock the role picker.
   const canAssignAnyRole = usePermission("roles:view");
@@ -64,6 +65,18 @@ export default function UsersPage() {
       toast.success(t("removedToast"));
       invalidate();
     },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: resetUserPassword,
+    onSuccess: (res) => {
+      navigator.clipboard?.writeText(res.setPasswordUrl).catch(() => {});
+      toast.success("تم إنشاء رابط إعادة التعيين ونسخه", {
+        description: res.setPasswordUrl,
+        duration: 12000,
+      });
+    },
+    onError: () => toast.error("تعذّر إنشاء الرابط"),
   });
 
   return (
@@ -128,7 +141,7 @@ export default function UsersPage() {
                 </TableCell>
                 <TableCell>{user.branch?.name ?? "—"}</TableCell>
                 <TableCell>
-                  {(canSuspend || canDelete) && (
+                  {(canSuspend || canDelete || canResetPassword) && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon-sm">
@@ -136,6 +149,11 @@ export default function UsersPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        {canResetPassword && (
+                          <DropdownMenuItem onClick={() => resetMutation.mutate(user.id)}>
+                            إعادة تعيين كلمة المرور
+                          </DropdownMenuItem>
+                        )}
                         {canSuspend && user.status !== "SUSPENDED" && (
                           <DropdownMenuItem onClick={() => suspendMutation.mutate(user.id)}>
                             {tc("suspend")}

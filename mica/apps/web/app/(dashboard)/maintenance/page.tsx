@@ -32,7 +32,7 @@ export default function MaintenancePage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["maintenance"],
-    queryFn: () => listMaintenanceRequests({ page: 1, pageSize: 200 }),
+    queryFn: () => listMaintenanceRequests({ page: 1, pageSize: 100 }),
   });
 
   const technicians = useMemo(() => {
