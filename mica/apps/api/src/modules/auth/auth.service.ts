@@ -242,9 +242,18 @@ export class AuthService {
     });
   }
 
-  /** Technical Support handles a request: issue a fresh reset link, mark the
-   *  request handled, and return the link + the user's phone so it can be sent
-   *  over WhatsApp. */
+  /** A readable temporary password (no ambiguous characters) to send over WhatsApp. */
+  private generateTempPassword(): string {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    let letters = "";
+    for (let i = 0; i < 3; i++) letters += alphabet[Math.floor(Math.random() * alphabet.length)];
+    const digits = Math.floor(1000 + Math.random() * 9000);
+    return `Mab-${letters}${digits}`;
+  }
+
+  /** Technical Support handles a request: set a fresh temporary password on the
+   *  user, mark the request handled, and return the password + phone so it can be
+   *  sent over WhatsApp. The user can change it from Settings after logging in. */
   async handleResetRequest(id: string, actingUserId: string) {
     const req = await this.prisma.passwordResetRequest.findUnique({
       where: { id },
@@ -252,9 +261,15 @@ export class AuthService {
     });
     if (!req) throw new UnauthorizedException("الطلب غير موجود");
 
-    const token = this.createPasswordResetToken(req.userId, "24h");
-    const webOrigin = this.configService.get<string>("app.corsOrigin") ?? "http://localhost:3001";
-    const setPasswordUrl = `${webOrigin}/reset-password?token=${token}`;
+    const tempPassword = this.generateTempPassword();
+    await this.prisma.user.update({
+      where: { id: req.userId },
+      data: {
+        passwordHash: await argon2.hash(tempPassword),
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+    });
 
     await this.prisma.passwordResetRequest.update({
       where: { id },
@@ -262,7 +277,7 @@ export class AuthService {
     });
 
     return {
-      setPasswordUrl,
+      tempPassword,
       name: `${req.user.firstName} ${req.user.lastName}`.trim(),
       phone: req.user.phone,
     };

@@ -76,10 +76,10 @@
     "invalidLinkBody": "This password link is missing its token. Please use the full link from your invite or reset email.",
     "backToSignIn": "Back to sign in",
     "forgotTitle": "Forgot password",
-    "sendResetLink": "Send reset link",
+    "sendResetLink": "Request password reset",
     "sending": "Sending…",
-    "checkEmail": "Check your email",
-    "resetSent": "If that email is registered, a password reset link has been sent."
+    "checkEmail": "Request received",
+    "resetSent": "The IT department will send your password over WhatsApp as soon as possible."
   },
   "dashboard": {
     "welcomeBack": "Welcome back, {name}",

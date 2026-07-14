@@ -19,7 +19,7 @@ export async function listResetRequests() {
 }
 
 export async function handleResetRequest(id: string) {
-  const { data } = await apiClient.post<{ setPasswordUrl: string; name: string; phone: string | null }>(
+  const { data } = await apiClient.post<{ tempPassword: string; name: string; phone: string | null }>(
     `/auth/reset-requests/${id}/handle`,
   );
   return data;

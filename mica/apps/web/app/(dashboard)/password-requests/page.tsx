@@ -23,17 +23,17 @@ export default function PasswordRequestsPage() {
   const handle = useMutation({
     mutationFn: handleResetRequest,
     onSuccess: (res, id) => {
-      const msg = `مرحبًا ${res.name}، هذا رابط إعادة تعيين كلمة المرور لنظام MICA MAB:\n${res.setPasswordUrl}\n(صالح ٢٤ ساعة).`;
+      const msg = `مرحبًا ${res.name}، كلمة المرور المؤقتة لحسابك في نظام MICA MAB هي: ${res.tempPassword}\nيمكنك تغييرها بعد تسجيل الدخول من الإعدادات.`;
       const wa = whatsappLink(res.phone, msg);
-      // Copy the link as a fallback, then open WhatsApp to the user's number.
-      navigator.clipboard?.writeText(res.setPasswordUrl).catch(() => {});
+      // Copy the password as a fallback, then open WhatsApp to the user's number.
+      navigator.clipboard?.writeText(res.tempPassword).catch(() => {});
       if (wa) {
         window.open(wa, "_blank");
-        toast.success("تم فتح واتساب مع رابط الاستعادة");
+        toast.success(`كلمة المرور: ${res.tempPassword} — تم فتح واتساب`);
       } else {
-        toast.success("تم إنشاء رابط الاستعادة ونسخه", {
-          description: "لا يوجد رقم جوال لهذا المستخدم — أرسل الرابط يدويًا.",
-          duration: 12000,
+        toast.success(`كلمة المرور المؤقتة: ${res.tempPassword} (تم نسخها)`, {
+          description: "لا يوجد رقم جوال لهذا المستخدم — أرسلها يدويًا.",
+          duration: 15000,
         });
       }
       queryClient.setQueryData<ResetRequestItem[]>(["reset-requests"], (old) =>
