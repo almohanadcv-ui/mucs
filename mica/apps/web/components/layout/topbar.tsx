@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Menu, Moon, Search, Sun, LogOut, Languages } from "lucide-react";
+import { Menu, Moon, Search, Sun, LogOut, Languages, KeyRound } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useTranslations } from "next-intl";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -104,6 +105,12 @@ export function Topbar({
               </p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/change-password">
+                <KeyRound className="size-4" />
+                تغيير كلمة المرور
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={handleLogout}>
               <LogOut className="size-4" />
               {t("logout")}

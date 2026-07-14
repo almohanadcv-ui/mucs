@@ -55,3 +55,10 @@ export async function forgotPasswordRequest(email: string): Promise<void> {
 export async function resetPasswordRequest(token: string, password: string): Promise<void> {
   await apiClient.post("/auth/reset-password", { token, password });
 }
+
+export async function changePasswordRequest(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await apiClient.post("/auth/change-password", { currentPassword, newPassword });
+}

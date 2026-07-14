@@ -283,6 +283,22 @@ export class AuthService {
     };
   }
 
+  /** Signed-in user changes their own password (verifying the current one). */
+  async changeOwnPassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    const ok = await argon2.verify(user.passwordHash, currentPassword).catch(() => false);
+    if (!ok) throw new UnauthorizedException("كلمة المرور الحالية غير صحيحة");
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await argon2.hash(newPassword) },
+    });
+  }
+
   async resetPassword(token: string, newPassword: string): Promise<void> {
     let payload: { sub: string; purpose: string };
     try {

@@ -26,6 +26,12 @@ import { Public } from "@/common/decorators/public.decorator";
 import { Permissions } from "@/common/decorators/permissions.decorator";
 import { CurrentUser } from "@/common/decorators/current-user.decorator";
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe";
+import { z } from "zod";
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "كلمة المرور الحالية مطلوبة"),
+  newPassword: z.string().min(8, "كلمة المرور الجديدة يجب ألا تقل عن ٨ أحرف"),
+});
 import { UsersService } from "@/modules/users/users.service";
 import type { RequestUser } from "./types/request-user.type";
 import { AuthService, type DeviceContext } from "./auth.service";
@@ -163,6 +169,16 @@ export class AuthController {
   @Permissions("users:update")
   handleResetRequest(@Param("id") id: string, @CurrentUser() user: RequestUser) {
     return this.authService.handleResetRequest(id, user.id);
+  }
+
+  @Post("change-password")
+  @HttpCode(200)
+  async changePassword(
+    @Body(new ZodValidationPipe(changePasswordSchema)) body: { currentPassword: string; newPassword: string },
+    @CurrentUser() user: RequestUser,
+  ): Promise<{ message: string }> {
+    await this.authService.changeOwnPassword(user.id, body.currentPassword, body.newPassword);
+    return { message: "تم تغيير كلمة المرور." };
   }
 
   @Public()
