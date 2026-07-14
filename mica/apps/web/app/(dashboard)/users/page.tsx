@@ -84,6 +84,7 @@ export default function UsersPage() {
             <TableRow>
               <TableHead>{t("colName")}</TableHead>
               <TableHead>{t("colEmail")}</TableHead>
+              <TableHead>رقم الجوال</TableHead>
               <TableHead>{t("colStatus")}</TableHead>
               <TableHead>{t("colRoles")}</TableHead>
               <TableHead>{t("colBranch")}</TableHead>
@@ -94,7 +95,7 @@ export default function UsersPage() {
             {isLoading &&
               Array.from({ length: 4 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell colSpan={6}>
+                  <TableCell colSpan={7}>
                     <Skeleton className="h-6 w-full" />
                   </TableCell>
                 </TableRow>
@@ -102,7 +103,7 @@ export default function UsersPage() {
 
             {!isLoading && data?.items.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   {t("empty")}
                 </TableCell>
               </TableRow>
@@ -114,6 +115,9 @@ export default function UsersPage() {
                   {user.firstName} {user.lastName}
                 </TableCell>
                 <TableCell>{user.email}</TableCell>
+                <TableCell dir="ltr" className="text-right">
+                  {user.phone ?? "—"}
+                </TableCell>
                 <TableCell>
                   <Badge variant={STATUS_VARIANT[user.status] ?? "secondary"}>
                     {ts(user.status)}
