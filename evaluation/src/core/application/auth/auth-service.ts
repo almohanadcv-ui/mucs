@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { getServerEnv } from "@/lib/env";
 import { durationToSeconds } from "@/lib/duration";
@@ -27,11 +28,17 @@ export interface AuthenticatedUser {
   role: import("@/core/domain/enums").Role;
 }
 
-async function issueTokens(
+/**
+ * Mint the token pair and return the (not yet executed) write that persists the
+ * refresh token. Keeping the write lazy lets callers batch it with their own
+ * writes into a single round trip — the database is remote, so each saved trip
+ * is hundreds of milliseconds off the login screen.
+ */
+async function prepareTokens(
   user: { id: string; tenantId: string; role: AuthenticatedUser["role"]; name: string },
   meta: RequestMeta,
   family?: string,
-): Promise<IssuedTokens> {
+): Promise<{ tokens: IssuedTokens; persist: Prisma.PrismaPromise<unknown> }> {
   const env = getServerEnv();
   const accessMaxAge = durationToSeconds(env.JWT_ACCESS_TTL);
   const refreshMaxAge = durationToSeconds(env.JWT_REFRESH_TTL);
@@ -44,7 +51,7 @@ async function issueTokens(
   });
 
   const refreshToken = randomToken(48);
-  await prisma.refreshToken.create({
+  const persist = prisma.refreshToken.create({
     data: {
       userId: user.id,
       tokenHash: sha256(refreshToken),
@@ -55,7 +62,10 @@ async function issueTokens(
     },
   });
 
-  return { accessToken, refreshToken, accessMaxAge, refreshMaxAge };
+  return {
+    tokens: { accessToken, refreshToken, accessMaxAge, refreshMaxAge },
+    persist,
+  };
 }
 
 export async function login(
@@ -69,19 +79,21 @@ export async function login(
   const input: LoginInput = parsed.data;
   const env = getServerEnv();
 
-  // Resolve tenant (single-tenant default until multi-tenant onboarding ships)
-  const tenant = await prisma.tenant.findFirst({
+  // The database is remote (~1 round trip ≈ several hundred ms), so every
+  // avoidable round trip is felt directly by the user at the login screen.
+  // Tenant + user resolve in a single query via the relation filter instead of
+  // two sequential ones.
+  const user = await prisma.user.findFirst({
     where: {
+      email: input.email,
       deletedAt: null,
-      isActive: true,
-      ...(input.tenantSlug ? { slug: input.tenantSlug } : {}),
+      tenant: {
+        deletedAt: null,
+        isActive: true,
+        ...(input.tenantSlug ? { slug: input.tenantSlug } : {}),
+      },
     },
     orderBy: { createdAt: "asc" },
-  });
-  if (!tenant) throw new AppError("INVALID_CREDENTIALS", "بيانات الدخول غير صحيحة");
-
-  const user = await prisma.user.findFirst({
-    where: { tenantId: tenant.id, email: input.email, deletedAt: null },
   });
 
   // Uniform failure to avoid user enumeration
@@ -109,24 +121,30 @@ export async function login(
   if (!ok) {
     const attempts = user.failedLoginAttempts + 1;
     const shouldLock = attempts >= env.AUTH_MAX_FAILED_ATTEMPTS;
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        failedLoginAttempts: shouldLock ? 0 : attempts,
-        lockedUntil: shouldLock
-          ? new Date(Date.now() + env.AUTH_LOCKOUT_MINUTES * 60_000)
-          : null,
-      },
-    });
-    await writeAudit({
-      tenantId: tenant.id,
-      actorId: user.id,
-      action: AuditAction.LOGIN_FAILED,
-      entity: "User",
-      entityId: user.id,
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-    });
+    // Independent rows, so these go concurrently rather than in a transaction:
+    // one round trip instead of two, and BEGIN/COMMIT costs a trip of its own.
+    // The lockout counter must still land before we answer, or repeated attempts
+    // would race it — hence awaited.
+    await Promise.all([
+      prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: shouldLock ? 0 : attempts,
+          lockedUntil: shouldLock
+            ? new Date(Date.now() + env.AUTH_LOCKOUT_MINUTES * 60_000)
+            : null,
+        },
+      }),
+      writeAudit({
+        tenantId: user.tenantId,
+        actorId: user.id,
+        action: AuditAction.LOGIN_FAILED,
+        entity: "User",
+        entityId: user.id,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      }),
+    ]);
     throw invalid();
   }
 
@@ -148,30 +166,35 @@ export async function login(
     ? await hashPassword(input.password)
     : undefined;
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      failedLoginAttempts: 0,
-      lockedUntil: null,
-      lastLoginAt: new Date(),
-      ...(rehash ? { passwordHash: rehash } : {}),
-    },
-  });
-
-  const tokens = await issueTokens(
+  const { tokens, persist } = await prepareTokens(
     { id: user.id, tenantId: user.tenantId, role: user.role, name: user.name },
     meta,
   );
 
-  await writeAudit({
-    tenantId: tenant.id,
-    actorId: user.id,
-    action: AuditAction.LOGIN,
-    entity: "User",
-    entityId: user.id,
-    ip: meta.ip,
-    userAgent: meta.userAgent,
-  });
+  // Refresh token, login bookkeeping and audit line touch different rows, so
+  // they go concurrently — one round trip instead of three. The refresh token
+  // must be committed before we hand it to the browser, so this is awaited.
+  await Promise.all([
+    persist,
+    prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastLoginAt: new Date(),
+        ...(rehash ? { passwordHash: rehash } : {}),
+      },
+    }),
+    writeAudit({
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: AuditAction.LOGIN,
+      entity: "User",
+      entityId: user.id,
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    }),
+  ]);
 
   return {
     user: {
@@ -219,17 +242,21 @@ export async function refresh(
     throw AppError.unauthorized("الحساب غير متاح");
   }
 
-  // Rotate: revoke current, issue a new token in the same family.
-  await prisma.refreshToken.update({
-    where: { id: record.id },
-    data: { revokedAt: new Date() },
-  });
-
-  const tokens = await issueTokens(
+  // Rotate: revoke current, issue a new token in the same family. Both writes
+  // go in one transaction — a round trip saved, and rotation stays atomic so a
+  // failure can't leave the family with two live tokens.
+  const { tokens, persist } = await prepareTokens(
     { id: user.id, tenantId: user.tenantId, role: user.role, name: user.name },
     meta,
     record.family,
   );
+  await prisma.$transaction([
+    prisma.refreshToken.update({
+      where: { id: record.id },
+      data: { revokedAt: new Date() },
+    }),
+    persist,
+  ]);
 
   return {
     user: {
