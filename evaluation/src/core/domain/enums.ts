@@ -29,6 +29,15 @@ export const EvaluationStatus = {
 export type EvaluationStatus =
   (typeof EvaluationStatus)[keyof typeof EvaluationStatus];
 
+/** Where an evaluation's content comes from: the question form, or an
+ *  uploaded Word document that stands in as the evaluation itself. */
+export const EvaluationSource = {
+  FORM: "FORM",
+  DOCUMENT: "DOCUMENT",
+} as const;
+export type EvaluationSource =
+  (typeof EvaluationSource)[keyof typeof EvaluationSource];
+
 /** The 11 supported question types. */
 export const QuestionType = {
   STAR_RATING: "STAR_RATING",

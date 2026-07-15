@@ -20,6 +20,36 @@ const EMPLOYEE_INCLUDE = {
 } satisfies Prisma.EmployeeInclude;
 
 /**
+ * Which employees belong to an evaluator: the ones explicitly linked to them,
+ * plus the ones whose imported «المدير المباشر» is this evaluator's name.
+ *
+ * The name match exists because linking only happens when the account is
+ * created — employees imported afterwards would otherwise never be linked, and
+ * the evaluator would see an empty list.
+ *
+ * Single source of truth: `evaluatorOwns` must stay equivalent to this filter,
+ * or an evaluator could see employees they cannot act on (or the reverse).
+ */
+export function evaluatorScope(user: SessionUser): Prisma.EmployeeWhereInput {
+  return {
+    OR: [
+      { evaluatorId: user.id },
+      { directManager: { equals: user.name, mode: "insensitive" } },
+    ],
+  };
+}
+
+/** In-memory counterpart of `evaluatorScope`, for checks on a loaded row. */
+export function evaluatorOwns(
+  user: SessionUser,
+  employee: { evaluatorId: string | null; directManager: string | null },
+): boolean {
+  if (employee.evaluatorId === user.id) return true;
+  const manager = employee.directManager?.trim().toLowerCase();
+  return !!manager && manager === user.name.trim().toLowerCase();
+}
+
+/**
  * Restrict visibility by role:
  * - ADMIN: entire tenant
  * - SUPERVISOR: only employees they supervise
@@ -32,15 +62,7 @@ function scopeForRole(user: SessionUser): Prisma.EmployeeWhereInput {
     case Role.SUPERVISOR:
       return { supervisorId: user.id };
     case Role.EVALUATOR:
-      // Explicitly linked employees PLUS anyone whose imported «المدير المباشر»
-      // matches this evaluator's name — so a team shows up automatically even
-      // when the employee file is imported after the account was created.
-      return {
-        OR: [
-          { evaluatorId: user.id },
-          { directManager: { equals: user.name, mode: "insensitive" } },
-        ],
-      };
+      return evaluatorScope(user);
     default:
       return { id: "__none__" };
   }

@@ -2,13 +2,16 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { notify } from "@/core/application/notifications/notification-service";
+import { evaluatorOwns } from "@/core/application/employees/employee-service";
 import { AppError } from "@/core/application/errors";
 import {
   AuditAction,
+  EvaluationSource,
   EvaluationStatus,
   NotificationType,
   Role,
 } from "@/core/domain/enums";
+import { docxToSafeHtml } from "@/infrastructure/documents/docx";
 import {
   normalizeAnswer,
   computeScore,
@@ -21,6 +24,7 @@ import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
 import type {
   CreateEvaluationInput,
+  CreateDocumentEvaluationInput,
   UpdateEvaluationInput,
   ReviewEvaluationInput,
   ListEvaluationsInput,
@@ -149,6 +153,9 @@ export async function listEvaluations(
       orderBy: { createdAt: input.sortDir },
       ...toSkipTake(input),
       include: LIST_INCLUDE,
+      // The document body can be pages of HTML; a list of 50 would haul all of
+      // it over the wire for nothing. It is fetched with the detail instead.
+      omit: { documentHtml: true },
     }),
     prisma.evaluation.count({ where }),
   ]);
@@ -176,11 +183,19 @@ export async function getEvaluation(user: SessionUser, id: string) {
 async function loadEmployeeForEvaluator(user: SessionUser, employeeId: string) {
   const employee = await prisma.employee.findFirst({
     where: { id: employeeId, tenantId: user.tenantId, deletedAt: null },
-    select: { id: true, name: true, supervisorId: true, evaluatorId: true },
+    select: {
+      id: true,
+      name: true,
+      supervisorId: true,
+      evaluatorId: true,
+      directManager: true,
+    },
   });
   if (!employee) throw AppError.validation("الموظف غير موجود");
-  // Evaluators may only evaluate employees assigned to them.
-  if (user.role === Role.EVALUATOR && employee.evaluatorId !== user.id) {
+  // Evaluators may only evaluate employees assigned to them. This must use the
+  // same rule the employee list is filtered by, otherwise an evaluator sees a
+  // team they are then told they may not evaluate.
+  if (user.role === Role.EVALUATOR && !evaluatorOwns(user, employee)) {
     throw AppError.forbidden("غير مكلّف بتقييم هذا الموظف");
   }
   return employee;
@@ -245,6 +260,66 @@ export async function createEvaluation(
   return evaluation;
 }
 
+/**
+ * Create an evaluation from an uploaded Word file. The document replaces the
+ * question form entirely: there is no template and no answers, so there is also
+ * no computed score — a reviewer reads the document and approves or rejects it.
+ */
+export async function createDocumentEvaluation(
+  user: SessionUser,
+  meta: RequestMeta,
+  input: CreateDocumentEvaluationInput,
+  file: { name: string; buffer: Buffer },
+) {
+  const employee = await loadEmployeeForEvaluator(user, input.employeeId);
+
+  // Parse before writing: an unreadable file must not leave a half-made row.
+  const { html } = await docxToSafeHtml(file.buffer);
+
+  const status = input.submit ? EvaluationStatus.PENDING : EvaluationStatus.DRAFT;
+
+  const evaluation = await prisma.evaluation.create({
+    data: {
+      tenantId: user.tenantId,
+      templateId: null,
+      employeeId: employee.id,
+      evaluatorId: user.id,
+      source: EvaluationSource.DOCUMENT,
+      documentName: file.name,
+      documentHtml: html,
+      status,
+      score: null,
+      submittedAt: input.submit ? new Date() : null,
+    },
+    include: LIST_INCLUDE,
+  });
+
+  await Promise.all([
+    writeAudit({
+      tenantId: user.tenantId,
+      actorId: user.id,
+      action: AuditAction.CREATE,
+      entity: "Evaluation",
+      entityId: evaluation.id,
+      after: { status, source: EvaluationSource.DOCUMENT, documentName: file.name },
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+    }),
+    input.submit && employee.supervisorId
+      ? notify({
+          tenantId: user.tenantId,
+          userId: employee.supervisorId,
+          type: NotificationType.ASSIGNMENT,
+          title: "تقييم بانتظار الاعتماد",
+          body: `تقييم جديد (ملف وورد) للموظف ${employee.name} بانتظار مراجعتك.`,
+          data: { evaluationId: evaluation.id },
+        })
+      : null,
+  ]);
+
+  return evaluation;
+}
+
 /** Update a DRAFT evaluation's answers, optionally submitting it for review. */
 export async function updateEvaluation(
   user: SessionUser,
@@ -262,6 +337,14 @@ export async function updateEvaluation(
   if (!existing) throw AppError.notFound("التقييم غير موجود");
   if (existing.status !== EvaluationStatus.DRAFT) {
     throw new AppError("CONFLICT", "لا يمكن تعديل تقييم تم إرساله");
+  }
+  // A document-sourced evaluation has no template and no answers to edit; the
+  // way to change it is to upload a different file.
+  if (existing.source === EvaluationSource.DOCUMENT || !existing.template) {
+    throw new AppError(
+      "CONFLICT",
+      "هذا التقييم مبني على ملف وورد — لتعديله ارفع ملفاً بديلاً.",
+    );
   }
 
   const questions = existing.template.questions.map(toQuestionLike);

@@ -40,6 +40,13 @@ enum EvaluationStatus {
   REJECTED
 }
 
+/// Where an evaluation's content comes from: the question form, or an uploaded
+/// Word document that stands in as the evaluation itself.
+enum EvaluationSource {
+  FORM
+  DOCUMENT
+}
+
 enum QuestionType {
   STAR_RATING
   SINGLE_CHOICE
@@ -351,13 +358,23 @@ model Question {
 model Evaluation {
   id         String           @id @default(uuid()) @db.Uuid
   tenantId   String           @db.Uuid
-  templateId String           @db.Uuid
+  // Null for DOCUMENT-sourced evaluations: an uploaded Word file replaces the
+  // question form, so there is no template behind it.
+  templateId String?          @db.Uuid
   employeeId String           @db.Uuid
   evaluatorId String          @db.Uuid // User who performs the evaluation
   reviewerId  String?         @db.Uuid // Supervisor who approves/rejects
 
+  source      EvaluationSource @default(FORM)
+  // DOCUMENT source only: the original file name, and its content converted to
+  // sanitized HTML for display. The HTML is rendered directly, so it is
+  // sanitized on ingest — never trust it back from the client.
+  documentName String?
+  documentHtml String?
+
   status      EvaluationStatus @default(DRAFT)
   // Aggregate normalized score (0..100) computed on submit from weighted answers.
+  // Always null for DOCUMENT evaluations — there are no weighted answers.
   score       Float?
   submittedAt DateTime?
   reviewedAt  DateTime?
@@ -367,9 +384,9 @@ model Evaluation {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  template  EvaluationTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  employee  Employee           @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template  EvaluationTemplate? @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  employee  Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   evaluator User               @relation("EvaluationSubmitter", fields: [evaluatorId], references: [id], onDelete: Restrict)
   reviewer  User?              @relation("EvaluationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
   answers   Answer[]
