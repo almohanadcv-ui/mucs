@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, ClipboardList, Star, Loader2, FileText } from "lucide-react";
+import { Plus, ClipboardList, Star, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -87,16 +87,7 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
                   {rows.map((e) => (
                     <tr key={e.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="px-3 py-3 font-medium">{e.employee?.name ?? "—"}</td>
-                      <td className="px-3 py-3 text-muted-foreground">
-                        {e.source === "DOCUMENT" ? (
-                          <span className="inline-flex items-center gap-1.5">
-                            <FileText className="size-3.5 shrink-0" />
-                            {e.documentName ?? "ملف وورد"}
-                          </span>
-                        ) : (
-                          (e.template?.title ?? "—")
-                        )}
-                      </td>
+                      <td className="px-3 py-3 text-muted-foreground">{e.template?.title ?? "—"}</td>
                       <td className="px-3 py-3 text-muted-foreground">{e.evaluator?.name ?? "—"}</td>
                       <td className="px-3 py-3">
                         {e.score != null ? (

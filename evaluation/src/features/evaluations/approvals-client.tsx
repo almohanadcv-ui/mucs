@@ -37,10 +37,7 @@ export function ApprovalsClient() {
                 <div>
                   <p className="font-semibold">{e.employee?.name}</p>
                   <p className="text-sm text-muted-foreground">
-                    {e.source === "DOCUMENT"
-                      ? `ملف وورد: ${e.documentName ?? "—"}`
-                      : e.template?.title}{" "}
-                    · المقيّم: {e.evaluator?.name} · {fmt(e.submittedAt)}
+                    {e.template?.title} · المقيّم: {e.evaluator?.name} · {fmt(e.submittedAt)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

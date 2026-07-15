@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Check, X, Star, FileText } from "lucide-react";
+import { Loader2, Check, X, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,7 +21,7 @@ import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import { useEvaluation, useReviewEvaluation, type EvaluationDetail } from "./use-evaluations";
 
 function formatAnswer(
-  question: NonNullable<EvaluationDetail["template"]>["questions"][number],
+  question: EvaluationDetail["template"]["questions"][number],
   answer: EvaluationDetail["answers"][number] | undefined,
 ): React.ReactNode {
   if (!answer) return <span className="text-muted-foreground">—</span>;
@@ -108,11 +108,7 @@ export function EvaluationDetailView({
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">
-            {data.source === "DOCUMENT"
-              ? (data.documentName ?? "تقييم بملف وورد")
-              : (data.template?.title ?? "تقييم")}
-          </h1>
+          <h1 className="text-2xl font-bold">{data.template.title}</h1>
           <p className="text-sm text-muted-foreground">
             الموظف: {data.employee?.name} · المقيّم: {data.evaluator?.name}
           </p>
@@ -133,35 +129,17 @@ export function EvaluationDetailView({
         </div>
       )}
 
-      {data.source === "DOCUMENT" ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="size-4 text-primary" /> محتوى ملف التقييم
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {/* Sanitized on ingest in docxToSafeHtml — the server is the trust
-                boundary for this markup, never the client. */}
-            <div
-              className="evaluation-document"
-              dangerouslySetInnerHTML={{ __html: data.documentHtml ?? "" }}
-            />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader><CardTitle>الإجابات</CardTitle></CardHeader>
-          <CardContent className="divide-y">
-            {data.template?.questions.map((q, i) => (
-              <div key={q.id ?? i} className="flex items-start justify-between gap-4 py-3">
-                <span className="text-sm text-muted-foreground">{i + 1}. {q.label}</span>
-                <span className="text-sm font-medium">{formatAnswer(q, answersByQ.get(q.id!))}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardHeader><CardTitle>الإجابات</CardTitle></CardHeader>
+        <CardContent className="divide-y">
+          {data.template.questions.map((q, i) => (
+            <div key={q.id ?? i} className="flex items-start justify-between gap-4 py-3">
+              <span className="text-sm text-muted-foreground">{i + 1}. {q.label}</span>
+              <span className="text-sm font-medium">{formatAnswer(q, answersByQ.get(q.id!))}</span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       {canReview && isPending && (
         <div className="flex justify-start gap-3">

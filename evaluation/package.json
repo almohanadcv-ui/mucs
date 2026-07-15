@@ -15,6 +15,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
+    "db:latency": "tsx scripts/db-latency.ts",
     "db:reset": "prisma migrate reset"
   },
   "prisma": {
@@ -35,8 +36,11 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
+    "domhandler": "^6.0.1",
+    "domutils": "^4.0.2",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.42.2",
+    "htmlparser2": "^12.0.0",
     "jose": "^6.2.3",
     "lucide-react": "^1.23.0",
     "mammoth": "^1.12.0",

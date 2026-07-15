@@ -21,15 +21,6 @@ export const updateEvaluationSchema = z.object({
   submit: z.boolean().default(false),
 });
 
-/**
- * Creating an evaluation from an uploaded Word file. The file itself arrives as
- * multipart form-data; these are the accompanying fields.
- */
-export const createDocumentEvaluationSchema = z.object({
-  employeeId: z.string().uuid(),
-  submit: z.boolean().default(false),
-});
-
 export const reviewEvaluationSchema = z
   .object({
     decision: z.enum(["APPROVE", "REJECT"]),
@@ -59,9 +50,6 @@ export const listEvaluationsSchema = paginationSchema.extend({
 });
 
 export type CreateEvaluationInput = z.infer<typeof createEvaluationSchema>;
-export type CreateDocumentEvaluationInput = z.infer<
-  typeof createDocumentEvaluationSchema
->;
 export type UpdateEvaluationInput = z.infer<typeof updateEvaluationSchema>;
 export type ReviewEvaluationInput = z.infer<typeof reviewEvaluationSchema>;
 export type ListEvaluationsInput = z.infer<typeof listEvaluationsSchema>;

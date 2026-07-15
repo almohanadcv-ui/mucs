@@ -28,6 +28,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError } from "@/lib/api-client";
 import { QUESTION_TYPE_META, metaFor } from "./question-types";
+import { DocxImport, type TemplateDraft } from "./docx-import";
 import {
   useCreateTemplate,
   useUpdateTemplate,
@@ -63,6 +64,12 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
   const [questions, setQuestions] = useState<LocalQuestion[]>(
     initial?.questions.map((q) => ({ ...q, _key: nanoid() })) ?? [blankQuestion(0)],
   );
+
+  /** Fill the builder from a parsed Word form, replacing what is on screen. */
+  function applyDraft(draft: TemplateDraft) {
+    if (draft.title) setTitle(draft.title);
+    setQuestions(draft.questions.map((q) => ({ ...q, _key: nanoid() })));
+  }
 
   function patchQuestion(key: string, patch: Partial<LocalQuestion>) {
     setQuestions((qs) => qs.map((q) => (q._key === key ? { ...q, ...patch } : q)));
@@ -140,6 +147,11 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
           حفظ
         </Button>
       </div>
+
+      {/* Import is offered on new templates only: dropping a parsed file over an
+          existing template would silently discard questions that evaluations
+          already point at. */}
+      {!isEdit && <DocxImport onParsed={applyDraft} />}
 
       <Card>
         <CardHeader>

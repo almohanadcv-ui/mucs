@@ -15,9 +15,6 @@ export interface EvaluationRow {
   submittedAt: string | null;
   reviewedAt: string | null;
   rejectionReason: string | null;
-  /** DOCUMENT evaluations carry an uploaded Word file instead of answers. */
-  source: "FORM" | "DOCUMENT";
-  documentName: string | null;
   employee: { id: string; name: string; employeeNo: string } | null;
   template: { id: string; title: string } | null;
   evaluator: { id: string; name: string } | null;
@@ -25,16 +22,11 @@ export interface EvaluationRow {
 }
 
 export interface EvaluationDetail extends EvaluationRow {
-  /** Null when `source` is DOCUMENT — there is no template behind it. */
-  template:
-    | ({
-        id: string;
-        title: string;
-        questions: TemplateQuestion[];
-      } & NonNullable<EvaluationRow["template"]>)
-    | null;
-  /** Sanitized server-side; DOCUMENT evaluations only. */
-  documentHtml: string | null;
+  template: {
+    id: string;
+    title: string;
+    questions: TemplateQuestion[];
+  } & EvaluationRow["template"];
   answers: {
     questionId: string;
     valueNumber: number | null;
@@ -73,21 +65,6 @@ export function useCreateEvaluation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: unknown) => apiClient.post<EvaluationRow>("/api/evaluations", body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["evaluations"] }),
-  });
-}
-
-/** Create an evaluation from an uploaded Word file (multipart upload). */
-export function useUploadEvaluation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (args: { file: File; employeeId: string; submit: boolean }) => {
-      const form = new FormData();
-      form.set("file", args.file);
-      form.set("employeeId", args.employeeId);
-      form.set("submit", String(args.submit));
-      return apiClient.postForm<EvaluationRow>("/api/evaluations/upload", form);
-    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["evaluations"] }),
   });
 }

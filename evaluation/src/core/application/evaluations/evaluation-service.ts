@@ -2,17 +2,15 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { publishToTenant } from "@/infrastructure/realtime/bus";
-import { notify } from "@/core/application/notifications/notification-service";
+import { notify, notifyMany } from "@/core/application/notifications/notification-service";
 import { evaluatorOwns } from "@/core/application/employees/employee-service";
 import { AppError } from "@/core/application/errors";
 import {
   AuditAction,
-  EvaluationSource,
   EvaluationStatus,
   NotificationType,
   Role,
 } from "@/core/domain/enums";
-import { docxToSafeHtml } from "@/infrastructure/documents/docx";
 import {
   normalizeAnswer,
   computeScore,
@@ -25,7 +23,6 @@ import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
 import type {
   CreateEvaluationInput,
-  CreateDocumentEvaluationInput,
   UpdateEvaluationInput,
   ReviewEvaluationInput,
   ListEvaluationsInput,
@@ -125,7 +122,18 @@ function scopeForRole(user: SessionUser): Prisma.EvaluationWhereInput {
     case Role.ADMIN:
       return {};
     case Role.SUPERVISOR:
-      return { employee: { supervisorId: user.id } };
+      // A supervisor is a reviewer. Scoping them to employee.supervisorId alone
+      // hid the approval queue almost entirely, because that link is set for
+      // barely any employee — so submitted evaluations were invisible to the
+      // very people meant to approve them. They see their own team, anything
+      // awaiting review, and whatever they have already ruled on.
+      return {
+        OR: [
+          { employee: { supervisorId: user.id } },
+          { status: EvaluationStatus.PENDING },
+          { reviewerId: user.id },
+        ],
+      };
     case Role.EVALUATOR:
       return { evaluatorId: user.id };
     default:
@@ -154,9 +162,6 @@ export async function listEvaluations(
       orderBy: { createdAt: input.sortDir },
       ...toSkipTake(input),
       include: LIST_INCLUDE,
-      // The document body can be pages of HTML; a list of 50 would haul all of
-      // it over the wire for nothing. It is fetched with the detail instead.
-      omit: { documentHtml: true },
     }),
     prisma.evaluation.count({ where }),
   ]);
@@ -200,6 +205,54 @@ async function loadEmployeeForEvaluator(user: SessionUser, employeeId: string) {
     throw AppError.forbidden("غير مكلّف بتقييم هذا الموظف");
   }
   return employee;
+}
+
+/**
+ * Everyone who should be told an evaluation is waiting for approval: the
+ * employee's own supervisor if they have one, plus every reviewer (SUPERVISOR)
+ * and support account (ADMIN) in the tenant.
+ *
+ * It deliberately does not rely on employee.supervisorId alone. That column is
+ * only set when an employee is linked to a supervisor by hand, and in practice
+ * almost none are — so submissions were notifying nobody at all and sat unseen.
+ * The submitter is excluded; they don't need telling about their own work.
+ */
+async function notifyReviewers(
+  user: SessionUser,
+  employeeName: string,
+  evaluationId: string,
+  extra: { supervisorId?: string | null; isDocument?: boolean },
+) {
+  const reviewers = await prisma.user.findMany({
+    where: {
+      tenantId: user.tenantId,
+      deletedAt: null,
+      isActive: true,
+      role: { in: [Role.SUPERVISOR, Role.ADMIN] },
+      id: { not: user.id },
+    },
+    select: { id: true },
+  });
+
+  const userIds = reviewers.map((r) => r.id);
+  if (extra.supervisorId && extra.supervisorId !== user.id) {
+    userIds.push(extra.supervisorId);
+  }
+
+  const sent = await notifyMany({
+    tenantId: user.tenantId,
+    userIds,
+    type: NotificationType.ASSIGNMENT,
+    title: "تقييم بانتظار الاعتماد",
+    body: `تقييم جديد${extra.isDocument ? " (ملف وورد)" : ""} للموظف ${employeeName} بانتظار مراجعتك.`,
+    data: { evaluationId },
+  });
+
+  if (sent === 0) {
+    console.error(
+      `[evaluations] ${evaluationId} submitted but no reviewer or admin exists in tenant ${user.tenantId} — nobody was notified`,
+    );
+  }
 }
 
 export async function createEvaluation(
@@ -247,77 +300,11 @@ export async function createEvaluation(
     userAgent: meta.userAgent,
   });
 
-  if (input.submit && employee.supervisorId) {
-    await notify({
-      tenantId: user.tenantId,
-      userId: employee.supervisorId,
-      type: NotificationType.ASSIGNMENT,
-      title: "تقييم بانتظار الاعتماد",
-      body: `تقييم جديد للموظف ${employee.name} بانتظار مراجعتك.`,
-      data: { evaluationId: evaluation.id },
+  if (input.submit) {
+    await notifyReviewers(user, employee.name, evaluation.id, {
+      supervisorId: employee.supervisorId,
     });
   }
-
-  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
-  return evaluation;
-}
-
-/**
- * Create an evaluation from an uploaded Word file. The document replaces the
- * question form entirely: there is no template and no answers, so there is also
- * no computed score — a reviewer reads the document and approves or rejects it.
- */
-export async function createDocumentEvaluation(
-  user: SessionUser,
-  meta: RequestMeta,
-  input: CreateDocumentEvaluationInput,
-  file: { name: string; buffer: Buffer },
-) {
-  const employee = await loadEmployeeForEvaluator(user, input.employeeId);
-
-  // Parse before writing: an unreadable file must not leave a half-made row.
-  const { html } = await docxToSafeHtml(file.buffer);
-
-  const status = input.submit ? EvaluationStatus.PENDING : EvaluationStatus.DRAFT;
-
-  const evaluation = await prisma.evaluation.create({
-    data: {
-      tenantId: user.tenantId,
-      templateId: null,
-      employeeId: employee.id,
-      evaluatorId: user.id,
-      source: EvaluationSource.DOCUMENT,
-      documentName: file.name,
-      documentHtml: html,
-      status,
-      score: null,
-      submittedAt: input.submit ? new Date() : null,
-    },
-    include: LIST_INCLUDE,
-  });
-
-  await Promise.all([
-    writeAudit({
-      tenantId: user.tenantId,
-      actorId: user.id,
-      action: AuditAction.CREATE,
-      entity: "Evaluation",
-      entityId: evaluation.id,
-      after: { status, source: EvaluationSource.DOCUMENT, documentName: file.name },
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-    }),
-    input.submit && employee.supervisorId
-      ? notify({
-          tenantId: user.tenantId,
-          userId: employee.supervisorId,
-          type: NotificationType.ASSIGNMENT,
-          title: "تقييم بانتظار الاعتماد",
-          body: `تقييم جديد (ملف وورد) للموظف ${employee.name} بانتظار مراجعتك.`,
-          data: { evaluationId: evaluation.id },
-        })
-      : null,
-  ]);
 
   publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return evaluation;
@@ -341,13 +328,8 @@ export async function updateEvaluation(
   if (existing.status !== EvaluationStatus.DRAFT) {
     throw new AppError("CONFLICT", "لا يمكن تعديل تقييم تم إرساله");
   }
-  // A document-sourced evaluation has no template and no answers to edit; the
-  // way to change it is to upload a different file.
-  if (existing.source === EvaluationSource.DOCUMENT || !existing.template) {
-    throw new AppError(
-      "CONFLICT",
-      "هذا التقييم مبني على ملف وورد — لتعديله ارفع ملفاً بديلاً.",
-    );
+  if (!existing.template) {
+    throw new AppError("CONFLICT", "التقييم غير مرتبط بنموذج");
   }
 
   const questions = existing.template.questions.map(toQuestionLike);
@@ -368,14 +350,9 @@ export async function updateEvaluation(
     });
   });
 
-  if (input.submit && existing.employee.supervisorId) {
-    await notify({
-      tenantId: user.tenantId,
-      userId: existing.employee.supervisorId,
-      type: NotificationType.ASSIGNMENT,
-      title: "تقييم بانتظار الاعتماد",
-      body: `تقييم للموظف ${existing.employee.name} بانتظار مراجعتك.`,
-      data: { evaluationId: id },
+  if (input.submit) {
+    await notifyReviewers(user, existing.employee.name, id, {
+      supervisorId: existing.employee.supervisorId,
     });
   }
 
@@ -400,14 +377,15 @@ export async function reviewEvaluation(
   id: string,
   input: ReviewEvaluationInput,
 ) {
+  // Must match what scopeForRole lets a supervisor see, or the approval queue
+  // shows rows that answer "التقييم غير موجود" when acted on. Reviewers act on
+  // the pending queue regardless of whether the employee is linked to them.
   const evaluation = await prisma.evaluation.findFirst({
     where: {
       id,
       tenantId: user.tenantId,
       deletedAt: null,
-      ...(user.role === Role.SUPERVISOR
-        ? { employee: { supervisorId: user.id } }
-        : {}),
+      ...scopeForRole(user),
     },
     include: { evaluator: { select: { id: true } }, employee: { select: { name: true } } },
   });

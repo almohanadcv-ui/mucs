@@ -32,6 +32,39 @@ export async function notify(params: {
   return notification;
 }
 
+/**
+ * Notify several users of the same thing in one round trip.
+ *
+ * Returns the number of rows written. Callers should treat 0 as worth logging:
+ * it means nobody was told, which is how "submitted for approval" silently
+ * reached no one.
+ */
+export async function notifyMany(params: {
+  tenantId: string;
+  userIds: string[];
+  type: NotificationType;
+  title: string;
+  body?: string;
+  data?: Prisma.InputJsonValue;
+}): Promise<number> {
+  const userIds = [...new Set(params.userIds)];
+  if (userIds.length === 0) return 0;
+
+  const result = await prisma.notification.createMany({
+    data: userIds.map((userId) => ({
+      tenantId: params.tenantId,
+      userId,
+      type: params.type,
+      title: params.title,
+      body: params.body ?? null,
+      data: params.data,
+    })),
+  });
+
+  for (const userId of userIds) publishToUser(userId, { type: "notification" });
+  return result.count;
+}
+
 export async function listNotifications(
   user: SessionUser,
   input: PaginationInput & { unreadOnly?: boolean },
