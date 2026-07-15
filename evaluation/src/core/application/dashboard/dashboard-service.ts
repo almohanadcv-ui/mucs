@@ -42,7 +42,14 @@ function employeeScope(user: SessionUser): Prisma.EmployeeWhereInput {
     case Role.SUPERVISOR:
       return { supervisorId: user.id };
     case Role.EVALUATOR:
-      return { evaluatorId: user.id };
+      // Mirrors employee-service: linked employees + those whose imported
+      // «المدير المباشر» matches this evaluator's name.
+      return {
+        OR: [
+          { evaluatorId: user.id },
+          { directManager: { equals: user.name, mode: "insensitive" } },
+        ],
+      };
     default:
       return { id: "__none__" };
   }

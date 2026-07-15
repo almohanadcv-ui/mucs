@@ -32,7 +32,15 @@ function scopeForRole(user: SessionUser): Prisma.EmployeeWhereInput {
     case Role.SUPERVISOR:
       return { supervisorId: user.id };
     case Role.EVALUATOR:
-      return { evaluatorId: user.id };
+      // Explicitly linked employees PLUS anyone whose imported «المدير المباشر»
+      // matches this evaluator's name — so a team shows up automatically even
+      // when the employee file is imported after the account was created.
+      return {
+        OR: [
+          { evaluatorId: user.id },
+          { directManager: { equals: user.name, mode: "insensitive" } },
+        ],
+      };
     default:
       return { id: "__none__" };
   }
@@ -45,23 +53,27 @@ export async function listEmployees(
   const where: Prisma.EmployeeWhereInput = {
     tenantId: user.tenantId,
     deletedAt: null,
-    ...scopeForRole(user),
     ...(input.status ? { status: input.status } : {}),
     ...(input.branchId ? { branchId: input.branchId } : {}),
     ...(input.departmentId ? { departmentId: input.departmentId } : {}),
     ...(input.supervisorId ? { supervisorId: input.supervisorId } : {}),
     ...(input.evaluatorId ? { evaluatorId: input.evaluatorId } : {}),
-    ...(input.search
-      ? {
-          OR: [
-            { name: { contains: input.search, mode: "insensitive" } },
-            { nameEn: { contains: input.search, mode: "insensitive" } },
-            { employeeNo: { contains: input.search, mode: "insensitive" } },
-            { nationalId: { contains: input.search, mode: "insensitive" } },
-            { jobTitle: { contains: input.search, mode: "insensitive" } },
-          ],
-        }
-      : {}),
+    // AND-combined: the role scope and the search each carry their own OR, so
+    // merging them at the top level would let the search clobber the scope.
+    AND: [
+      scopeForRole(user),
+      input.search
+        ? {
+            OR: [
+              { name: { contains: input.search, mode: "insensitive" } },
+              { nameEn: { contains: input.search, mode: "insensitive" } },
+              { employeeNo: { contains: input.search, mode: "insensitive" } },
+              { nationalId: { contains: input.search, mode: "insensitive" } },
+              { jobTitle: { contains: input.search, mode: "insensitive" } },
+            ],
+          }
+        : {},
+    ],
   };
 
   const [items, total] = await prisma.$transaction([
@@ -92,12 +104,17 @@ export async function searchEmployeesForPicker(
   const where: Prisma.EmployeeWhereInput = {
     tenantId: user.tenantId,
     deletedAt: null,
-    ...scopeForRole(user),
-    OR: [
-      { name: { contains: term, mode: "insensitive" } },
-      { nameEn: { contains: term, mode: "insensitive" } },
-      { employeeNo: { contains: term, mode: "insensitive" } },
-      { nationalId: { contains: term, mode: "insensitive" } },
+    // AND-combined so the search terms can't clobber the role scope's OR.
+    AND: [
+      scopeForRole(user),
+      {
+        OR: [
+          { name: { contains: term, mode: "insensitive" } },
+          { nameEn: { contains: term, mode: "insensitive" } },
+          { employeeNo: { contains: term, mode: "insensitive" } },
+          { nationalId: { contains: term, mode: "insensitive" } },
+        ],
+      },
     ],
   };
   return prisma.employee.findMany({
