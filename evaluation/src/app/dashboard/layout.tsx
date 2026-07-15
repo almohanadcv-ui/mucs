@@ -4,6 +4,7 @@ import { Sidebar } from "@/features/shell/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LogoutButton } from "@/features/auth/logout-button";
 import { NotificationBell } from "@/features/notifications/notification-bell";
+import { RealtimeProvider } from "@/features/realtime/realtime-provider";
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: "مدير النظام",
@@ -21,6 +22,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen bg-muted/30">
+      <RealtimeProvider />
       <Sidebar role={user.role} />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 border-b bg-card/80 backdrop-blur print:hidden">

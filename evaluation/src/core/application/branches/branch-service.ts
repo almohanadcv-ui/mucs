@@ -37,7 +37,7 @@ export async function listBranches(
       : {}),
   };
 
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.branch.findMany({
       where,
       orderBy: orderBy(input),

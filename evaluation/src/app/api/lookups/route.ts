@@ -11,8 +11,10 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth(
   async ({ user }) => {
     const tenantId = user.tenantId;
+    // Five independent reads; concurrent rather than transactional to save the
+    // BEGIN/COMMIT round trip to a remote database.
     const [branches, departments, supervisors, evaluators, templates] =
-      await prisma.$transaction([
+      await Promise.all([
         prisma.branch.findMany({
           where: { tenantId, deletedAt: null },
           select: { id: true, name: true },

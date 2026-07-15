@@ -18,7 +18,10 @@ export function useNotifications() {
     queryKey: ["notifications"],
     queryFn: () =>
       apiClient.get<PaginatedResponse<NotificationRow>>("/api/notifications?pageSize=15"),
-    refetchInterval: 30_000,
+    // Notifications arrive by push (see useRealtime), so this is only a safety
+    // net for a stream that died without the client noticing — hence slow.
+    refetchInterval: 2 * 60_000,
+    staleTime: 0,
   });
 }
 

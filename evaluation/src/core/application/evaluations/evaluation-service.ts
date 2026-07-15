@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
+import { publishToTenant } from "@/infrastructure/realtime/bus";
 import { notify } from "@/core/application/notifications/notification-service";
 import { evaluatorOwns } from "@/core/application/employees/employee-service";
 import { AppError } from "@/core/application/errors";
@@ -147,7 +148,7 @@ export async function listEvaluations(
       ? { employee: { name: { contains: input.search, mode: "insensitive" } } }
       : {}),
   };
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.evaluation.findMany({
       where,
       orderBy: { createdAt: input.sortDir },
@@ -257,6 +258,7 @@ export async function createEvaluation(
     });
   }
 
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return evaluation;
 }
 
@@ -317,6 +319,7 @@ export async function createDocumentEvaluation(
       : null,
   ]);
 
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return evaluation;
 }
 
@@ -386,6 +389,8 @@ export async function updateEvaluation(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return evaluation;
 }
 
@@ -445,5 +450,7 @@ export async function reviewEvaluation(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return updated;
 }

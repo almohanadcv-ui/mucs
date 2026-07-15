@@ -39,7 +39,7 @@ export async function listTemplates(
       ? { title: { contains: input.search, mode: "insensitive" } }
       : {}),
   };
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.evaluationTemplate.findMany({
       where,
       orderBy: { createdAt: input.sortDir },

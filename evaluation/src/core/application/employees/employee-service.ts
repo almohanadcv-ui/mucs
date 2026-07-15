@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
+import { publishToTenant } from "@/infrastructure/realtime/bus";
 import { AppError } from "@/core/application/errors";
 import { AuditAction, Role } from "@/core/domain/enums";
 import { buildMeta, toSkipTake, type Paginated } from "@/lib/pagination";
@@ -98,7 +99,7 @@ export async function listEmployees(
     ],
   };
 
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.employee.findMany({
       where,
       orderBy: { createdAt: input.sortDir },
@@ -371,6 +372,7 @@ export async function createEmployee(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "employee" });
   return employee;
 }
 
@@ -438,6 +440,7 @@ export async function updateEmployee(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "employee" });
   return employee;
 }
 
@@ -461,5 +464,6 @@ export async function deleteEmployee(
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "employee" });
   return employee;
 }

@@ -38,7 +38,7 @@ export async function listDepartments(
         }
       : {}),
   };
-  const [items, total] = await prisma.$transaction([
+  const [items, total] = await Promise.all([
     prisma.department.findMany({
       where,
       orderBy: { createdAt: input.sortDir },

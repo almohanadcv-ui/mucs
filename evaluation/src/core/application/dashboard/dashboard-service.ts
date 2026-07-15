@@ -98,6 +98,9 @@ export async function getDashboardStats(
     ...evalScope(user),
   };
 
+  // Independent reads, run concurrently rather than in a transaction: the
+  // database is remote, and BEGIN/COMMIT would add a round trip for a
+  // consistency guarantee a statistics panel has no use for.
   const [
     employees,
     evaluators,
@@ -110,7 +113,7 @@ export async function getDashboardStats(
     approved,
     rejected,
     approvedRows,
-  ] = await prisma.$transaction([
+  ] = await Promise.all([
     prisma.employee.count({
       where: { tenantId, deletedAt: null, ...employeeScope(user) },
     }),
