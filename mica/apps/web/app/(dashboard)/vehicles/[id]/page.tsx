@@ -19,6 +19,7 @@ import { RequestPhotosButton } from "@/features/photo-requests/request-photos-bu
 import { BookAppointmentButton } from "@/features/appointments/book-appointment-button";
 import { VehiclePhotoRequests } from "@/features/photo-requests/vehicle-photo-requests";
 import { VehicleEditDialog } from "@/features/vehicles/vehicle-edit-dialog";
+import { VehicleDeleteButton } from "@/features/vehicles/vehicle-delete-button";
 import { VehicleTimeline } from "@/features/vehicles/vehicle-timeline";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ export default function VehicleDetailPage() {
   const canUpload = usePermission("media:create");
   const canDeleteMedia = usePermission("media:delete");
   const canUpdate = usePermission("vehicles:update");
+  const canDelete = usePermission("vehicles:delete");
 
   const { data: vehicle, isLoading } = useQuery({
     queryKey: ["vehicles", id],
@@ -81,6 +83,17 @@ export default function VehicleDetailPage() {
               </Button>
               <RequestPhotosButton vehicleId={vehicle.id} />
               <BookAppointmentButton vehicleId={vehicle.id} />
+              {canDelete && (
+                <VehicleDeleteButton vehicleId={vehicle.id} plateNumber={vehicle.plateNumber} />
+              )}
+            </div>
+          )}
+          {/* Management holds vehicles:delete without vehicles:update, so the
+              update-gated actions row above is hidden for them — surface delete
+              on its own here. */}
+          {!canUpdate && canDelete && (
+            <div className="mt-2">
+              <VehicleDeleteButton vehicleId={vehicle.id} plateNumber={vehicle.plateNumber} />
             </div>
           )}
           <p className="text-muted-foreground">

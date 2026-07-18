@@ -6,6 +6,7 @@ type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 /** Maps each workshop status to a badge colour that reads intuitively on the floor. */
 const STATUS_VARIANT: Record<VehicleStatusValue, BadgeVariant> = {
   AWAITING_RECEPTION: "outline",
+  RECEIVED: "secondary",
   UNDER_INSPECTION: "secondary",
   UNDER_MAINTENANCE: "secondary",
   AWAITING_PARTS: "destructive",

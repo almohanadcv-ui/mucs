@@ -281,6 +281,7 @@ model Session {
 
 enum VehicleStatus {
   AWAITING_RECEPTION // بانتظار الاستلام
+  RECEIVED // تم الاستلام
   UNDER_INSPECTION // قيد الفحص
   UNDER_MAINTENANCE // قيد الصيانة
   AWAITING_PARTS // بانتظار قطع الغيار

@@ -41,7 +41,9 @@ const ROLE_BUNDLES: RoleBundle[] = [
       (def.resource === "reports" && ["view", "export", "schedule"].includes(def.action)) ||
       // Approve/reject decisions on maintenance (and invoices once that ships).
       (def.resource === "maintenance" && ["approve", "reject"].includes(def.action)) ||
-      (def.resource === "invoices" && ["approve", "reject"].includes(def.action)),
+      (def.resource === "invoices" && ["approve", "reject"].includes(def.action)) ||
+      // Management may remove vehicles (and restore them from trash).
+      (def.resource === "vehicles" && def.action === "delete"),
     scope: PermissionScope.ALL,
   },
   {
@@ -50,7 +52,7 @@ const ROLE_BUNDLES: RoleBundle[] = [
       "Workshop floor. Adds and updates vehicles, uploads photos/videos and invoices, and moves vehicles through the maintenance workflow.",
     matches: (def) =>
       (def.resource === "vehicles" &&
-        ["view", "create", "update", "print", "assign-driver"].includes(def.action)) ||
+        ["view", "create", "update", "delete", "print", "assign-driver"].includes(def.action)) ||
       // Mechanic manages the org structure (branches/departments) freely.
       (def.resource === "branches" &&
         ["view", "create", "update", "delete"].includes(def.action)) ||

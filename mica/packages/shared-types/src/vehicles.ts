@@ -1,8 +1,9 @@
 import { z } from "zod";
 
-/** The seven workshop statuses a vehicle moves through, in flow order. */
+/** The workshop statuses a vehicle moves through, in flow order. */
 export const VEHICLE_STATUSES = [
   "AWAITING_RECEPTION", // بانتظار الاستلام
+  "RECEIVED", // تم الاستلام
   "UNDER_INSPECTION", // قيد الفحص
   "UNDER_MAINTENANCE", // قيد الصيانة
   "AWAITING_PARTS", // بانتظار قطع الغيار
@@ -15,6 +16,7 @@ export type VehicleStatusValue = (typeof VEHICLE_STATUSES)[number];
 /** English + Arabic labels for each status (UI display). */
 export const VEHICLE_STATUS_LABELS: Record<VehicleStatusValue, { en: string; ar: string }> = {
   AWAITING_RECEPTION: { en: "Awaiting reception", ar: "بانتظار الاستلام" },
+  RECEIVED: { en: "Received", ar: "تم الاستلام" },
   UNDER_INSPECTION: { en: "Under inspection", ar: "قيد الفحص" },
   UNDER_MAINTENANCE: { en: "Under maintenance", ar: "قيد الصيانة" },
   AWAITING_PARTS: { en: "Awaiting parts", ar: "بانتظار قطع الغيار" },
