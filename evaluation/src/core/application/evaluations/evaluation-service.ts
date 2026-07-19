@@ -246,6 +246,11 @@ async function notifyReviewers(
     title: "تقييم بانتظار الاعتماد",
     body: `تقييم جديد${extra.isDocument ? " (ملف وورد)" : ""} للموظف ${employeeName} بانتظار مراجعتك.`,
     data: { evaluationId },
+    i18n: {
+      titleKey: "notif.pendingTitle",
+      bodyKey: extra.isDocument ? "notif.pendingBodyDoc" : "notif.pendingBody",
+      params: { name: employeeName },
+    },
   });
 
   if (sent === 0) {
@@ -415,6 +420,11 @@ export async function reviewEvaluation(
       ? `تم اعتماد تقييمك للموظف ${evaluation.employee.name}.`
       : `تم رفض تقييمك للموظف ${evaluation.employee.name}. السبب: ${input.reason}`,
     data: { evaluationId: id },
+    i18n: {
+      titleKey: approved ? "notif.approvedTitle" : "notif.rejectedTitle",
+      bodyKey: approved ? "notif.approvedBody" : "notif.rejectedBody",
+      params: { name: evaluation.employee.name, reason: input.reason ?? "" },
+    },
   });
 
   await writeAudit({

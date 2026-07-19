@@ -5,6 +5,31 @@ import { buildMeta, toSkipTake, type PaginationInput, type Paginated } from "@/l
 import type { NotificationType } from "@/core/domain/enums";
 import type { SessionUser } from "@/infrastructure/auth/session";
 
+/**
+ * i18n descriptor stored alongside a notification so the bell can render it in
+ * the *reader's* language — the recipient's locale is unknown when the row is
+ * written. The plain title/body remain as a fallback for old rows and any
+ * non-UI consumer.
+ */
+export interface NotificationI18n {
+  titleKey: string;
+  bodyKey?: string;
+  params?: Record<string, string | number>;
+}
+
+/** Merge the i18n descriptor into the notification's data JSON under `_i18n`. */
+function withI18n(
+  data: Prisma.InputJsonValue | undefined,
+  i18n?: NotificationI18n,
+): Prisma.InputJsonValue | undefined {
+  if (!i18n) return data;
+  const base = (data && typeof data === "object" && !Array.isArray(data) ? data : {}) as Record<
+    string,
+    unknown
+  >;
+  return { ...base, _i18n: { ...i18n } } as unknown as Prisma.InputJsonValue;
+}
+
 export async function notify(params: {
   tenantId: string;
   userId: string;
@@ -12,6 +37,7 @@ export async function notify(params: {
   title: string;
   body?: string;
   data?: Prisma.InputJsonValue;
+  i18n?: NotificationI18n;
 }) {
   const notification = await prisma.notification.create({
     data: {
@@ -20,7 +46,7 @@ export async function notify(params: {
       type: params.type,
       title: params.title,
       body: params.body ?? null,
-      data: params.data,
+      data: withI18n(params.data, params.i18n),
     },
   });
 
@@ -46,10 +72,12 @@ export async function notifyMany(params: {
   title: string;
   body?: string;
   data?: Prisma.InputJsonValue;
+  i18n?: NotificationI18n;
 }): Promise<number> {
   const userIds = [...new Set(params.userIds)];
   if (userIds.length === 0) return 0;
 
+  const merged = withI18n(params.data, params.i18n);
   const result = await prisma.notification.createMany({
     data: userIds.map((userId) => ({
       tenantId: params.tenantId,
@@ -57,7 +85,7 @@ export async function notifyMany(params: {
       type: params.type,
       title: params.title,
       body: params.body ?? null,
-      data: params.data,
+      data: merged,
     })),
   });
 

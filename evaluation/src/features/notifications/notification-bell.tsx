@@ -32,9 +32,29 @@ const TONE: Record<string, string> = {
   SYSTEM: "bg-muted-foreground",
 };
 
+/** Params passed to a notification's i18n message. */
+type NotifParams = Record<string, string | number>;
+
+/**
+ * Render a notification's title/body in the reader's language. Newer rows carry
+ * an `_i18n` descriptor in `data`; older rows fall back to the stored text.
+ */
+function useLocalizedNotification() {
+  const t = useT();
+  return (row: { title: string; body: string | null; data: unknown }) => {
+    const i18n = (row.data as { _i18n?: { titleKey: string; bodyKey?: string; params?: NotifParams } } | null)?._i18n;
+    if (!i18n) return { title: row.title, body: row.body };
+    return {
+      title: t(i18n.titleKey, i18n.params),
+      body: i18n.bodyKey ? t(i18n.bodyKey, i18n.params) : row.body,
+    };
+  };
+}
+
 export function NotificationBell() {
   const t = useT();
   const timeAgo = useTimeAgo();
+  const localize = useLocalizedNotification();
   const { data } = useNotifications();
   const markAll = useMarkAllRead();
   const markOne = useMarkRead();
@@ -77,8 +97,15 @@ export function NotificationBell() {
               >
                 <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", TONE[n.type] ?? "bg-muted-foreground")} />
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{n.title}</p>
-                  {n.body && <p className="text-xs text-muted-foreground">{n.body}</p>}
+                  {(() => {
+                    const l = localize(n);
+                    return (
+                      <>
+                        <p className="font-medium">{l.title}</p>
+                        {l.body && <p className="text-xs text-muted-foreground">{l.body}</p>}
+                      </>
+                    );
+                  })()}
                   <p className="mt-1 text-[11px] text-muted-foreground">{timeAgo(n.createdAt)}</p>
                 </div>
                 {!n.readAt && (

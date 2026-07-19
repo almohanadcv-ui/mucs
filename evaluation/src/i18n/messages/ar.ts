@@ -495,6 +495,15 @@ export const ar = {
     appDescription:
       "نظام احترافي لإدارة تقييم الموظفين والمتدربين داخل الشركات — قابل للتوسع كخدمة SaaS.",
   },
+  notif: {
+    pendingTitle: "تقييم بانتظار الاعتماد",
+    pendingBody: "تقييم جديد للموظف {name} بانتظار مراجعتك.",
+    pendingBodyDoc: "تقييم جديد (ملف وورد) للموظف {name} بانتظار مراجعتك.",
+    approvedTitle: "تم اعتماد التقييم",
+    rejectedTitle: "تم رفض التقييم",
+    approvedBody: "تم اعتماد تقييمك للموظف {name}.",
+    rejectedBody: "تم رفض تقييمك للموظف {name}. السبب: {reason}",
+  },
 };
 
 export type Messages = typeof ar;

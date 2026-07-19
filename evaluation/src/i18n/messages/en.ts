@@ -493,4 +493,13 @@ export const en: Messages = {
     appDescription:
       "A professional system for managing employee and trainee evaluations — scalable as a SaaS.",
   },
+  notif: {
+    pendingTitle: "Evaluation awaiting approval",
+    pendingBody: "A new evaluation for {name} is awaiting your review.",
+    pendingBodyDoc: "A new evaluation (Word file) for {name} is awaiting your review.",
+    approvedTitle: "Evaluation approved",
+    rejectedTitle: "Evaluation rejected",
+    approvedBody: "Your evaluation for {name} was approved.",
+    rejectedBody: "Your evaluation for {name} was rejected. Reason: {reason}",
+  },
 };
