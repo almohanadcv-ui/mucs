@@ -6,34 +6,36 @@ import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { AuditAction } from "@/core/domain/enums";
 import {
   getEvaluationReport,
-  REPORT_COLUMNS,
+  reportColumns,
   type EvaluationReportRow,
 } from "@/core/application/reports/report-service";
+import { getT, getLocale } from "@/i18n/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function toCsv(rows: EvaluationReportRow[]): string {
+type Column = { key: keyof EvaluationReportRow; header: string };
+
+function toCsv(rows: EvaluationReportRow[], columns: Column[]): string {
   const escape = (v: unknown) => {
     const s = v == null ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const header = REPORT_COLUMNS.map((c) => c.header).join(",");
-  const lines = rows.map((r) =>
-    REPORT_COLUMNS.map((c) => escape(r[c.key])).join(","),
-  );
-  // BOM so Excel renders Arabic (UTF-8) correctly.
+  const header = columns.map((c) => c.header).join(",");
+  const lines = rows.map((r) => columns.map((c) => escape(r[c.key])).join(","));
+  // BOM so Excel renders UTF-8 (Arabic) correctly.
   return "﻿" + [header, ...lines].join("\r\n");
 }
 
-async function toXlsx(rows: EvaluationReportRow[]): Promise<Buffer> {
+async function toXlsx(
+  rows: EvaluationReportRow[],
+  columns: Column[],
+  sheetName: string,
+  rtl: boolean,
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("التقييمات", { views: [{ rightToLeft: true }] });
-  ws.columns = REPORT_COLUMNS.map((c) => ({
-    header: c.header,
-    key: c.key,
-    width: 18,
-  }));
+  const ws = wb.addWorksheet(sheetName, { views: [{ rightToLeft: rtl }] });
+  ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: 18 }));
   ws.getRow(1).font = { bold: true };
   rows.forEach((r) => ws.addRow(r));
   const buf = await wb.xlsx.writeBuffer();
@@ -48,7 +50,10 @@ export const GET = withAuth(
     const from = sp.get("from") ? new Date(sp.get("from")!) : undefined;
     const to = sp.get("to") ? new Date(sp.get("to")!) : undefined;
 
-    const rows = await getEvaluationReport(user, { status, from, to });
+    const t = await getT();
+    const locale = await getLocale();
+    const rows = await getEvaluationReport(user, { status, from, to }, t);
+    const columns = reportColumns(t);
 
     await writeAudit({
       tenantId: user.tenantId,
@@ -63,7 +68,7 @@ export const GET = withAuth(
     const stamp = new Date().toISOString().slice(0, 10);
 
     if (format === "xlsx") {
-      const buf = await toXlsx(rows);
+      const buf = await toXlsx(rows, columns, t("reports.sheetName"), locale === "ar");
       return new NextResponse(new Uint8Array(buf), {
         headers: {
           "Content-Type":
@@ -73,7 +78,7 @@ export const GET = withAuth(
       });
     }
 
-    return new NextResponse(toCsv(rows), {
+    return new NextResponse(toCsv(rows, columns), {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="evaluations-${stamp}.csv"`,

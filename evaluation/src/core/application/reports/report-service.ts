@@ -3,6 +3,9 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { Role } from "@/core/domain/enums";
 import type { SessionUser } from "@/infrastructure/auth/session";
 
+/** A translator (server `getT` result) so headers/status follow the locale. */
+type TFn = (key: string, params?: Record<string, string | number>) => string;
+
 export interface EvaluationReportRow {
   employeeName: string;
   employeeNo: string;
@@ -11,18 +14,14 @@ export interface EvaluationReportRow {
   template: string;
   evaluator: string;
   reviewer: string;
+  /** Localized status for display. */
   status: string;
+  /** Raw enum value for stable filtering regardless of locale. */
+  statusKey: string;
   score: number | null;
   submittedAt: string;
   reviewedAt: string;
 }
-
-const STATUS_AR: Record<string, string> = {
-  DRAFT: "مسودة",
-  PENDING: "بانتظار الاعتماد",
-  APPROVED: "معتمد",
-  REJECTED: "مرفوض",
-};
 
 function scope(user: SessionUser): Prisma.EvaluationWhereInput {
   switch (user.role) {
@@ -40,6 +39,7 @@ function scope(user: SessionUser): Prisma.EvaluationWhereInput {
 export async function getEvaluationReport(
   user: SessionUser,
   filters: { status?: string; from?: Date; to?: Date },
+  t: TFn,
 ): Promise<EvaluationReportRow[]> {
   const rows = await prisma.evaluation.findMany({
     where: {
@@ -76,23 +76,29 @@ export async function getEvaluationReport(
     template: e.template?.title ?? "",
     evaluator: e.evaluator?.name ?? "",
     reviewer: e.reviewer?.name ?? "",
-    status: STATUS_AR[e.status] ?? e.status,
+    status: t(`evalStatus.${e.status}`),
+    statusKey: e.status,
     score: e.score,
     submittedAt: e.submittedAt ? e.submittedAt.toISOString().slice(0, 10) : "",
     reviewedAt: e.reviewedAt ? e.reviewedAt.toISOString().slice(0, 10) : "",
   }));
 }
 
-export const REPORT_COLUMNS: { key: keyof EvaluationReportRow; header: string }[] = [
-  { key: "employeeName", header: "الموظف" },
-  { key: "employeeNo", header: "الرقم الوظيفي" },
-  { key: "department", header: "القسم" },
-  { key: "branch", header: "الفرع" },
-  { key: "template", header: "النموذج" },
-  { key: "evaluator", header: "المقيّم" },
-  { key: "reviewer", header: "المراجع" },
-  { key: "status", header: "الحالة" },
-  { key: "score", header: "النتيجة" },
-  { key: "submittedAt", header: "تاريخ الإرسال" },
-  { key: "reviewedAt", header: "تاريخ المراجعة" },
-];
+/** Localized report columns; `statusKey` is internal and never a column. */
+export function reportColumns(
+  t: TFn,
+): { key: keyof EvaluationReportRow; header: string }[] {
+  return [
+    { key: "employeeName", header: t("reports.colEmployee") },
+    { key: "employeeNo", header: t("reports.colEmployeeNo") },
+    { key: "department", header: t("reports.colDepartment") },
+    { key: "branch", header: t("reports.colBranch") },
+    { key: "template", header: t("reports.colTemplate") },
+    { key: "evaluator", header: t("reports.colEvaluator") },
+    { key: "reviewer", header: t("reports.colReviewer") },
+    { key: "status", header: t("reports.colStatus") },
+    { key: "score", header: t("reports.colScore") },
+    { key: "submittedAt", header: t("reports.colSubmitted") },
+    { key: "reviewedAt", header: t("reports.colReviewed") },
+  ];
+}

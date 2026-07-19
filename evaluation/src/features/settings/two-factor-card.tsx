@@ -10,10 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { apiClient, ApiError } from "@/lib/api-client";
+import { useT } from "@/i18n/client";
 
 type SetupData = { secret: string; otpauth: string; qrDataUrl: string };
 
 export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean }) {
+  const t = useT();
   const [enabled, setEnabled] = useState(initialEnabled);
   const [setup, setSetup] = useState<SetupData | null>(null);
   const [token, setToken] = useState("");
@@ -26,7 +28,7 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
     try {
       setSetup(await apiClient.post<SetupData>("/api/auth/2fa/setup"));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر البدء");
+      toast.error(e instanceof ApiError ? e.message : t("twofa.startFailed"));
     } finally {
       setBusy(false);
     }
@@ -40,9 +42,9 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
       setEnabled(true);
       setSetup(null);
       setToken("");
-      toast.success("تم تفعيل المصادقة الثنائية");
+      toast.success(t("twofa.enabledToast"));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "رمز غير صحيح");
+      toast.error(e instanceof ApiError ? e.message : t("twofa.invalidCode"));
     } finally {
       setBusy(false);
     }
@@ -54,9 +56,9 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
       await apiClient.post("/api/auth/2fa/disable", { password });
       setEnabled(false);
       setPassword("");
-      toast.success("تم تعطيل المصادقة الثنائية");
+      toast.success(t("twofa.disabledToast"));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر التعطيل");
+      toast.error(e instanceof ApiError ? e.message : t("twofa.disableFailed"));
     } finally {
       setBusy(false);
     }
@@ -68,19 +70,19 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <ShieldCheck className="size-5 text-primary" /> المصادقة الثنائية (2FA)
+              <ShieldCheck className="size-5 text-primary" /> {t("twofa.title")}
             </CardTitle>
-            <CardDescription>طبقة حماية إضافية عبر تطبيق مصادقة (TOTP).</CardDescription>
+            <CardDescription>{t("twofa.desc")}</CardDescription>
           </div>
           <Badge variant={enabled ? "success" : "muted"}>
-            {enabled ? "مفعّلة" : "غير مفعّلة"}
+            {enabled ? t("twofa.enabled") : t("twofa.disabled")}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {recovery && (
           <div className="rounded-lg border border-warning/40 bg-warning/10 p-4">
-            <p className="mb-2 text-sm font-medium">رموز الاسترداد — احفظها في مكان آمن (تُعرض مرة واحدة):</p>
+            <p className="mb-2 text-sm font-medium">{t("twofa.recoveryTitle")}</p>
             <div className="grid grid-cols-2 gap-2 font-mono text-sm" dir="ltr">
               {recovery.map((c) => <span key={c} className="rounded bg-card px-2 py-1">{c}</span>)}
             </div>
@@ -90,24 +92,24 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
         {!enabled && !setup && (
           <Button onClick={startSetup} disabled={busy}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-            تفعيل المصادقة الثنائية
+            {t("twofa.enableBtn")}
           </Button>
         )}
 
         {!enabled && setup && (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              امسح الرمز بتطبيق المصادقة (Google Authenticator / Authy)، ثم أدخل الرمز المكوّن من 6 أرقام.
+              {t("twofa.scanInstructions")}
             </p>
             <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
               <Image src={setup.qrDataUrl} alt="QR" width={180} height={180} className="rounded-lg border bg-white p-2" />
               <div className="space-y-2">
-                <Label className="text-xs">أو أدخل المفتاح يدوياً:</Label>
+                <Label className="text-xs">{t("twofa.manualKey")}</Label>
                 <div className="flex items-center gap-2">
                   <code className="rounded bg-muted px-2 py-1 text-xs" dir="ltr">{setup.secret}</code>
                   <Button
                     variant="ghost" size="icon" className="size-7"
-                    onClick={() => { navigator.clipboard.writeText(setup.secret); toast.success("تم النسخ"); }}
+                    onClick={() => { navigator.clipboard.writeText(setup.secret); toast.success(t("manager.copied")); }}
                   >
                     <Copy className="size-3.5" />
                   </Button>
@@ -116,12 +118,12 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
             </div>
             <div className="flex items-end gap-2">
               <div className="space-y-1">
-                <Label className="text-xs">رمز التحقق</Label>
+                <Label className="text-xs">{t("twofa.verifyCode")}</Label>
                 <Input dir="ltr" inputMode="numeric" maxLength={6} className="w-32"
                   value={token} onChange={(e) => setToken(e.target.value)} placeholder="123456" />
               </div>
               <Button onClick={confirmEnable} disabled={busy || token.length !== 6}>
-                {busy && <Loader2 className="size-4 animate-spin" />} تأكيد
+                {busy && <Loader2 className="size-4 animate-spin" />} {t("templates.confirm")}
               </Button>
             </div>
           </div>
@@ -130,13 +132,13 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
         {enabled && (
           <div className="flex items-end gap-2">
             <div className="space-y-1">
-              <Label className="text-xs">كلمة المرور لتعطيل 2FA</Label>
+              <Label className="text-xs">{t("twofa.disablePassword")}</Label>
               <Input type="password" dir="ltr" className="w-56"
                 value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             <Button variant="destructive" onClick={disable} disabled={busy || !password}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldOff className="size-4" />}
-              تعطيل
+              {t("twofa.disableBtn")}
             </Button>
           </div>
         )}

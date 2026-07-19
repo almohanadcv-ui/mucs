@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/i18n/client";
 
 export function LogoutButton() {
+  const t = useT();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +25,7 @@ export function LogoutButton() {
       ) : (
         <LogOut className="size-4" />
       )}
-      تسجيل الخروج
+      {t("logout")}
     </Button>
   );
 }
