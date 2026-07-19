@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { EvaluationStatus, Role } from "@/core/domain/enums";
+import { getT, getLocale } from "@/i18n/server";
 import type { SessionUser } from "@/infrastructure/auth/session";
 
 function startOfDay(d = new Date()) {
@@ -77,11 +78,11 @@ export interface DashboardStats {
 
 /** Bucket a 0..100 score into the 5 Arabic rating bands. */
 const BANDS = [
-  { key: "excellent", label: "ممتاز", min: 90 },
-  { key: "veryGood", label: "جيد جداً", min: 75 },
-  { key: "good", label: "جيد", min: 60 },
-  { key: "needsWork", label: "يحتاج تحسين", min: 40 },
-  { key: "weak", label: "ضعيف", min: 0 },
+  { key: "excellent", min: 90 },
+  { key: "veryGood", min: 75 },
+  { key: "good", min: 60 },
+  { key: "needsWork", min: 40 },
+  { key: "weak", min: 0 },
 ] as const;
 
 function bandFor(score: number) {
@@ -91,6 +92,8 @@ function bandFor(score: number) {
 export async function getDashboardStats(
   user: SessionUser,
 ): Promise<DashboardStats> {
+  const t = await getT();
+  const locale = await getLocale();
   const tenantId = user.tenantId;
   const base: Prisma.EvaluationWhereInput = {
     tenantId,
@@ -145,14 +148,16 @@ export async function getDashboardStats(
   for (const s of scores) distCounts[bandFor(s).key] += 1;
   const ratingDistribution = BANDS.map((b) => ({
     key: b.key,
-    label: b.label,
+    label: t(`bands.${b.key}`),
     count: distCounts[b.key],
   }));
 
   // Monthly trend (last 6 months)
   const now = new Date();
   const monthlyTrend: DashboardStats["monthlyTrend"] = [];
-  const monthNames = ["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const monthFmt = new Intl.DateTimeFormat(locale === "ar" ? "ar-EG" : "en-US", {
+    month: "long",
+  });
   for (let i = 5; i >= 0; i--) {
     const from = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
@@ -163,7 +168,7 @@ export async function getDashboardStats(
       rows.length > 0
         ? Math.round((rows.reduce((a, r) => a + r.score!, 0) / rows.length) * 10) / 10
         : null;
-    monthlyTrend.push({ month: monthNames[from.getMonth()], average: avg, count: rows.length });
+    monthlyTrend.push({ month: monthFmt.format(from), average: avg, count: rows.length });
   }
 
   // Top employees by average approved score

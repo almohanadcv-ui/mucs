@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
-import { QuestionType, STAR_RATING_LABELS } from "@/core/domain/enums";
+import { QuestionType } from "@/core/domain/enums";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import { useEvaluation, useReviewEvaluation, type EvaluationDetail } from "./use-evaluations";
 import { useI18n } from "@/i18n/client";
@@ -41,7 +41,7 @@ function formatAnswer(
               <Star key={i} className={i < n ? "size-4 fill-warning text-warning" : "size-4 text-muted-foreground/30"} />
             ))}
           </span>
-          {(cfg.max ?? 5) === 5 && <span className="text-xs text-muted-foreground">{STAR_RATING_LABELS[n]}</span>}
+          {(cfg.max ?? 5) === 5 && <span className="text-xs text-muted-foreground">{t(`starLabels.${n}`)}</span>}
         </span>
       );
     }

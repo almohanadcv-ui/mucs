@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { STAR_RATING_LABELS } from "@/core/domain/enums";
+import { useT } from "@/i18n/client";
 
 export function StarRating({
   max = 5,
@@ -15,6 +15,7 @@ export function StarRating({
   value: number | null;
   onChange: (v: number) => void;
 }) {
+  const t = useT();
   const [hover, setHover] = useState<number | null>(null);
   const active = hover ?? value ?? 0;
 
@@ -45,7 +46,7 @@ export function StarRating({
       </div>
       {max === 5 && active > 0 && (
         <span className="text-xs text-muted-foreground">
-          {STAR_RATING_LABELS[active]}
+          {t(`starLabels.${active}`)}
         </span>
       )}
     </div>

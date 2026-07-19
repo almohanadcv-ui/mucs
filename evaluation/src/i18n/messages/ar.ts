@@ -472,6 +472,20 @@ export const ar = {
     colReviewed: "تاريخ المراجعة",
   },
   logout: "تسجيل الخروج",
+  starLabels: {
+    "1": "ضعيف",
+    "2": "يحتاج تحسين",
+    "3": "جيد",
+    "4": "جيد جداً",
+    "5": "ممتاز",
+  },
+  bands: {
+    excellent: "ممتاز",
+    veryGood: "جيد جداً",
+    good: "جيد",
+    needsWork: "يحتاج تحسين",
+    weak: "ضعيف",
+  },
 };
 
 export type Messages = typeof ar;

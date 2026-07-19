@@ -470,4 +470,18 @@ export const en: Messages = {
     colReviewed: "Reviewed at",
   },
   logout: "Sign out",
+  starLabels: {
+    "1": "Poor",
+    "2": "Needs improvement",
+    "3": "Good",
+    "4": "Very good",
+    "5": "Excellent",
+  },
+  bands: {
+    excellent: "Excellent",
+    veryGood: "Very good",
+    good: "Good",
+    needsWork: "Needs improvement",
+    weak: "Poor",
+  },
 };
