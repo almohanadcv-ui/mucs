@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/infrastructure/db/prisma";
 import { EvaluationStatus, Role } from "@/core/domain/enums";
 import { getT, getLocale } from "@/i18n/server";
@@ -89,11 +90,34 @@ function bandFor(score: number) {
   return BANDS.find((b) => score >= b.min) ?? BANDS[BANDS.length - 1];
 }
 
-export async function getDashboardStats(
-  user: SessionUser,
-): Promise<DashboardStats> {
-  const t = await getT();
-  const locale = await getLocale();
+/** Numeric dashboard data, before any localization — this is what gets cached. */
+interface RawDashboard {
+  counts: DashboardStats["counts"];
+  averageScore: number | null;
+  distByKey: Record<string, number>;
+  monthly: { year: number; month: number; average: number | null; count: number }[];
+  topEmployees: DashboardStats["topEmployees"];
+}
+
+/**
+ * Fetch + aggregate the dashboard numbers, cached briefly per user. The database
+ * is in another region (~1s per page of round trips), so recomputing 12 queries
+ * on every dashboard visit is what makes the landing feel heavy. A 30s cache
+ * makes repeat visits instant; realtime "data-changed" events still drive the
+ * live parts of the app, and stats tolerate being a few seconds stale.
+ *
+ * No i18n here on purpose: labels/month names depend on the reader's locale and
+ * are applied after the cache, so one cached copy serves both languages.
+ */
+function getRawDashboard(user: SessionUser): Promise<RawDashboard> {
+  return unstable_cache(
+    async (): Promise<RawDashboard> => computeRawDashboard(user),
+    ["dashboard-stats", user.tenantId, user.id, user.role],
+    { revalidate: 30 },
+  )();
+}
+
+async function computeRawDashboard(user: SessionUser): Promise<RawDashboard> {
   const tenantId = user.tenantId;
   const base: Prisma.EvaluationWhereInput = {
     tenantId,
@@ -142,22 +166,14 @@ export async function getDashboardStats(
       ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
       : null;
 
-  // Rating distribution
-  const distCounts: Record<string, number> = {};
-  for (const b of BANDS) distCounts[b.key] = 0;
-  for (const s of scores) distCounts[bandFor(s).key] += 1;
-  const ratingDistribution = BANDS.map((b) => ({
-    key: b.key,
-    label: t(`bands.${b.key}`),
-    count: distCounts[b.key],
-  }));
+  // Rating distribution (counts only; labels applied after the cache)
+  const distByKey: Record<string, number> = {};
+  for (const b of BANDS) distByKey[b.key] = 0;
+  for (const s of scores) distByKey[bandFor(s).key] += 1;
 
-  // Monthly trend (last 6 months)
+  // Monthly trend (last 6 months) as numeric buckets; names applied after cache.
   const now = new Date();
-  const monthlyTrend: DashboardStats["monthlyTrend"] = [];
-  const monthFmt = new Intl.DateTimeFormat(locale === "ar" ? "ar-EG" : "en-US", {
-    month: "long",
-  });
+  const monthly: RawDashboard["monthly"] = [];
   for (let i = 5; i >= 0; i--) {
     const from = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
@@ -168,7 +184,7 @@ export async function getDashboardStats(
       rows.length > 0
         ? Math.round((rows.reduce((a, r) => a + r.score!, 0) / rows.length) * 10) / 10
         : null;
-    monthlyTrend.push({ month: monthFmt.format(from), average: avg, count: rows.length });
+    monthly.push({ year: from.getFullYear(), month: from.getMonth(), average: avg, count: rows.length });
   }
 
   // Top employees by average approved score
@@ -190,7 +206,6 @@ export async function getDashboardStats(
     .slice(0, 5);
 
   return {
-    role: user.role,
     counts: {
       employees,
       evaluators,
@@ -204,8 +219,41 @@ export async function getDashboardStats(
       rejected,
     },
     averageScore,
+    distByKey,
+    monthly,
+    topEmployees,
+  };
+}
+
+/** Localize the cached numbers for the current reader. */
+export async function getDashboardStats(
+  user: SessionUser,
+): Promise<DashboardStats> {
+  const t = await getT();
+  const locale = await getLocale();
+  const raw = await getRawDashboard(user);
+
+  const ratingDistribution = BANDS.map((b) => ({
+    key: b.key,
+    label: t(`bands.${b.key}`),
+    count: raw.distByKey[b.key] ?? 0,
+  }));
+
+  const monthFmt = new Intl.DateTimeFormat(locale === "ar" ? "ar-EG" : "en-US", {
+    month: "long",
+  });
+  const monthlyTrend = raw.monthly.map((m) => ({
+    month: monthFmt.format(new Date(m.year, m.month, 1)),
+    average: m.average,
+    count: m.count,
+  }));
+
+  return {
+    role: user.role,
+    counts: raw.counts,
+    averageScore: raw.averageScore,
     ratingDistribution,
     monthlyTrend,
-    topEmployees,
+    topEmployees: raw.topEmployees,
   };
 }
