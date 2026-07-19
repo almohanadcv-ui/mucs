@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError } from "@/lib/api-client";
 import { QUESTION_TYPE_META, metaFor } from "./question-types";
 import { DocxImport, type TemplateDraft } from "./docx-import";
+import { useT } from "@/i18n/client";
 import {
   useCreateTemplate,
   useUpdateTemplate,
@@ -56,6 +57,7 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
   const isEdit = !!initial;
   const create = useCreateTemplate();
   const update = useUpdateTemplate(initial?.id ?? "");
+  const t = useT();
   const pending = create.isPending || update.isPending;
 
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -97,13 +99,13 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
   }
 
   async function onSubmit() {
-    if (!title.trim()) return toast.error("عنوان النموذج مطلوب");
-    if (questions.length === 0) return toast.error("أضف سؤالاً واحداً على الأقل");
+    if (!title.trim()) return toast.error(t("templates.titleRequired"));
+    if (questions.length === 0) return toast.error(t("templates.addOneQuestion"));
 
     for (const q of questions) {
-      if (!q.label.trim()) return toast.error("كل سؤال يحتاج نصاً");
+      if (!q.label.trim()) return toast.error(t("templates.questionNeedsText"));
       if (metaFor(q.type).hasOptions && (q.config?.options?.length ?? 0) < 2) {
-        return toast.error(`السؤال «${q.label}» يحتاج خيارين على الأقل`);
+        return toast.error(t("templates.needsTwoOptions", { label: q.label }));
       }
     }
 
@@ -124,15 +126,15 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
     try {
       if (isEdit) {
         await update.mutateAsync(payload);
-        toast.success("تم حفظ النموذج");
+        toast.success(t("templates.saved"));
       } else {
         await create.mutateAsync(payload);
-        toast.success("تم إنشاء النموذج");
+        toast.success(t("templates.created"));
       }
       router.push("/dashboard/templates");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الحفظ");
+      toast.error(e instanceof ApiError ? e.message : t("templates.saveFailed"));
     }
   }
 
@@ -140,11 +142,11 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
     <div className="mx-auto max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">
-          {isEdit ? "تعديل نموذج تقييم" : "نموذج تقييم جديد"}
+          {isEdit ? t("templates.editFormTitle") : t("templates.newFormTitle")}
         </h1>
         <Button onClick={onSubmit} disabled={pending}>
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          حفظ
+          {t("templates.save")}
         </Button>
       </div>
 
@@ -155,20 +157,20 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>معلومات النموذج</CardTitle>
+          <CardTitle>{t("templates.info")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>العنوان</Label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="مثال: تقييم شهري" />
+            <Label>{t("templates.titleLabel")}</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("templates.titlePlaceholder")} />
           </div>
           <div className="space-y-2">
-            <Label>الوصف (اختياري)</Label>
+            <Label>{t("templates.descOptional")}</Label>
             <Textarea value={description ?? ""} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="flex items-center gap-3">
             <Switch checked={isActive} onCheckedChange={setIsActive} id="active" />
-            <Label htmlFor="active">مفعّل</Label>
+            <Label htmlFor="active">{t("templates.activeLabel")}</Label>
           </div>
         </CardContent>
       </Card>
@@ -189,7 +191,7 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
       </div>
 
       <Button variant="outline" className="w-full" onClick={addQuestion}>
-        <Plus className="size-4" /> إضافة سؤال
+        <Plus className="size-4" /> {t("templates.addQuestion")}
       </Button>
 
       <ScoringSummary questions={questions} />
@@ -203,31 +205,31 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
  * its weight, summed, divided by the total weight, ×100.
  */
 function ScoringSummary({ questions }: { questions: LocalQuestion[] }) {
+  const t = useT();
   const scoreable = questions.filter((q) => metaFor(q.type).scoreable && q.label.trim());
   const totalWeight = scoreable.reduce((s, q) => s + (q.config?.weight ?? 1), 0);
 
   return (
     <Card className="border-primary/30 bg-accent/30">
       <CardHeader>
-        <CardTitle className="text-base">كيف تُحتسب النتيجة؟</CardTitle>
+        <CardTitle className="text-base">{t("templates.scoreTitle")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
         <p className="text-muted-foreground">
-          النتيجة النهائية (0–100) = المتوسط <b>الموزون</b> للأسئلة القابلة للتقييم.
-          كل إجابة تُحوّل إلى نسبة 0–1 (نجوم: القيمة÷العدد، نعم=1/لا=0، رقم: القيمة÷الأقصى،
-          الاختيارات: نقاط الخيار)، ثم: <span dir="ltr" className="font-mono">Σ(نسبة×وزن) ÷ Σ(الأوزان) × 100</span>.
-          الأسئلة النصية والتاريخ والملفات لا تدخل في الحساب.
+          {t("templates.scoreP1")} {t("templates.scoreP2")}{" "}
+          <span dir="ltr" className="font-mono">{t("templates.scoreFormula")}</span>{" "}
+          {t("templates.scoreP3")}
         </p>
         {scoreable.length === 0 ? (
-          <p className="text-muted-foreground">لا توجد أسئلة قابلة للتقييم بعد.</p>
+          <p className="text-muted-foreground">{t("templates.noScoreable")}</p>
         ) : (
           <div className="rounded-lg border bg-card">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-right text-muted-foreground">
-                  <th className="px-3 py-2 font-medium">السؤال</th>
-                  <th className="px-3 py-2 font-medium">الوزن</th>
-                  <th className="px-3 py-2 font-medium">نسبة المساهمة</th>
+                  <th className="px-3 py-2 font-medium">{t("templates.colQuestion")}</th>
+                  <th className="px-3 py-2 font-medium">{t("templates.colWeight")}</th>
+                  <th className="px-3 py-2 font-medium">{t("templates.colContribution")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,7 +254,7 @@ function ScoringSummary({ questions }: { questions: LocalQuestion[] }) {
               </tbody>
               <tfoot>
                 <tr className="border-t font-medium">
-                  <td className="px-3 py-2">الإجمالي</td>
+                  <td className="px-3 py-2">{t("templates.total")}</td>
                   <td className="px-3 py-2 tabular-nums" dir="ltr">{totalWeight}</td>
                   <td className="px-3 py-2 text-muted-foreground">100%</td>
                 </tr>
@@ -282,6 +284,7 @@ function QuestionCard({
   onMoveUp: () => void;
   onMoveDown: () => void;
 }) {
+  const t = useT();
   const meta = metaFor(question.type);
 
   return (
@@ -292,15 +295,15 @@ function QuestionCard({
           <div className="flex-1 space-y-3">
             <div className="grid gap-3 sm:grid-cols-[1fr_200px]">
               <div className="space-y-1">
-                <Label className="text-xs">السؤال {index + 1}</Label>
+                <Label className="text-xs">{t("templates.questionN", { n: index + 1 })}</Label>
                 <Input
                   value={question.label}
                   onChange={(e) => onChange({ label: e.target.value })}
-                  placeholder="نص السؤال"
+                  placeholder={t("templates.questionText")}
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">النوع</Label>
+                <Label className="text-xs">{t("templates.typeLabel")}</Label>
                 <Select
                   value={question.type}
                   onValueChange={(type) =>
@@ -310,7 +313,7 @@ function QuestionCard({
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {QUESTION_TYPE_META.map((m) => (
-                      <SelectItem key={m.type} value={m.type}>{m.label}</SelectItem>
+                      <SelectItem key={m.type} value={m.type}>{t(m.label)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -326,11 +329,11 @@ function QuestionCard({
                   onCheckedChange={(v) => onChange({ required: v })}
                   id={`req-${question._key}`}
                 />
-                <Label htmlFor={`req-${question._key}`} className="text-xs">مطلوب</Label>
+                <Label htmlFor={`req-${question._key}`} className="text-xs">{t("templates.requiredLabel")}</Label>
               </div>
               {meta.scoreable && (
                 <div className="flex items-center gap-2">
-                  <Label className="text-xs">الوزن</Label>
+                  <Label className="text-xs">{t("templates.weightLabel")}</Label>
                   <Input
                     type="number"
                     min={0}
@@ -366,8 +369,8 @@ function defaultConfigFor(type: string): LocalQuestion["config"] {
   if (type === "STAR_RATING") return { max: 5, weight: 1 };
   if (meta.hasOptions)
     return { weight: 1, options: [
-      { value: "opt1", label: "خيار 1", score: 1 },
-      { value: "opt2", label: "خيار 2", score: 0.5 },
+      { value: "opt1", label: "", score: 1 },
+      { value: "opt2", label: "", score: 0.5 },
     ] };
   if (type === "NUMBER") return { weight: 1, numberMax: 100 };
   if (type === "FILE_UPLOAD") return { maxSizeMB: 5, accept: ["pdf", "png", "jpg"] };
@@ -381,13 +384,14 @@ function QuestionConfigEditor({
   question: LocalQuestion;
   onConfig: (patch: Record<string, unknown>) => void;
 }) {
+  const t = useT();
   const meta = metaFor(question.type);
   const cfg = question.config ?? {};
 
   if (question.type === "STAR_RATING") {
     return (
       <div className="flex items-center gap-2">
-        <Label className="text-xs">عدد النجوم</Label>
+        <Label className="text-xs">{t("templates.starCount")}</Label>
         <Input
           type="number" min={3} max={10} dir="ltr" className="h-8 w-20"
           value={cfg.max ?? 5}
@@ -401,12 +405,12 @@ function QuestionConfigEditor({
     return (
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
-          <Label className="text-xs">أدنى</Label>
+          <Label className="text-xs">{t("templates.minLabel")}</Label>
           <Input type="number" dir="ltr" className="h-8 w-24"
             value={cfg.min ?? ""} onChange={(e) => onConfig({ min: e.target.value === "" ? undefined : Number(e.target.value) })} />
         </div>
         <div className="flex items-center gap-2">
-          <Label className="text-xs">أقصى (للتقييم)</Label>
+          <Label className="text-xs">{t("templates.maxForScore")}</Label>
           <Input type="number" dir="ltr" className="h-8 w-24"
             value={cfg.numberMax ?? ""} onChange={(e) => onConfig({ numberMax: e.target.value === "" ? undefined : Number(e.target.value) })} />
         </div>
@@ -417,7 +421,7 @@ function QuestionConfigEditor({
   if (question.type === "TEXT" || question.type === "TEXTAREA") {
     return (
       <div className="flex items-center gap-2">
-        <Label className="text-xs">أقصى عدد أحرف</Label>
+        <Label className="text-xs">{t("templates.maxChars")}</Label>
         <Input type="number" dir="ltr" className="h-8 w-28"
           value={cfg.maxLength ?? ""} onChange={(e) => onConfig({ maxLength: e.target.value === "" ? undefined : Number(e.target.value) })} />
       </div>
@@ -428,11 +432,11 @@ function QuestionConfigEditor({
     const options = cfg.options ?? [];
     return (
       <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
-        <Label className="text-xs">الخيارات (النقاط 0–1 تُحتسب في التقييم)</Label>
+        <Label className="text-xs">{t("templates.optionsScored")}</Label>
         {options.map((opt, i) => (
           <div key={i} className="flex items-center gap-2">
             <Input
-              className="h-8 flex-1" placeholder="النص المعروض"
+              className="h-8 flex-1" placeholder={t("templates.displayedText")}
               value={opt.label}
               onChange={(e) => {
                 const next = [...options];
@@ -441,7 +445,7 @@ function QuestionConfigEditor({
               }}
             />
             <Input
-              className="h-8 w-24" type="number" min={0} max={1} step={0.1} dir="ltr" placeholder="نقاط"
+              className="h-8 w-24" type="number" min={0} max={1} step={0.1} dir="ltr" placeholder={t("templates.pointsPlaceholder")}
               value={opt.score ?? ""}
               onChange={(e) => {
                 const next = [...options];
@@ -457,7 +461,7 @@ function QuestionConfigEditor({
         ))}
         <Button variant="outline" size="sm"
           onClick={() => onConfig({ options: [...options, { value: `opt${options.length + 1}`, label: "", score: undefined }] })}>
-          <Plus className="size-4" /> خيار
+          <Plus className="size-4" /> {t("templates.optionBtn")}
         </Button>
       </div>
     );

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { apiClient, ApiError } from "@/lib/api-client";
 import type { TemplateQuestion } from "./use-templates";
+import { useT } from "@/i18n/client";
 
 const DOCX_MIME =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -31,6 +32,7 @@ export function DocxImport({
 }: {
   onParsed: (draft: TemplateDraft) => void;
 }) {
+  const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -38,10 +40,10 @@ export function DocxImport({
   async function handle(file: File | undefined) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".docx")) {
-      return toast.error("الملف يجب أن يكون بصيغة Word‏ (.docx)");
+      return toast.error(t("templates.mustBeDocx"));
     }
     if (file.size > MAX_DOCX_BYTES) {
-      return toast.error("حجم الملف يتجاوز 5 ميجابايت");
+      return toast.error(t("templates.tooLarge"));
     }
 
     setBusy(true);
@@ -55,9 +57,9 @@ export function DocxImport({
       );
       onParsed(draft);
       setWarnings(draft.warnings);
-      toast.success(`تم استخراج ${draft.questions.length} معياراً من الملف`);
+      toast.success(t("templates.extracted", { n: draft.questions.length }));
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر قراءة الملف");
+      toast.error(e instanceof ApiError ? e.message : t("templates.readFailed"));
     } finally {
       setBusy(false);
     }
@@ -67,13 +69,12 @@ export function DocxImport({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <FileUp className="size-4 text-primary" /> استيراد من ملف وورد
+          <FileUp className="size-4 text-primary" /> {t("templates.importFromWord")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          ارفع نموذج التقييم الحالي (.docx) وسيتم تحويل معاييره إلى أسئلة بخيارات
-          يعبّئها المقيّم. راجع النتيجة وعدّلها قبل الحفظ.
+          {t("templates.importDesc")}
         </p>
         <input
           ref={inputRef}
@@ -93,7 +94,7 @@ export function DocxImport({
           disabled={busy}
         >
           {busy ? <Loader2 className="size-4 animate-spin" /> : <FileUp className="size-4" />}
-          اختر ملف الوورد
+          {t("templates.chooseWordFile")}
         </Button>
 
         {warnings.length > 0 && (
