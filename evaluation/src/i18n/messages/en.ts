@@ -493,6 +493,17 @@ export const en: Messages = {
     appDescription:
       "A professional system for managing employee and trainee evaluations — scalable as a SaaS.",
   },
+  authErr: {
+    invalidInput: "Invalid sign-in data",
+    invalidCredentials: "Incorrect sign-in details",
+    accountLocked: "The account is temporarily locked due to failed sign-in attempts. Try again later.",
+    totpRequired: "Two-factor code required",
+    totpInvalid: "Invalid verification code",
+    sessionExpired: "Session expired",
+    sessionExpiredLogin: "Session expired, please sign in",
+    sessionReuse: "Session reuse detected",
+    accountUnavailable: "Account unavailable",
+  },
   notif: {
     pendingTitle: "Evaluation awaiting approval",
     pendingBody: "A new evaluation for {name} is awaiting your review.",

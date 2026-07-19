@@ -495,6 +495,17 @@ export const ar = {
     appDescription:
       "نظام احترافي لإدارة تقييم الموظفين والمتدربين داخل الشركات — قابل للتوسع كخدمة SaaS.",
   },
+  authErr: {
+    invalidInput: "بيانات تسجيل الدخول غير صالحة",
+    invalidCredentials: "بيانات الدخول غير صحيحة",
+    accountLocked: "تم قفل الحساب مؤقتاً بسبب محاولات دخول فاشلة. حاول لاحقاً.",
+    totpRequired: "مطلوب رمز التحقق الثنائي",
+    totpInvalid: "رمز التحقق غير صحيح",
+    sessionExpired: "انتهت الجلسة",
+    sessionExpiredLogin: "انتهت الجلسة، الرجاء تسجيل الدخول",
+    sessionReuse: "تم اكتشاف إعادة استخدام الجلسة",
+    accountUnavailable: "الحساب غير متاح",
+  },
   notif: {
     pendingTitle: "تقييم بانتظار الاعتماد",
     pendingBody: "تقييم جديد للموظف {name} بانتظار مراجعتك.",

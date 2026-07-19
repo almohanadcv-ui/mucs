@@ -9,6 +9,7 @@ import { decrypt } from "@/infrastructure/security/crypto";
 import { verifyTotp } from "@/infrastructure/security/totp";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { AppError } from "@/core/application/errors";
+import { getT } from "@/i18n/server";
 import { AuditAction } from "@/core/domain/enums";
 import { loginSchema, type LoginInput, type RequestMeta } from "./dto";
 import { randomUUID } from "node:crypto";
@@ -72,9 +73,10 @@ export async function login(
   rawInput: unknown,
   meta: RequestMeta,
 ): Promise<{ user: AuthenticatedUser; tokens: IssuedTokens }> {
+  const t = await getT();
   const parsed = loginSchema.safeParse(rawInput);
   if (!parsed.success) {
-    throw AppError.validation("بيانات تسجيل الدخول غير صالحة", parsed.error.flatten());
+    throw AppError.validation(t("authErr.invalidInput"), parsed.error.flatten());
   }
   const input: LoginInput = parsed.data;
   const env = getServerEnv();
@@ -98,7 +100,7 @@ export async function login(
 
   // Uniform failure to avoid user enumeration
   const invalid = () =>
-    new AppError("INVALID_CREDENTIALS", "بيانات الدخول غير صحيحة");
+    new AppError("INVALID_CREDENTIALS", t("authErr.invalidCredentials"));
 
   if (!user || !user.isActive) {
     // Perform a dummy verify to equalize timing
@@ -113,7 +115,7 @@ export async function login(
   if (user.lockedUntil && user.lockedUntil > new Date()) {
     throw new AppError(
       "ACCOUNT_LOCKED",
-      "تم قفل الحساب مؤقتاً بسبب محاولات دخول فاشلة. حاول لاحقاً.",
+      t("authErr.accountLocked"),
     );
   }
 
@@ -151,13 +153,13 @@ export async function login(
   // Two-factor challenge
   if (user.twoFactorEnabled) {
     if (!input.totp) {
-      throw new AppError("TWO_FACTOR_REQUIRED", "مطلوب رمز التحقق الثنائي");
+      throw new AppError("TWO_FACTOR_REQUIRED", t("authErr.totpRequired"));
     }
     const secret = user.twoFactorSecretEnc
       ? decrypt(user.twoFactorSecretEnc)
       : "";
     if (!secret || !verifyTotp(input.totp, secret)) {
-      throw new AppError("INVALID_CREDENTIALS", "رمز التحقق غير صحيح");
+      throw new AppError("INVALID_CREDENTIALS", t("authErr.totpInvalid"));
     }
   }
 
@@ -217,7 +219,8 @@ export async function refresh(
   rawToken: string | undefined,
   meta: RequestMeta,
 ): Promise<{ user: AuthenticatedUser; tokens: IssuedTokens }> {
-  if (!rawToken) throw AppError.unauthorized("انتهت الجلسة");
+  const t = await getT();
+  if (!rawToken) throw AppError.unauthorized(t("authErr.sessionExpired"));
 
   const record = await prisma.refreshToken.findUnique({
     where: { tokenHash: sha256(rawToken) },
@@ -225,7 +228,7 @@ export async function refresh(
   });
 
   if (!record || record.expiresAt < new Date()) {
-    throw AppError.unauthorized("انتهت الجلسة، الرجاء تسجيل الدخول");
+    throw AppError.unauthorized(t("authErr.sessionExpiredLogin"));
   }
 
   // Reuse detection: a revoked token was replayed → nuke the family.
@@ -234,12 +237,12 @@ export async function refresh(
       where: { family: record.family, revokedAt: null },
       data: { revokedAt: new Date() },
     });
-    throw AppError.unauthorized("تم اكتشاف إعادة استخدام الجلسة");
+    throw AppError.unauthorized(t("authErr.sessionReuse"));
   }
 
   const user = record.user;
   if (!user || user.deletedAt || !user.isActive) {
-    throw AppError.unauthorized("الحساب غير متاح");
+    throw AppError.unauthorized(t("authErr.accountUnavailable"));
   }
 
   // Rotate: revoke current, issue a new token in the same family. Both writes
