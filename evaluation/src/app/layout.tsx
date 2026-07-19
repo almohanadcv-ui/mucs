@@ -5,7 +5,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Toaster } from "@/components/providers/toaster";
 import { I18nProvider } from "@/i18n/client";
-import { getLocale } from "@/i18n/server";
+import { getLocale, getT } from "@/i18n/server";
 import { DIRECTION } from "@/i18n/config";
 
 const cairo = Cairo({
@@ -14,15 +14,17 @@ const cairo = Cairo({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "نظام إدارة التقييم | EMS",
-    template: "%s | EMS",
-  },
-  description:
-    "نظام احترافي لإدارة تقييم الموظفين والمتدربين داخل الشركات — قابل للتوسع كخدمة SaaS.",
-  applicationName: "EMS",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return {
+    title: {
+      default: `${t("common.appName")} | EMS`,
+      template: "%s | EMS",
+    },
+    description: t("meta.appDescription"),
+    applicationName: "EMS",
+  };
+}
 
 export default async function RootLayout({
   children,

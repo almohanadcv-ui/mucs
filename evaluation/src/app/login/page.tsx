@@ -8,9 +8,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import type { Metadata } from "next";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LanguageToggle } from "@/components/language-toggle";
 import { getT } from "@/i18n/server";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("pageTitle.login") };
+}
 
 export default async function LoginPage() {
   const t = await getT();

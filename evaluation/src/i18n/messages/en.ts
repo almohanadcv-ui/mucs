@@ -484,4 +484,13 @@ export const en: Messages = {
     needsWork: "Needs improvement",
     weak: "Poor",
   },
+  pageTitle: {
+    employeeProfile: "Employee profile",
+    evalDetails: "Evaluation details",
+    login: "Sign in",
+  },
+  meta: {
+    appDescription:
+      "A professional system for managing employee and trainee evaluations — scalable as a SaaS.",
+  },
 };

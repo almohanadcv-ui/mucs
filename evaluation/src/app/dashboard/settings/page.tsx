@@ -7,7 +7,10 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TwoFactorCard } from "@/features/settings/two-factor-card";
 
-export const metadata: Metadata = { title: "الإعدادات" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("settings.title") };
+}
 export const dynamic = "force-dynamic";
 
 const ROLE_LABEL_KEYS: Record<string, string> = {

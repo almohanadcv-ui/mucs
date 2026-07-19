@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
+import { getT } from "@/i18n/server";
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/infrastructure/auth/session";
 import { can, Permission } from "@/core/domain/permissions";
 import { OrganizationClient } from "@/features/organization/organization-client";
 
-export const metadata: Metadata = { title: "الهيكل التنظيمي" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("org.title") };
+}
 
 export default async function OrganizationPage() {
   const user = await getCurrentUser();

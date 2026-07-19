@@ -486,6 +486,15 @@ export const ar = {
     needsWork: "يحتاج تحسين",
     weak: "ضعيف",
   },
+  pageTitle: {
+    employeeProfile: "ملف الموظف",
+    evalDetails: "تفاصيل التقييم",
+    login: "تسجيل الدخول",
+  },
+  meta: {
+    appDescription:
+      "نظام احترافي لإدارة تقييم الموظفين والمتدربين داخل الشركات — قابل للتوسع كخدمة SaaS.",
+  },
 };
 
 export type Messages = typeof ar;

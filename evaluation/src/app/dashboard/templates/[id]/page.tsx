@@ -1,10 +1,14 @@
 import { redirect } from "next/navigation";
+import { getT } from "@/i18n/server";
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/infrastructure/auth/session";
 import { can, Permission } from "@/core/domain/permissions";
 import { TemplateEditLoader } from "@/features/templates/template-edit-loader";
 
-export const metadata: Metadata = { title: "تعديل النموذج" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("templates.editFormTitle") };
+}
 
 export default async function EditTemplatePage({
   params,

@@ -27,7 +27,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata: Metadata = { title: "لوحة المعلومات" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("dashboard.title") };
+}
 export const dynamic = "force-dynamic";
 
 export default async function DashboardHome() {

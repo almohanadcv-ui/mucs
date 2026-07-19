@@ -11,7 +11,10 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { ReportToolbar } from "@/features/reports/report-toolbar";
 
-export const metadata: Metadata = { title: "التقارير" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("reports.title") };
+}
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
