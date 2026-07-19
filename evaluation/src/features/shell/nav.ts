@@ -14,22 +14,23 @@ import {
 import { Permission } from "@/core/domain/permissions";
 
 export interface NavItem {
-  label: string;
+  /** i18n key resolved in the sidebar (see messages `nav.*`). */
+  labelKey: string;
   href: string;
   icon: LucideIcon;
   permission?: Permission;
-  ready: boolean; // false → shown as "قريباً" (next increment)
+  ready: boolean; // false → shown as "coming soon" (next increment)
 }
 
 export const NAV_ITEMS: NavItem[] = [
-  { label: "لوحة المعلومات", href: "/dashboard", icon: LayoutDashboard, ready: true },
-  { label: "الموظفون", href: "/dashboard/employees", icon: Users, permission: Permission.EMPLOYEE_VIEW, ready: true },
-  { label: "الهيكل التنظيمي", href: "/dashboard/organization", icon: Building2, permission: Permission.DEPARTMENT_MANAGE, ready: true },
-  { label: "التقييمات", href: "/dashboard/evaluations", icon: ClipboardList, permission: Permission.EVALUATION_VIEW_OWN, ready: true },
-  { label: "نماذج التقييم", href: "/dashboard/templates", icon: FileText, permission: Permission.TEMPLATE_MANAGE, ready: true },
-  { label: "الاعتمادات", href: "/dashboard/approvals", icon: CheckCircle2, permission: Permission.EVALUATION_REVIEW, ready: true },
-  { label: "المستخدمون", href: "/dashboard/evaluators", icon: UserCog, permission: Permission.USER_MANAGE, ready: true },
-  { label: "التقارير", href: "/dashboard/reports", icon: BarChart3, permission: Permission.REPORT_VIEW, ready: true },
-  { label: "سجل النشاط", href: "/dashboard/audit", icon: History, permission: Permission.AUDIT_VIEW, ready: true },
-  { label: "الإعدادات", href: "/dashboard/settings", icon: Settings, ready: true },
+  { labelKey: "nav.dashboard", href: "/dashboard", icon: LayoutDashboard, ready: true },
+  { labelKey: "nav.employees", href: "/dashboard/employees", icon: Users, permission: Permission.EMPLOYEE_VIEW, ready: true },
+  { labelKey: "nav.organization", href: "/dashboard/organization", icon: Building2, permission: Permission.DEPARTMENT_MANAGE, ready: true },
+  { labelKey: "nav.evaluations", href: "/dashboard/evaluations", icon: ClipboardList, permission: Permission.EVALUATION_VIEW_OWN, ready: true },
+  { labelKey: "nav.templates", href: "/dashboard/templates", icon: FileText, permission: Permission.TEMPLATE_MANAGE, ready: true },
+  { labelKey: "nav.approvals", href: "/dashboard/approvals", icon: CheckCircle2, permission: Permission.EVALUATION_REVIEW, ready: true },
+  { labelKey: "nav.users", href: "/dashboard/evaluators", icon: UserCog, permission: Permission.USER_MANAGE, ready: true },
+  { labelKey: "nav.reports", href: "/dashboard/reports", icon: BarChart3, permission: Permission.REPORT_VIEW, ready: true },
+  { labelKey: "nav.audit", href: "/dashboard/audit", icon: History, permission: Permission.AUDIT_VIEW, ready: true },
+  { labelKey: "nav.settings", href: "/dashboard/settings", icon: Settings, ready: true },
 ];

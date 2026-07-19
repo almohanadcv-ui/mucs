@@ -5,11 +5,13 @@ import { usePathname } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav";
+import { useT } from "@/i18n/client";
 import { can, type Permission } from "@/core/domain/permissions";
 import type { Role } from "@/core/domain/enums";
 
 export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
+  const t = useT();
   const items = NAV_ITEMS.filter(
     (i) => !i.permission || can(role, i.permission as Permission),
   );
@@ -32,10 +34,10 @@ export function Sidebar({ role }: { role: Role }) {
           const content = (
             <>
               <item.icon className="size-4 shrink-0" />
-              <span className="flex-1">{item.label}</span>
+              <span className="flex-1">{t(item.labelKey)}</span>
               {!item.ready && (
                 <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-sidebar-foreground/70">
-                  قريباً
+                  {t("nav.comingSoon")}
                 </span>
               )}
             </>
@@ -61,10 +63,8 @@ export function Sidebar({ role }: { role: Role }) {
 
       <div className="m-3 rounded-xl bg-white/5 p-4 text-center">
         <ShieldCheck className="mx-auto mb-2 size-6 text-success" />
-        <p className="text-sm font-semibold text-white">النظام محمي</p>
-        <p className="text-xs text-sidebar-foreground/60">
-          تشفير AES-256 · 2FA · RBAC
-        </p>
+        <p className="text-sm font-semibold text-white">{t("nav.protected")}</p>
+        <p className="text-xs text-sidebar-foreground/60">{t("nav.protectedDesc")}</p>
       </div>
     </aside>
   );

@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import type { Metadata } from "next";
 import { MabLogo } from "@/components/mab-logo";
 import { LoginForm } from "@/features/auth/login-form";
 import {
@@ -10,10 +9,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
+import { getT } from "@/i18n/server";
 
-export const metadata: Metadata = { title: "تسجيل الدخول" };
-
-export default function LoginPage() {
+export default async function LoginPage() {
+  const t = await getT();
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm">
@@ -22,12 +22,15 @@ export default function LoginPage() {
             <MabLogo className="h-7 w-auto" />
             <span className="text-lg font-bold">EMS</span>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <LanguageToggle />
+            <ThemeToggle />
+          </div>
         </div>
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">مرحباً بعودتك</CardTitle>
-            <CardDescription>سجّل الدخول للوصول إلى لوحة التحكم.</CardDescription>
+            <CardTitle className="text-2xl">{t("login.welcome")}</CardTitle>
+            <CardDescription>{t("login.subtitle")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Suspense

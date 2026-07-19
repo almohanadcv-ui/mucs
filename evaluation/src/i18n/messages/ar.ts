@@ -1,0 +1,77 @@
+/**
+ * Arabic messages — the source of truth for the key set. `en.ts` mirrors these
+ * keys exactly; the Messages type is derived from this object so a missing key
+ * in English is a compile error.
+ */
+export const ar = {
+  common: {
+    appName: "نظام إدارة التقييم",
+    loading: "جارٍ التحميل…",
+    save: "حفظ",
+    cancel: "إلغاء",
+    delete: "حذف",
+    edit: "تعديل",
+    add: "إضافة",
+    search: "بحث",
+    confirm: "تأكيد",
+    back: "رجوع",
+    next: "التالي",
+    previous: "السابق",
+    yes: "نعم",
+    no: "لا",
+    all: "الكل",
+    none: "لا يوجد",
+    actions: "إجراءات",
+    status: "الحالة",
+    date: "التاريخ",
+    name: "الاسم",
+    close: "إغلاق",
+    view: "عرض",
+    total: "الإجمالي",
+  },
+  language: {
+    label: "اللغة",
+    ar: "العربية",
+    en: "English",
+    switchToEn: "English",
+    switchToAr: "العربية",
+  },
+  nav: {
+    dashboard: "لوحة المعلومات",
+    employees: "الموظفون",
+    organization: "الهيكل التنظيمي",
+    evaluations: "التقييمات",
+    templates: "نماذج التقييم",
+    approvals: "الاعتمادات",
+    users: "المستخدمون",
+    reports: "التقارير",
+    audit: "سجل النشاط",
+    settings: "الإعدادات",
+    comingSoon: "قريباً",
+    protected: "النظام محمي",
+    protectedDesc: "تشفير AES-256 · 2FA · RBAC",
+  },
+  login: {
+    welcome: "مرحباً بعودتك",
+    subtitle: "سجّل الدخول للوصول إلى لوحة التحكم.",
+    email: "البريد الإلكتروني",
+    password: "كلمة المرور",
+    submit: "تسجيل الدخول",
+    submitting: "جارٍ الدخول…",
+    totp: "رمز التحقق الثنائي",
+    totpHint: "أدخل رمز التحقق الثنائي من تطبيق المصادقة.",
+    invalidEmail: "بريد إلكتروني غير صالح",
+    passwordRequired: "كلمة المرور مطلوبة",
+    failed: "تعذّر تسجيل الدخول. حاول مجدداً.",
+  },
+  topbar: {
+    signOut: "تسجيل الخروج",
+    profile: "الملف الشخصي",
+    notifications: "الإشعارات",
+    roleAdmin: "مدير النظام",
+    roleSupervisor: "مشرف",
+    roleEvaluator: "مقيّم",
+  },
+};
+
+export type Messages = typeof ar;

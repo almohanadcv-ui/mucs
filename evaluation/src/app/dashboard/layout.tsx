@@ -2,14 +2,16 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/infrastructure/auth/session";
 import { Sidebar } from "@/features/shell/sidebar";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
 import { LogoutButton } from "@/features/auth/logout-button";
 import { NotificationBell } from "@/features/notifications/notification-bell";
 import { RealtimeProvider } from "@/features/realtime/realtime-provider";
+import { getT } from "@/i18n/server";
 
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: "مدير النظام",
-  SUPERVISOR: "مشرف",
-  EVALUATOR: "مقيّم",
+const ROLE_LABEL_KEYS: Record<string, string> = {
+  ADMIN: "topbar.roleAdmin",
+  SUPERVISOR: "topbar.roleSupervisor",
+  EVALUATOR: "topbar.roleEvaluator",
 };
 
 export default async function DashboardLayout({
@@ -19,6 +21,7 @@ export default async function DashboardLayout({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const t = await getT();
 
   return (
     <div className="flex min-h-screen bg-muted/30">
@@ -34,12 +37,13 @@ export default async function DashboardLayout({
               <div>
                 <p className="text-sm font-semibold leading-tight">{user.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {ROLE_LABELS[user.role] ?? user.role}
+                  {ROLE_LABEL_KEYS[user.role] ? t(ROLE_LABEL_KEYS[user.role]) : user.role}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               <NotificationBell />
+              <LanguageToggle />
               <ThemeToggle />
               <LogoutButton />
             </div>

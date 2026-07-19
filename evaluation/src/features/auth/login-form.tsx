@@ -9,10 +9,11 @@ import { Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/i18n/client";
 
 const formSchema = z.object({
-  email: z.string().email("بريد إلكتروني غير صالح"),
-  password: z.string().min(1, "كلمة المرور مطلوبة"),
+  email: z.string().email("login.invalidEmail"),
+  password: z.string().min(1, "login.passwordRequired"),
   totp: z.string().optional(),
 });
 type FormValues = z.infer<typeof formSchema>;
@@ -20,6 +21,7 @@ type FormValues = z.infer<typeof formSchema>;
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const t = useT();
   const [serverError, setServerError] = useState<string | null>(null);
   const [needsTotp, setNeedsTotp] = useState(false);
 
@@ -48,16 +50,16 @@ export function LoginForm() {
     const code = json?.error?.code as string | undefined;
     if (code === "TWO_FACTOR_REQUIRED") {
       setNeedsTotp(true);
-      setServerError("أدخل رمز التحقق الثنائي من تطبيق المصادقة.");
+      setServerError(t("login.totpHint"));
       return;
     }
-    setServerError(json?.error?.message ?? "تعذّر تسجيل الدخول. حاول مجدداً.");
+    setServerError(json?.error?.message ?? t("login.failed"));
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-2">
-        <Label htmlFor="email">البريد الإلكتروني</Label>
+        <Label htmlFor="email">{t("login.email")}</Label>
         <Input
           id="email"
           type="email"
@@ -67,12 +69,12 @@ export function LoginForm() {
           {...register("email")}
         />
         {errors.email && (
-          <p className="text-xs text-destructive">{errors.email.message}</p>
+          <p className="text-xs text-destructive">{t(errors.email.message ?? "")}</p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">كلمة المرور</Label>
+        <Label htmlFor="password">{t("login.password")}</Label>
         <Input
           id="password"
           type="password"
@@ -80,13 +82,13 @@ export function LoginForm() {
           {...register("password")}
         />
         {errors.password && (
-          <p className="text-xs text-destructive">{errors.password.message}</p>
+          <p className="text-xs text-destructive">{t(errors.password.message ?? "")}</p>
         )}
       </div>
 
       {needsTotp && (
         <div className="space-y-2">
-          <Label htmlFor="totp">رمز التحقق الثنائي (2FA)</Label>
+          <Label htmlFor="totp">{t("login.totp")}</Label>
           <Input
             id="totp"
             inputMode="numeric"
@@ -110,7 +112,7 @@ export function LoginForm() {
         ) : (
           <ShieldCheck className="size-4" />
         )}
-        تسجيل الدخول
+        {isSubmitting ? t("login.submitting") : t("login.submit")}
       </Button>
     </form>
   );
