@@ -28,6 +28,7 @@ import {
   useLookups,
   type EmployeeRow,
 } from "./use-employees";
+import { useT } from "@/i18n/client";
 
 interface FormValues {
   employeeNo: string;
@@ -53,24 +54,24 @@ interface FormValues {
 }
 
 const CONTRACT_OPTIONS = [
-  { value: "12", label: "سنة" },
-  { value: "24", label: "سنتان" },
-  { value: "36", label: "3 سنوات" },
-  { value: "48", label: "4 سنوات" },
+  { value: "12", label: "empForm.year" },
+  { value: "24", label: "empForm.twoYears" },
+  { value: "36", label: "empForm.threeYears" },
+  { value: "48", label: "empForm.fourYears" },
 ];
 const PROBATION_OPTIONS = [
-  { value: "3", label: "3 أشهر" },
-  { value: "6", label: "6 أشهر" },
-  { value: "12", label: "سنة" },
-  { value: "custom", label: "مخصّص…" },
+  { value: "3", label: "empForm.threeMonths" },
+  { value: "6", label: "empForm.sixMonths" },
+  { value: "12", label: "empForm.year" },
+  { value: "custom", label: "empForm.custom" },
 ];
 const PRESET_PROBATION = ["3", "6", "12"];
 
 const STATUS_OPTIONS = [
-  { value: "ACTIVE", label: "نشط" },
-  { value: "INACTIVE", label: "غير نشط" },
-  { value: "ON_LEAVE", label: "في إجازة" },
-  { value: "TERMINATED", label: "منتهي" },
+  { value: "ACTIVE", label: "empStatus.ACTIVE" },
+  { value: "INACTIVE", label: "empStatus.INACTIVE" },
+  { value: "ON_LEAVE", label: "empStatus.ON_LEAVE" },
+  { value: "TERMINATED", label: "empStatus.TERMINATED" },
 ];
 
 const NONE = "__none__";
@@ -84,6 +85,7 @@ export function EmployeeFormDialog({
   onOpenChange: (v: boolean) => void;
   employee?: EmployeeRow | null;
 }) {
+  const t = useT();
   const isEdit = !!employee;
   const { data: lookups } = useLookups();
   const create = useCreateEmployee();
@@ -164,15 +166,15 @@ export function EmployeeFormDialog({
     try {
       if (isEdit) {
         await update.mutateAsync(payload);
-        toast.success("تم تحديث الموظف");
+        toast.success(t("empForm.updated"));
       } else {
         await create.mutateAsync(payload);
-        toast.success("تمت إضافة الموظف");
+        toast.success(t("empForm.added"));
         reset();
       }
       onOpenChange(false);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الحفظ");
+      toast.error(e instanceof ApiError ? e.message : t("empForm.saveFailed"));
     }
   }
 
@@ -186,20 +188,20 @@ export function EmployeeFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "تعديل موظف" : "إضافة موظف"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("empForm.editTitle") : t("empForm.addTitle")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label>الرقم الوظيفي</Label>
+            <Label>{t("empForm.employeeNo")}</Label>
             <Input dir="ltr" {...register("employeeNo", { required: true })} />
           </div>
           <div className="space-y-2">
-            <Label>الاسم</Label>
+            <Label>{t("common.name")}</Label>
             <Input {...register("name", { required: true })} />
           </div>
 
           <div className="space-y-2">
-            <Label>الحالة</Label>
+            <Label>{t("common.status")}</Label>
             <Select
               defaultValue={selects.status}
               onValueChange={(v) => setValue("status", v)}
@@ -207,37 +209,37 @@ export function EmployeeFormDialog({
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 {STATUS_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>تاريخ الانضمام</Label>
+            <Label>{t("empForm.joinedAt")}</Label>
             <Input type="date" dir="ltr" {...register("joinedAt")} />
           </div>
 
           <div className="space-y-2">
-            <Label>تاريخ بدء العقد</Label>
+            <Label>{t("empForm.contractStart")}</Label>
             <Input type="date" dir="ltr" {...register("contractStartDate")} />
           </div>
           <div className="space-y-2">
-            <Label>مدة العقد</Label>
+            <Label>{t("empForm.contractDuration")}</Label>
             <Select
               defaultValue={employee?.contractMonths ? String(employee.contractMonths) : NONE}
               onValueChange={(v) => setValue("contractMonths", v)}
             >
-              <SelectTrigger><SelectValue placeholder="اختر المدة" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("empForm.chooseDuration")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>—</SelectItem>
                 {CONTRACT_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>فترة التجربة</Label>
+            <Label>{t("empForm.probation")}</Label>
             <Select
               defaultValue={
                 employee?.probationMonths
@@ -248,36 +250,36 @@ export function EmployeeFormDialog({
               }
               onValueChange={(v) => setValue("probationSel", v)}
             >
-              <SelectTrigger><SelectValue placeholder="اختر الفترة" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("empForm.choosePeriod")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>—</SelectItem>
                 {PROBATION_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>{t(o.label)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           {watch("probationSel") === "custom" && (
             <div className="space-y-2">
-              <Label>فترة التجربة (عدد الأشهر)</Label>
+              <Label>{t("empForm.probationMonths")}</Label>
               <Input
                 type="number"
                 min={1}
                 max={60}
                 dir="ltr"
-                placeholder="مثال: 9"
+                placeholder={t("empForm.probationExample")}
                 {...register("probationCustom")}
               />
             </div>
           )}
 
           <div className="space-y-2">
-            <Label>الفرع</Label>
+            <Label>{t("empForm.branch")}</Label>
             <Select
               defaultValue={employee?.branchId ?? NONE}
               onValueChange={(v) => { setValue("branchId", v); setValue("departmentId", NONE); }}
             >
-              <SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("empForm.chooseBranch")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>—</SelectItem>
                 {lookups?.branches.map((b) => (
@@ -287,12 +289,12 @@ export function EmployeeFormDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>القسم</Label>
+            <Label>{t("empForm.department")}</Label>
             <Select
               value={watch("departmentId")}
               onValueChange={(v) => setValue("departmentId", v)}
             >
-              <SelectTrigger><SelectValue placeholder="اختر القسم" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("empForm.chooseDepartment")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>—</SelectItem>
                 {departments.map((d) => (
@@ -303,12 +305,12 @@ export function EmployeeFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>المشرف</Label>
+            <Label>{t("empForm.supervisor")}</Label>
             <Select
               defaultValue={employee?.supervisorId ?? NONE}
               onValueChange={(v) => setValue("supervisorId", v)}
             >
-              <SelectTrigger><SelectValue placeholder="اختر المشرف" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("empForm.chooseSupervisor")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>—</SelectItem>
                 {lookups?.supervisors.map((s) => (
@@ -318,12 +320,12 @@ export function EmployeeFormDialog({
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>المقيّم</Label>
+            <Label>{t("empForm.evaluator")}</Label>
             <Select
               defaultValue={employee?.evaluatorId ?? NONE}
               onValueChange={(v) => setValue("evaluatorId", v)}
             >
-              <SelectTrigger><SelectValue placeholder="اختر المقيّم" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("empForm.chooseEvaluator")} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>—</SelectItem>
                 {lookups?.evaluators.map((s) => (
@@ -334,38 +336,38 @@ export function EmployeeFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>الاسم الإنجليزي</Label>
+            <Label>{t("empForm.nameEn")}</Label>
             <Input dir="ltr" {...register("nameEn")} />
           </div>
           <div className="space-y-2">
-            <Label>البريد الإلكتروني</Label>
+            <Label>{t("empForm.email")}</Label>
             <Input dir="ltr" type="email" {...register("email")} />
           </div>
           <div className="space-y-2">
-            <Label>رقم الهوية</Label>
+            <Label>{t("empForm.nationalId")}</Label>
             <Input dir="ltr" {...register("nationalId")} />
           </div>
           <div className="space-y-2">
-            <Label>الجنسية</Label>
+            <Label>{t("empForm.nationality")}</Label>
             <Input {...register("nationality")} />
           </div>
           <div className="space-y-2">
-            <Label>الجنس</Label>
+            <Label>{t("empForm.gender")}</Label>
             <Input {...register("gender")} />
           </div>
           <div className="space-y-2">
-            <Label>المسمى الوظيفي</Label>
+            <Label>{t("empForm.jobTitle")}</Label>
             <Input {...register("jobTitle")} />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <Label>المدير المباشر</Label>
+            <Label>{t("empForm.directManager")}</Label>
             <Input {...register("directManager")} />
           </div>
 
           <DialogFooter className="sm:col-span-2">
             <Button type="submit" disabled={pending || formState.isSubmitting}>
               {pending && <Loader2 className="size-4 animate-spin" />}
-              {isEdit ? "حفظ التعديلات" : "إضافة"}
+              {isEdit ? t("empForm.saveChanges") : t("empForm.addBtn")}
             </Button>
           </DialogFooter>
         </form>

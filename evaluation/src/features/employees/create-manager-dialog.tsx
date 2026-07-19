@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useT } from "@/i18n/client";
 
 interface Result {
   user: { id: string; name: string; email: string; role: string };
@@ -35,6 +36,7 @@ interface Result {
  * one-time email + password are shown to hand over.
  */
 export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervisor?: boolean }) {
+  const t = useT();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -51,7 +53,7 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
   }
 
   async function submit() {
-    if (name.trim().length < 2) return toast.error("اكتب اسم المدير/المقيّم");
+    if (name.trim().length < 2) return toast.error(t("manager.nameRequired"));
     setLoading(true);
     try {
       const res = await fetch("/api/managers", {
@@ -60,12 +62,12 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
         body: JSON.stringify({ name: name.trim(), email: email.trim() || undefined, role }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error?.message ?? "تعذّر إنشاء الحساب");
+      if (!res.ok) throw new Error(body?.error?.message ?? t("manager.createFailed"));
       setResult((body.data ?? body) as Result);
       qc.invalidateQueries({ queryKey: ["employees"] });
       qc.invalidateQueries({ queryKey: ["lookups"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "تعذّر إنشاء الحساب");
+      toast.error(e instanceof Error ? e.message : t("manager.createFailed"));
     } finally {
       setLoading(false);
     }
@@ -81,26 +83,24 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
     >
       <DialogTrigger asChild>
         <Button variant="outline">
-          <UserPlus className="size-4" /> إضافة مقيّم / مدير
+          <UserPlus className="size-4" /> {t("manager.trigger")}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>إنشاء حساب مقيّم / مدير مباشر</DialogTitle>
+          <DialogTitle>{t("manager.title")}</DialogTitle>
         </DialogHeader>
 
         {result ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2 rounded-md bg-emerald-50 p-3 text-sm text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
               <CheckCircle2 className="size-5 shrink-0" />
-              <span>
-                تم إنشاء الحساب وربط <b>{result.linkedCount}</b> موظف بهذا المقيّم.
-              </span>
+              <span>{t("manager.linkedResult", { n: result.linkedCount })}</span>
             </div>
-            <CopyRow label="البريد الإلكتروني" value={result.user.email} />
-            <CopyRow label="كلمة المرور المؤقتة" value={result.temporaryPassword} />
+            <CopyRow label={t("empForm.email")} value={result.user.email} copiedMsg={t("manager.copied")} />
+            <CopyRow label={t("manager.tempPassword")} value={result.temporaryPassword} copiedMsg={t("manager.copied")} />
             <p className="text-xs text-muted-foreground">
-              سلّم هذه البيانات للمقيّم — يُنصح بتغيير كلمة المرور بعد أول دخول.
+              {t("manager.handover")}
             </p>
             <DialogFooter>
               <Button
@@ -109,45 +109,45 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
                 }}
                 variant="outline"
               >
-                إضافة آخر
+                {t("manager.addAnother")}
               </Button>
-              <Button onClick={() => setOpen(false)}>تم</Button>
+              <Button onClick={() => setOpen(false)}>{t("manager.done")}</Button>
             </DialogFooter>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>الاسم</Label>
+              <Label>{t("common.name")}</Label>
               <Input
-                placeholder="اكتب اسم المدير المباشر كما في ملف الموظفين"
+                placeholder={t("manager.namePlaceholder")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                سيُربط تلقائيًا كل موظف «مديره المباشر» يطابق هذا الاسم.
+                {t("manager.nameHint")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label>البريد الإلكتروني (اختياري)</Label>
+              <Label>{t("manager.emailOptional")}</Label>
               <Input dir="ltr" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
             {canCreateSupervisor && (
               <div className="space-y-2">
-                <Label>الدور</Label>
+                <Label>{t("manager.role")}</Label>
                 <Select value={role} onValueChange={setRole}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="EVALUATOR">مقيّم</SelectItem>
-                    <SelectItem value="SUPERVISOR">مراجع (مشرف)</SelectItem>
+                    <SelectItem value="EVALUATOR">{t("manager.roleEvaluator")}</SelectItem>
+                    <SelectItem value="SUPERVISOR">{t("manager.roleSupervisor")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             )}
             <DialogFooter>
               <Button onClick={submit} disabled={loading}>
-                {loading && <Loader2 className="size-4 animate-spin" />} إنشاء وربط الموظفين
+                {loading && <Loader2 className="size-4 animate-spin" />} {t("manager.createAndLink")}
               </Button>
             </DialogFooter>
           </div>
@@ -157,7 +157,7 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
   );
 }
 
-function CopyRow({ label, value }: { label: string; value: string }) {
+function CopyRow({ label, value, copiedMsg }: { label: string; value: string; copiedMsg: string }) {
   return (
     <div>
       <Label className="text-xs text-muted-foreground">{label}</Label>
@@ -169,7 +169,7 @@ function CopyRow({ label, value }: { label: string; value: string }) {
           size="icon"
           onClick={() => {
             navigator.clipboard.writeText(value);
-            toast.success("تم النسخ");
+            toast.success(copiedMsg);
           }}
         >
           <Copy className="size-4" />

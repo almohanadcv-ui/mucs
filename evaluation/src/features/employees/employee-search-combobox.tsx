@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Loader2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { useT } from "@/i18n/client";
 
 export interface PickerEmployee {
   id: string;
@@ -28,14 +29,15 @@ export function EmployeeSearchCombobox({
   value: PickerEmployee | null;
   onSelect: (e: PickerEmployee | null) => void;
 }) {
+  const t = useT();
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(term), 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebounced(term), 250);
+    return () => clearTimeout(timer);
   }, [term]);
 
   useEffect(() => {
@@ -74,7 +76,7 @@ export function EmployeeSearchCombobox({
           type="button"
           onClick={() => onSelect(null)}
           className="shrink-0 text-muted-foreground hover:text-destructive"
-          title="تغيير الموظف"
+          title={t("picker.changeEmployee")}
         >
           <X className="size-4" />
         </button>
@@ -87,7 +89,7 @@ export function EmployeeSearchCombobox({
       <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
       <Input
         className="pr-9"
-        placeholder="ابحث بالاسم أو الرقم الوظيفي أو رقم الهوية…"
+        placeholder={t("picker.searchPlaceholder")}
         value={term}
         onChange={(e) => {
           setTerm(e.target.value);
@@ -99,11 +101,11 @@ export function EmployeeSearchCombobox({
         <div className="absolute z-50 mt-1 max-h-72 w-full overflow-auto rounded-md border bg-popover shadow-md">
           {isFetching && (
             <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" /> جارٍ البحث…
+              <Loader2 className="size-4 animate-spin" /> {t("picker.searching")}
             </div>
           )}
           {!isFetching && (data?.length ?? 0) === 0 && (
-            <p className="p-3 text-sm text-muted-foreground">لا يوجد موظف مطابق.</p>
+            <p className="p-3 text-sm text-muted-foreground">{t("picker.noMatch")}</p>
           )}
           {data?.map((e) => (
             <button
@@ -121,7 +123,7 @@ export function EmployeeSearchCombobox({
                 <span className="text-xs text-muted-foreground"> — {e.employeeNo}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {[e.department?.name, e.branch?.name, e.jobTitle, e.evaluator?.name && `المقيّم: ${e.evaluator.name}`]
+                {[e.department?.name, e.branch?.name, e.jobTitle, e.evaluator?.name && t("picker.evaluatorPrefix", { name: e.evaluator.name })]
                   .filter(Boolean)
                   .join(" · ") || "—"}
               </p>

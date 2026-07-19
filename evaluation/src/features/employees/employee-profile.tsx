@@ -15,6 +15,7 @@ import { ArrowRight, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmployeeStatusBadge } from "@/features/dashboard/status-badges";
+import { useI18n } from "@/i18n/client";
 
 interface ProfileEvaluation {
   id: string;
@@ -39,13 +40,6 @@ interface Profile {
   stats: { count: number; scoredCount: number; average: number | null; last: number | null };
 }
 
-const STATUS_AR: Record<string, string> = {
-  DRAFT: "مسودة",
-  PENDING: "بانتظار الاعتماد",
-  APPROVED: "معتمد",
-  REJECTED: "مرفوض",
-};
-
 function Info({ label, value }: { label: string; value: unknown }) {
   const v = value == null || value === "" ? "—" : String(value);
   return (
@@ -56,19 +50,20 @@ function Info({ label, value }: { label: string; value: unknown }) {
   );
 }
 
-function fmt(d: unknown): string {
+function fmt(d: unknown, locale: string): string {
   if (!d) return "—";
   const date = new Date(d as string);
-  return isNaN(date.getTime()) ? "—" : date.toLocaleDateString("ar-SA");
+  return isNaN(date.getTime()) ? "—" : date.toLocaleDateString(locale === "ar" ? "ar-SA" : "en-US");
 }
 
 export function EmployeeProfile({ id }: { id: string }) {
+  const { t, locale } = useI18n();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["employee-profile", id],
     queryFn: async () => {
       const res = await fetch(`/api/employees/${id}/profile`);
       const b = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(b?.error?.message ?? "تعذّر التحميل");
+      if (!res.ok) throw new Error(b?.error?.message ?? t("profile.fetchFailed"));
       return (b.data ?? b) as Profile;
     },
   });
@@ -80,7 +75,7 @@ export function EmployeeProfile({ id }: { id: string }) {
       </div>
     );
   if (isError || !data)
-    return <p className="py-16 text-center text-destructive">تعذّر تحميل بيانات الموظف.</p>;
+    return <p className="py-16 text-center text-destructive">{t("profile.loadFailed")}</p>;
 
   const { employee: e, evaluations, stats } = data;
   const chart = evaluations
@@ -88,7 +83,7 @@ export function EmployeeProfile({ id }: { id: string }) {
     .slice()
     .reverse()
     .map((ev, i) => ({
-      name: fmt(ev.submittedAt ?? ev.createdAt),
+      name: fmt(ev.submittedAt ?? ev.createdAt, locale),
       score: ev.score,
       idx: i + 1,
     }));
@@ -107,51 +102,51 @@ export function EmployeeProfile({ id }: { id: string }) {
         </div>
         <div className="flex items-center gap-2 print:hidden">
           <Button variant="outline" size="sm" onClick={() => window.print()}>
-            <Printer className="size-4" /> طباعة التقرير
+            <Printer className="size-4" /> {t("profile.print")}
           </Button>
           <Link
             href="/dashboard/employees"
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
-            <ArrowRight className="size-4" /> رجوع
+            <ArrowRight className="size-4" /> {t("common.back")}
           </Link>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="المعدل العام" value={stats.average != null ? `${stats.average}%` : "—"} accent />
-        <StatCard label="آخر تقييم" value={stats.last != null ? `${stats.last}%` : "—"} />
-        <StatCard label="عدد التقييمات" value={stats.count} />
-        <StatCard label="تقييمات محتسبة" value={stats.scoredCount} />
+        <StatCard label={t("profile.avgOverall")} value={stats.average != null ? `${stats.average}%` : "—"} accent />
+        <StatCard label={t("profile.lastEval")} value={stats.last != null ? `${stats.last}%` : "—"} />
+        <StatCard label={t("profile.evalCount")} value={stats.count} />
+        <StatCard label={t("profile.scoredCount")} value={stats.scoredCount} />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>البيانات الأساسية</CardTitle>
+          <CardTitle>{t("profile.basicInfo")}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Info label="الرقم الوظيفي" value={e.employeeNo} />
-          <Info label="الاسم الإنجليزي" value={e.nameEn} />
-          <Info label="البريد الإلكتروني" value={e.email} />
-          <Info label="رقم الهوية" value={e.nationalId} />
-          <Info label="الجنسية" value={e.nationality} />
-          <Info label="الجنس" value={e.gender} />
-          <Info label="المسمى الوظيفي" value={e.jobTitle} />
-          <Info label="المدير المباشر" value={e.directManager} />
-          <Info label="المقيّم" value={e.evaluator?.name} />
-          <Info label="تاريخ الميلاد" value={fmt(e.birthDate)} />
-          <Info label="تاريخ الانضمام" value={fmt(e.joinedAt)} />
-          <Info label="بداية العقد" value={fmt(e.contractStartDate)} />
-          <Info label="نهاية العقد" value={fmt(e.contractEndDate)} />
-          <Info label="بداية التجربة" value={fmt(e.probationStartDate)} />
-          <Info label="نهاية التجربة" value={fmt(e.probationEndDate)} />
+          <Info label={t("empForm.employeeNo")} value={e.employeeNo} />
+          <Info label={t("empForm.nameEn")} value={e.nameEn} />
+          <Info label={t("empForm.email")} value={e.email} />
+          <Info label={t("empForm.nationalId")} value={e.nationalId} />
+          <Info label={t("empForm.nationality")} value={e.nationality} />
+          <Info label={t("empForm.gender")} value={e.gender} />
+          <Info label={t("empForm.jobTitle")} value={e.jobTitle} />
+          <Info label={t("empForm.directManager")} value={e.directManager} />
+          <Info label={t("empForm.evaluator")} value={e.evaluator?.name} />
+          <Info label={t("profile.birthDate")} value={fmt(e.birthDate, locale)} />
+          <Info label={t("empForm.joinedAt")} value={fmt(e.joinedAt, locale)} />
+          <Info label={t("profile.contractStartShort")} value={fmt(e.contractStartDate, locale)} />
+          <Info label={t("profile.contractEnd")} value={fmt(e.contractEndDate, locale)} />
+          <Info label={t("profile.probationStart")} value={fmt(e.probationStartDate, locale)} />
+          <Info label={t("profile.probationEnd")} value={fmt(e.probationEndDate, locale)} />
         </CardContent>
       </Card>
 
       {chart.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>تطوّر الدرجات</CardTitle>
+            <CardTitle>{t("profile.scoreTrend")}</CardTitle>
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -169,17 +164,17 @@ export function EmployeeProfile({ id }: { id: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>سجل التقييمات ({evaluations.length})</CardTitle>
+          <CardTitle>{t("profile.evalHistory", { n: evaluations.length })}</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-right text-muted-foreground">
-                <th className="px-3 py-2 font-medium">النموذج</th>
-                <th className="px-3 py-2 font-medium">المقيّم</th>
-                <th className="px-3 py-2 font-medium">الدرجة</th>
-                <th className="px-3 py-2 font-medium">الحالة</th>
-                <th className="px-3 py-2 font-medium">التاريخ</th>
+                <th className="px-3 py-2 font-medium">{t("profile.colTemplate")}</th>
+                <th className="px-3 py-2 font-medium">{t("empForm.evaluator")}</th>
+                <th className="px-3 py-2 font-medium">{t("profile.colScore")}</th>
+                <th className="px-3 py-2 font-medium">{t("common.status")}</th>
+                <th className="px-3 py-2 font-medium">{t("common.date")}</th>
               </tr>
             </thead>
             <tbody>
@@ -190,14 +185,14 @@ export function EmployeeProfile({ id }: { id: string }) {
                   <td className="px-3 py-2 font-medium tabular-nums">
                     {ev.score != null ? `${ev.score}%` : "—"}
                   </td>
-                  <td className="px-3 py-2">{STATUS_AR[ev.status] ?? ev.status}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{fmt(ev.submittedAt ?? ev.createdAt)}</td>
+                  <td className="px-3 py-2">{t(`evalStatus.${ev.status}`)}</td>
+                  <td className="px-3 py-2 text-muted-foreground">{fmt(ev.submittedAt ?? ev.createdAt, locale)}</td>
                 </tr>
               ))}
               {evaluations.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-muted-foreground">
-                    لا توجد تقييمات بعد.
+                    {t("profile.noEvals")}
                   </td>
                 </tr>
               )}

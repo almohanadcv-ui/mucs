@@ -27,12 +27,17 @@ import {
   useDeleteEmployee,
   type EmployeeRow,
 } from "./use-employees";
+import { useT } from "@/i18n/client";
 
 /**
  * Remaining time until a contract/probation ends, with a color that escalates
  * as the deadline approaches: green (>90d) → amber (30–90d) → red (<30d/ended).
  */
-function remaining(startISO: string | null, months: number | null) {
+function remaining(
+  startISO: string | null,
+  months: number | null,
+  t: (key: string, params?: Record<string, string | number>) => string,
+) {
   if (!startISO || !months) return null;
   const end = addMonths(new Date(startISO), months);
   const days = differenceInCalendarDays(end, new Date());
@@ -42,23 +47,24 @@ function remaining(startISO: string | null, months: number | null) {
       : days <= 90
         ? "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
         : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300";
-  return { color, text: days < 0 ? "منتهٍ" : `${days} يوم` };
+  return { color, text: days < 0 ? t("employees.ended") : t("employees.daysLeft", { n: days }) };
 }
 
 function ContractCell({ e }: { e: EmployeeRow }) {
-  const prob = remaining(e.contractStartDate, e.probationMonths);
-  const contract = remaining(e.contractStartDate, e.contractMonths);
+  const t = useT();
+  const prob = remaining(e.contractStartDate, e.probationMonths, t);
+  const contract = remaining(e.contractStartDate, e.contractMonths, t);
   if (!prob && !contract) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="flex flex-col gap-1">
       {prob && (
         <span className={cn("inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium", prob.color)}>
-          التجربة: {prob.text}
+          {t("employees.probation")}: {prob.text}
         </span>
       )}
       {contract && (
         <span className={cn("inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium", contract.color)}>
-          العقد: {contract.text}
+          {t("employees.contract")}: {contract.text}
         </span>
       )}
     </div>
@@ -76,6 +82,7 @@ export function EmployeesClient({
   canCreateManager?: boolean;
   isAdmin?: boolean;
 }) {
+  const t = useT();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
@@ -95,14 +102,14 @@ export function EmployeesClient({
       form.append("file", file);
       const res = await fetch("/api/employees/import", { method: "POST", body: form });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error?.message ?? "تعذّر الاستيراد");
+      if (!res.ok) throw new Error(body?.error?.message ?? t("employees.importFailed"));
       const d = body.data ?? body;
       toast.success(
-        `تم الاستيراد: ${d.created} جديد، ${d.updated} محدّث، ${d.skippedInactive} غير نشط (تم تجاهله)`,
+        t("employees.importResult", { created: d.created, updated: d.updated, skipped: d.skippedInactive }),
       );
       qc.invalidateQueries({ queryKey: ["employees"] });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "تعذّر الاستيراد");
+      toast.error(e instanceof Error ? e.message : t("employees.importFailed"));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -124,10 +131,10 @@ export function EmployeesClient({
     if (!toDelete) return;
     try {
       await del.mutateAsync(toDelete.id);
-      toast.success("تم حذف الموظف");
+      toast.success(t("employees.deleted"));
       setToDelete(null);
     } catch {
-      toast.error("تعذّر الحذف");
+      toast.error(t("employees.deleteFailed"));
     }
   }
 
@@ -136,10 +143,10 @@ export function EmployeesClient({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <Users className="size-6 text-primary" /> الموظفون
+            <Users className="size-6 text-primary" /> {t("employees.title")}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {meta?.total ?? 0} موظف
+            {t("employees.count", { n: meta?.total ?? 0 })}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -166,13 +173,13 @@ export function EmployeesClient({
                 ) : (
                   <FileUp className="size-4" />
                 )}
-                استيراد من Excel
+                {t("employees.importExcel")}
               </Button>
             </>
           )}
           {canManage && (
             <Button onClick={openCreate}>
-              <Plus className="size-4" /> إضافة موظف
+              <Plus className="size-4" /> {t("employees.add")}
             </Button>
           )}
         </div>
@@ -184,7 +191,7 @@ export function EmployeesClient({
             <Search className="absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="pr-9"
-              placeholder="بحث بالاسم أو الرقم الوظيفي..."
+              placeholder={t("employees.searchPlaceholder")}
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -198,22 +205,22 @@ export function EmployeesClient({
               <Loader2 className="size-6 animate-spin text-muted-foreground" />
             </div>
           ) : isError ? (
-            <p className="py-12 text-center text-sm text-destructive">تعذّر تحميل البيانات.</p>
+            <p className="py-12 text-center text-sm text-destructive">{t("common.loadFailed")}</p>
           ) : rows.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">لا يوجد موظفون.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("employees.none")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-right text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">الرقم</th>
-                    <th className="px-3 py-2 font-medium">الاسم</th>
-                    <th className="px-3 py-2 font-medium">القسم</th>
-                    <th className="px-3 py-2 font-medium">العقد / التجربة</th>
-                    <th className="px-3 py-2 font-medium">المشرف</th>
-                    <th className="px-3 py-2 font-medium">المقيّم</th>
-                    <th className="px-3 py-2 font-medium">الحالة</th>
-                    {canManage && <th className="px-3 py-2 font-medium">إجراءات</th>}
+                    <th className="px-3 py-2 font-medium">{t("employees.colNo")}</th>
+                    <th className="px-3 py-2 font-medium">{t("common.name")}</th>
+                    <th className="px-3 py-2 font-medium">{t("employees.colDepartment")}</th>
+                    <th className="px-3 py-2 font-medium">{t("employees.colContract")}</th>
+                    <th className="px-3 py-2 font-medium">{t("employees.colSupervisor")}</th>
+                    <th className="px-3 py-2 font-medium">{t("employees.colEvaluator")}</th>
+                    <th className="px-3 py-2 font-medium">{t("common.status")}</th>
+                    {canManage && <th className="px-3 py-2 font-medium">{t("common.actions")}</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -260,14 +267,14 @@ export function EmployeesClient({
           {meta && meta.totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
               <span className="text-xs text-muted-foreground">
-                صفحة {meta.page} من {meta.totalPages}
+                {t("common.pageOf", { page: meta.page, total: meta.totalPages })}
               </span>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}>
-                  السابق
+                  {t("common.previous")}
                 </Button>
                 <Button variant="outline" size="sm" disabled={!meta.hasNext} onClick={() => setPage((p) => p + 1)}>
-                  التالي
+                  {t("common.next")}
                 </Button>
               </div>
             </div>
@@ -286,17 +293,17 @@ export function EmployeesClient({
       <Dialog open={!!toDelete} onOpenChange={(v) => !v && setToDelete(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>حذف الموظف</DialogTitle>
+            <DialogTitle>{t("employees.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              هل أنت متأكد من حذف «{toDelete?.name}»؟ يمكن التراجع عبر قاعدة البيانات (حذف ناعم).
+              {t("employees.deleteConfirm", { name: toDelete?.name ?? "" })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="destructive" onClick={confirmDelete} disabled={del.isPending}>
-              {del.isPending && <Loader2 className="size-4 animate-spin" />} تأكيد الحذف
+              {del.isPending && <Loader2 className="size-4 animate-spin" />} {t("employees.confirmDelete")}
             </Button>
             <DialogClose asChild>
-              <Button variant="outline">إلغاء</Button>
+              <Button variant="outline">{t("common.cancel")}</Button>
             </DialogClose>
           </DialogFooter>
         </DialogContent>
