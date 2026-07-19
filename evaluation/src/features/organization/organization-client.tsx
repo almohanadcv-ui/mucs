@@ -34,17 +34,19 @@ import {
   type BranchRow,
   type DepartmentRow,
 } from "./use-org";
+import { useT } from "@/i18n/client";
 
 const NONE = "__none__";
 
 export function OrganizationClient() {
+  const t = useT();
   return (
     <div className="space-y-6">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Building2 className="size-6 text-primary" /> الهيكل التنظيمي
+          <Building2 className="size-6 text-primary" /> {t("org.title")}
         </h1>
-        <p className="text-sm text-muted-foreground">إدارة الفروع والأقسام</p>
+        <p className="text-sm text-muted-foreground">{t("org.subtitle")}</p>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <BranchesSection />
@@ -56,6 +58,7 @@ export function OrganizationClient() {
 
 /* ------------------------- Branches ------------------------- */
 function BranchesSection() {
+  const t = useT();
   const { data, isLoading } = useBranches();
   const save = useSaveBranch();
   const del = useDeleteBranch();
@@ -74,13 +77,13 @@ function BranchesSection() {
     setOpen(true);
   }
   async function submit() {
-    if (!form.name.trim() || !form.code.trim()) return toast.error("الاسم والرمز مطلوبان");
+    if (!form.name.trim() || !form.code.trim()) return toast.error(t("org.nameCodeRequired"));
     try {
       await save.mutateAsync({ id: editing?.id, name: form.name, code: form.code, address: form.address || null });
-      toast.success("تم الحفظ");
+      toast.success(t("common.saved"));
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الحفظ");
+      toast.error(e instanceof ApiError ? e.message : t("common.saveFailed"));
     }
   }
 
@@ -88,14 +91,14 @@ function BranchesSection() {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="flex items-center gap-2"><Building2 className="size-5" /> الفروع</CardTitle>
-        <Button size="sm" onClick={openNew}><Plus className="size-4" /> فرع</Button>
+        <CardTitle className="flex items-center gap-2"><Building2 className="size-5" /> {t("org.branches")}</CardTitle>
+        <Button size="sm" onClick={openNew}><Plus className="size-4" /> {t("org.branch")}</Button>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
         ) : rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">لا توجد فروع.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">{t("org.noBranches")}</p>
         ) : (
           <ul className="divide-y">
             {rows.map((b) => (
@@ -103,13 +106,13 @@ function BranchesSection() {
                 <div>
                   <p className="font-medium">{b.name} <Badge variant="muted">{b.code}</Badge></p>
                   <p className="text-xs text-muted-foreground">
-                    {b._count?.departments ?? 0} قسم · {b._count?.employees ?? 0} موظف
+                    {t("org.departmentsCount", { n: b._count?.departments ?? 0 })} · {t("org.employeesCount", { n: b._count?.employees ?? 0 })}
                   </p>
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(b)}><Pencil className="size-4" /></Button>
                   <Button variant="ghost" size="icon" className="text-destructive"
-                    onClick={() => del.mutate(b.id, { onSuccess: () => toast.success("تم الحذف") })}>
+                    onClick={() => del.mutate(b.id, { onSuccess: () => toast.success(t("common.deleted")) })}>
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -121,20 +124,20 @@ function BranchesSection() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? "تعديل فرع" : "فرع جديد"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("org.editBranch") : t("org.newBranch")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>الاسم</Label>
+            <div className="space-y-1"><Label>{t("common.name")}</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="space-y-1"><Label>الرمز</Label>
+            <div className="space-y-1"><Label>{t("org.code")}</Label>
               <Input dir="ltr" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="MAIN" /></div>
-            <div className="space-y-1"><Label>العنوان (اختياري)</Label>
+            <div className="space-y-1"><Label>{t("org.addressOptional")}</Label>
               <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
           </div>
           <DialogFooter>
             <Button onClick={submit} disabled={save.isPending}>
-              {save.isPending && <Loader2 className="size-4 animate-spin" />} حفظ
+              {save.isPending && <Loader2 className="size-4 animate-spin" />} {t("common.save")}
             </Button>
-            <DialogClose asChild><Button variant="outline">إلغاء</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -144,6 +147,7 @@ function BranchesSection() {
 
 /* ------------------------- Departments ------------------------- */
 function DepartmentsSection() {
+  const t = useT();
   const { data, isLoading } = useDepartments();
   const { data: branches } = useBranches();
   const save = useSaveDepartment();
@@ -163,7 +167,7 @@ function DepartmentsSection() {
     setOpen(true);
   }
   async function submit() {
-    if (!form.name.trim() || !form.code.trim()) return toast.error("الاسم والرمز مطلوبان");
+    if (!form.name.trim() || !form.code.trim()) return toast.error(t("org.nameCodeRequired"));
     try {
       await save.mutateAsync({
         id: editing?.id,
@@ -171,10 +175,10 @@ function DepartmentsSection() {
         code: form.code,
         branchId: form.branchId === NONE ? null : form.branchId,
       });
-      toast.success("تم الحفظ");
+      toast.success(t("common.saved"));
       setOpen(false);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الحفظ");
+      toast.error(e instanceof ApiError ? e.message : t("common.saveFailed"));
     }
   }
 
@@ -182,14 +186,14 @@ function DepartmentsSection() {
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="flex items-center gap-2"><Layers className="size-5" /> الأقسام</CardTitle>
-        <Button size="sm" onClick={openNew}><Plus className="size-4" /> قسم</Button>
+        <CardTitle className="flex items-center gap-2"><Layers className="size-5" /> {t("org.departments")}</CardTitle>
+        <Button size="sm" onClick={openNew}><Plus className="size-4" /> {t("org.department")}</Button>
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>
         ) : rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">لا توجد أقسام.</p>
+          <p className="py-8 text-center text-sm text-muted-foreground">{t("org.noDepartments")}</p>
         ) : (
           <ul className="divide-y">
             {rows.map((d) => (
@@ -197,13 +201,13 @@ function DepartmentsSection() {
                 <div>
                   <p className="font-medium">{d.name} <Badge variant="muted">{d.code}</Badge></p>
                   <p className="text-xs text-muted-foreground">
-                    {d.branch?.name ?? "بدون فرع"} · {d._count?.employees ?? 0} موظف
+                    {d.branch?.name ?? t("org.noBranch")} · {t("org.employeesCount", { n: d._count?.employees ?? 0 })}
                   </p>
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => openEdit(d)}><Pencil className="size-4" /></Button>
                   <Button variant="ghost" size="icon" className="text-destructive"
-                    onClick={() => del.mutate(d.id, { onSuccess: () => toast.success("تم الحذف") })}>
+                    onClick={() => del.mutate(d.id, { onSuccess: () => toast.success(t("common.deleted")) })}>
                     <Trash2 className="size-4" />
                   </Button>
                 </div>
@@ -215,17 +219,17 @@ function DepartmentsSection() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{editing ? "تعديل قسم" : "قسم جديد"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? t("org.editDept") : t("org.newDept")}</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1"><Label>الاسم</Label>
+            <div className="space-y-1"><Label>{t("common.name")}</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="space-y-1"><Label>الرمز</Label>
+            <div className="space-y-1"><Label>{t("org.code")}</Label>
               <Input dir="ltr" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="SEC" /></div>
-            <div className="space-y-1"><Label>الفرع</Label>
+            <div className="space-y-1"><Label>{t("org.branchLabel")}</Label>
               <Select value={form.branchId} onValueChange={(v) => setForm({ ...form, branchId: v })}>
-                <SelectTrigger><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t("empForm.chooseBranch")} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={NONE}>بدون فرع</SelectItem>
+                  <SelectItem value={NONE}>{t("org.noBranch")}</SelectItem>
                   {(branches?.items ?? []).map((b) => (
                     <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                   ))}
@@ -235,9 +239,9 @@ function DepartmentsSection() {
           </div>
           <DialogFooter>
             <Button onClick={submit} disabled={save.isPending}>
-              {save.isPending && <Loader2 className="size-4 animate-spin" />} حفظ
+              {save.isPending && <Loader2 className="size-4 animate-spin" />} {t("common.save")}
             </Button>
-            <DialogClose asChild><Button variant="outline">إلغاء</Button></DialogClose>
+            <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
           </DialogFooter>
         </DialogContent>
       </Dialog>

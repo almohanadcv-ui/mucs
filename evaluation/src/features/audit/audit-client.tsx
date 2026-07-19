@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useI18n } from "@/i18n/client";
 
 interface AuditRow {
   id: string;
@@ -25,11 +26,7 @@ interface AuditRow {
   actor: { name: string } | null;
 }
 
-const ACTION_LABEL: Record<string, string> = {
-  CREATE: "إنشاء", UPDATE: "تعديل", DELETE: "حذف", LOGIN: "دخول",
-  LOGOUT: "خروج", LOGIN_FAILED: "دخول فاشل", APPROVE: "اعتماد",
-  REJECT: "رفض", EXPORT: "تصدير",
-};
+const ACTION_KEYS = ["CREATE","UPDATE","DELETE","LOGIN","LOGOUT","LOGIN_FAILED","APPROVE","REJECT","EXPORT"];
 const ACTION_TONE: Record<string, "success" | "warning" | "destructive" | "muted" | "default"> = {
   CREATE: "success", APPROVE: "success", UPDATE: "default", EXPORT: "default",
   DELETE: "destructive", REJECT: "destructive", LOGIN_FAILED: "destructive",
@@ -38,6 +35,7 @@ const ACTION_TONE: Record<string, "success" | "warning" | "destructive" | "muted
 const ALL = "__all__";
 
 export function AuditClient() {
+  const { t, locale } = useI18n();
   const [action, setAction] = useState(ALL);
   const [page, setPage] = useState(1);
 
@@ -58,16 +56,16 @@ export function AuditClient() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <History className="size-6 text-primary" /> سجل النشاط
+            <History className="size-6 text-primary" /> {t("audit.title")}
           </h1>
-          <p className="text-sm text-muted-foreground">{meta?.total ?? 0} عملية</p>
+          <p className="text-sm text-muted-foreground">{t("audit.count", { n: meta?.total ?? 0 })}</p>
         </div>
         <Select value={action} onValueChange={(v) => { setAction(v); setPage(1); }}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="كل العمليات" /></SelectTrigger>
+          <SelectTrigger className="w-48"><SelectValue placeholder={t("audit.allActions")} /></SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>كل العمليات</SelectItem>
-            {Object.entries(ACTION_LABEL).map(([k, v]) => (
-              <SelectItem key={k} value={k}>{v}</SelectItem>
+            <SelectItem value={ALL}>{t("audit.allActions")}</SelectItem>
+            {ACTION_KEYS.map((k) => (
+              <SelectItem key={k} value={k}>{t(`audit.${k}`)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -78,17 +76,17 @@ export function AuditClient() {
           {isLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : rows.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">لا توجد سجلات.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("audit.none")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-right text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">العملية</th>
-                    <th className="px-3 py-2 font-medium">الكيان</th>
-                    <th className="px-3 py-2 font-medium">المستخدم</th>
+                    <th className="px-3 py-2 font-medium">{t("audit.colAction")}</th>
+                    <th className="px-3 py-2 font-medium">{t("audit.colEntity")}</th>
+                    <th className="px-3 py-2 font-medium">{t("audit.colUser")}</th>
                     <th className="px-3 py-2 font-medium">IP</th>
-                    <th className="px-3 py-2 font-medium">التاريخ</th>
+                    <th className="px-3 py-2 font-medium">{t("common.date")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -96,7 +94,7 @@ export function AuditClient() {
                     <tr key={r.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="px-3 py-3">
                         <Badge variant={ACTION_TONE[r.action] ?? "muted"}>
-                          {ACTION_LABEL[r.action] ?? r.action}
+                          {t(`audit.${r.action}`)}
                         </Badge>
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">
@@ -105,7 +103,7 @@ export function AuditClient() {
                       <td className="px-3 py-3">{r.actor?.name ?? "—"}</td>
                       <td className="px-3 py-3 tabular-nums text-muted-foreground" dir="ltr">{r.ip ?? "—"}</td>
                       <td className="px-3 py-3 tabular-nums text-muted-foreground">
-                        {new Date(r.createdAt).toLocaleString("ar-EG")}
+                        {new Date(r.createdAt).toLocaleString(locale === "ar" ? "ar-EG" : "en-US")}
                       </td>
                     </tr>
                   ))}
@@ -116,10 +114,10 @@ export function AuditClient() {
 
           {meta && meta.totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">صفحة {meta.page} من {meta.totalPages}</span>
+              <span className="text-xs text-muted-foreground">{t("common.pageOf", { page: meta.page, total: meta.totalPages })}</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}>السابق</Button>
-                <Button variant="outline" size="sm" disabled={!meta.hasNext} onClick={() => setPage((p) => p + 1)}>التالي</Button>
+                <Button variant="outline" size="sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}>{t("common.previous")}</Button>
+                <Button variant="outline" size="sm" disabled={!meta.hasNext} onClick={() => setPage((p) => p + 1)}>{t("common.next")}</Button>
               </div>
             </div>
           )}
