@@ -9,15 +9,19 @@ import {
   useMarkAllRead,
   useMarkRead,
 } from "./use-notifications";
+import { useT } from "@/i18n/client";
 
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 1) return "الآن";
-  if (m < 60) return `منذ ${m} د`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `منذ ${h} س`;
-  return `منذ ${Math.floor(h / 24)} يوم`;
+function useTimeAgo() {
+  const t = useT();
+  return (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return t("notifications.now");
+    if (m < 60) return t("notifications.minutesAgo", { n: m });
+    const h = Math.floor(m / 60);
+    if (h < 24) return t("notifications.hoursAgo", { n: h });
+    return t("notifications.daysAgo", { n: Math.floor(h / 24) });
+  };
 }
 
 const TONE: Record<string, string> = {
@@ -29,6 +33,8 @@ const TONE: Record<string, string> = {
 };
 
 export function NotificationBell() {
+  const t = useT();
+  const timeAgo = useTimeAgo();
   const { data } = useNotifications();
   const markAll = useMarkAllRead();
   const markOne = useMarkRead();
@@ -39,7 +45,7 @@ export function NotificationBell() {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="icon" className="relative" aria-label="الإشعارات">
+        <Button variant="outline" size="icon" className="relative" aria-label={t("notifications.title")}>
           <Bell className="size-4" />
           {unread > 0 && (
             <span className="absolute -left-1 -top-1 flex size-4 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
@@ -50,16 +56,16 @@ export function NotificationBell() {
       </PopoverTrigger>
       <PopoverContent className="p-0">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <span className="font-semibold">الإشعارات</span>
+          <span className="font-semibold">{t("notifications.title")}</span>
           {unread > 0 && (
             <Button variant="ghost" size="sm" onClick={() => markAll.mutate()}>
-              <CheckCheck className="size-4" /> تعليم الكل كمقروء
+              <CheckCheck className="size-4" /> {t("notifications.markAllRead")}
             </Button>
           )}
         </div>
         <div className="max-h-96 overflow-y-auto">
           {items.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">لا توجد إشعارات</p>
+            <p className="py-10 text-center text-sm text-muted-foreground">{t("notifications.empty")}</p>
           ) : (
             items.map((n) => (
               <div
@@ -79,7 +85,7 @@ export function NotificationBell() {
                   <button
                     onClick={() => markOne.mutate(n.id)}
                     className="text-muted-foreground hover:text-foreground"
-                    aria-label="تعليم كمقروء"
+                    aria-label={t("notifications.markRead")}
                   >
                     <Check className="size-4" />
                   </button>

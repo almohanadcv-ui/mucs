@@ -7,18 +7,25 @@ import { DEFAULT_LOCALE, type Locale } from "./config";
 
 const DICTIONARIES: Record<Locale, Messages> = { ar, en };
 
+type TParams = Record<string, string | number>;
+
 interface I18nContextValue {
   locale: Locale;
-  t: (key: string) => string;
+  t: (key: string, params?: TParams) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
-function translate(messages: Messages, key: string): string {
+function interpolate(text: string, params?: TParams): string {
+  if (!params) return text;
+  return text.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m));
+}
+
+function translate(messages: Messages, key: string, params?: TParams): string {
   const value = key
     .split(".")
     .reduce<unknown>((acc, part) => (acc as Record<string, unknown>)?.[part], messages);
-  return typeof value === "string" ? value : key;
+  return typeof value === "string" ? interpolate(value, params) : key;
 }
 
 /**
@@ -35,7 +42,7 @@ export function I18nProvider({
 }) {
   const value = useMemo<I18nContextValue>(() => {
     const messages = DICTIONARIES[locale] ?? DICTIONARIES[DEFAULT_LOCALE];
-    return { locale, t: (key: string) => translate(messages, key) };
+    return { locale, t: (key: string, params?: TParams) => translate(messages, key, params) };
   }, [locale]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
@@ -48,12 +55,15 @@ export function useI18n(): I18nContextValue {
     // Fallback so a component rendered outside the provider still shows keys,
     // never throws — matters for isolated previews and tests.
     const messages = DICTIONARIES[DEFAULT_LOCALE];
-    return { locale: DEFAULT_LOCALE, t: (key: string) => translate(messages, key) };
+    return {
+      locale: DEFAULT_LOCALE,
+      t: (key: string, params?: TParams) => translate(messages, key, params),
+    };
   }
   return ctx;
 }
 
 /** Shorthand when only the translator is needed. */
-export function useT(): (key: string) => string {
+export function useT(): (key: string, params?: TParams) => string {
   return useI18n().t;
 }

@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useT } from "@/i18n/client";
 
 interface TopEmp {
   id: string;
@@ -27,6 +28,7 @@ const THRESHOLDS = ["99", "95", "90", "80", "0"];
 /** Dashboard widget: the top 10 employees whose average score meets a
  *  reviewer-configurable threshold (99% / 95% / 90% …). */
 export function TopEmployeesWidget() {
+  const t = useT();
   const [threshold, setThreshold] = useState("90");
   const { data, isLoading } = useQuery({
     queryKey: ["top-employees", threshold],
@@ -42,16 +44,16 @@ export function TopEmployeesWidget() {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Trophy className="size-5 text-amber-500" /> أفضل الموظفين
+          <Trophy className="size-5 text-amber-500" /> {t("widgets.topEmployees")}
         </CardTitle>
         <Select value={threshold} onValueChange={setThreshold}>
           <SelectTrigger className="h-8 w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {THRESHOLDS.map((t) => (
-              <SelectItem key={t} value={t}>
-                {t === "0" ? "الكل" : `${t}% فأكثر`}
+            {THRESHOLDS.map((th) => (
+              <SelectItem key={th} value={th}>
+                {th === "0" ? t("common.all") : t("widgets.orMore", { n: th })}
               </SelectItem>
             ))}
           </SelectContent>
@@ -64,7 +66,7 @@ export function TopEmployeesWidget() {
           </div>
         ) : (data?.length ?? 0) === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            لا يوجد موظفون ضمن هذه العتبة.
+            {t("widgets.noneInThreshold")}
           </p>
         ) : (
           <ol className="space-y-1">
@@ -87,7 +89,7 @@ export function TopEmployeesWidget() {
                     <span>
                       <span className="font-medium">{e.name}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {e.department ?? e.employeeNo} · {e.count} تقييم
+                        {e.department ?? e.employeeNo} · {t("widgets.evaluationsCount", { n: e.count })}
                       </span>
                     </span>
                   </span>

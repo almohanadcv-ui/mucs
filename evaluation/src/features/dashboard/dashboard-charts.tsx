@@ -16,6 +16,7 @@ import {
   Legend,
 } from "recharts";
 import type { DashboardStats } from "@/core/application/dashboard/dashboard-service";
+import { useT } from "@/i18n/client";
 
 const RATING_COLORS = [
   "hsl(var(--chart-1))",
@@ -44,9 +45,10 @@ export function RatingDonut({
 }: {
   data: DashboardStats["ratingDistribution"];
 }) {
+  const t = useT();
   const total = data.reduce((s, d) => s + d.count, 0);
   if (total === 0)
-    return <EmptyChart label="لا توجد تقييمات معتمدة بعد" />;
+    return <EmptyChart label={t("widgets.noApprovedYet")} />;
   return (
     <ResponsiveContainer width="100%" height={260}>
       <PieChart>
