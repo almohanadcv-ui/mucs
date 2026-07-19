@@ -19,10 +19,15 @@ import { ApiError } from "@/lib/api-client";
 import { QuestionType, STAR_RATING_LABELS } from "@/core/domain/enums";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import { useEvaluation, useReviewEvaluation, type EvaluationDetail } from "./use-evaluations";
+import { useI18n } from "@/i18n/client";
+
+type TFn = (key: string, params?: Record<string, string | number>) => string;
 
 function formatAnswer(
   question: EvaluationDetail["template"]["questions"][number],
   answer: EvaluationDetail["answers"][number] | undefined,
+  t: TFn,
+  locale: string,
 ): React.ReactNode {
   if (!answer) return <span className="text-muted-foreground">—</span>;
   const cfg = question.config ?? {};
@@ -41,20 +46,20 @@ function formatAnswer(
       );
     }
     case QuestionType.YES_NO:
-      return answer.valueBool ? "نعم" : "لا";
+      return answer.valueBool ? t("evaluations.yes") : t("evaluations.no");
     case QuestionType.SINGLE_CHOICE:
     case QuestionType.DROPDOWN:
       return cfg.options?.find((o) => o.value === answer.valueText)?.label ?? answer.valueText;
     case QuestionType.MULTIPLE_CHOICE: {
       const arr = Array.isArray(answer.valueJson) ? (answer.valueJson as string[]) : [];
-      return arr.map((v) => cfg.options?.find((o) => o.value === v)?.label ?? v).join("، ");
+      return arr.map((v) => cfg.options?.find((o) => o.value === v)?.label ?? v).join(t("common.listSep"));
     }
     case QuestionType.NUMBER:
       return answer.valueNumber ?? "—";
     case QuestionType.DATE:
-      return answer.valueDate ? new Date(answer.valueDate).toLocaleDateString("ar-EG") : "—";
+      return answer.valueDate ? new Date(answer.valueDate).toLocaleDateString(locale === "ar" ? "ar-EG" : "en-US") : "—";
     case QuestionType.FILE_UPLOAD:
-      return (answer.valueJson as { name?: string } | null)?.name ?? "ملف";
+      return (answer.valueJson as { name?: string } | null)?.name ?? t("evaluations.file");
     default:
       return answer.valueText ?? "—";
   }
@@ -68,6 +73,7 @@ export function EvaluationDetailView({
   canReview: boolean;
 }) {
   const router = useRouter();
+  const { t, locale } = useI18n();
   const { data, isLoading } = useEvaluation(id);
   const review = useReviewEvaluation(id);
   const [rejectOpen, setRejectOpen] = useState(false);
@@ -77,7 +83,7 @@ export function EvaluationDetailView({
     return <div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>;
   }
   if (!data) {
-    return <p className="py-20 text-center text-sm text-destructive">تعذّر تحميل التقييم.</p>;
+    return <p className="py-20 text-center text-sm text-destructive">{t("evaluations.loadFailed")}</p>;
   }
 
   const answersByQ = new Map(data.answers.map((a) => [a.questionId, a]));
@@ -86,21 +92,21 @@ export function EvaluationDetailView({
   async function approve() {
     try {
       await review.mutateAsync({ decision: "APPROVE" });
-      toast.success("تم اعتماد التقييم");
+      toast.success(t("evaluations.approved"));
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الاعتماد");
+      toast.error(e instanceof ApiError ? e.message : t("evaluations.approveFailed"));
     }
   }
   async function reject() {
-    if (reason.trim().length < 3) return toast.error("سبب الرفض مطلوب");
+    if (reason.trim().length < 3) return toast.error(t("evaluations.rejectReasonRequired"));
     try {
       await review.mutateAsync({ decision: "REJECT", reason: reason.trim() });
-      toast.success("تم رفض التقييم");
+      toast.success(t("evaluations.rejected"));
       setRejectOpen(false);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الرفض");
+      toast.error(e instanceof ApiError ? e.message : t("evaluations.rejectFailed"));
     }
   }
 
@@ -110,7 +116,7 @@ export function EvaluationDetailView({
         <div>
           <h1 className="text-2xl font-bold">{data.template.title}</h1>
           <p className="text-sm text-muted-foreground">
-            الموظف: {data.employee?.name} · المقيّم: {data.evaluator?.name}
+            {t("evaluations.employeeLabel")}: {data.employee?.name} · {t("picker.evaluatorPrefix", { name: data.evaluator?.name ?? "" })}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -125,17 +131,17 @@ export function EvaluationDetailView({
 
       {data.status === "REJECTED" && data.rejectionReason && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          سبب الرفض: {data.rejectionReason}
+          {t("evaluations.rejectReasonPrefix")} {data.rejectionReason}
         </div>
       )}
 
       <Card>
-        <CardHeader><CardTitle>الإجابات</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("evaluations.answers")}</CardTitle></CardHeader>
         <CardContent className="divide-y">
           {data.template.questions.map((q, i) => (
             <div key={q.id ?? i} className="flex items-start justify-between gap-4 py-3">
               <span className="text-sm text-muted-foreground">{i + 1}. {q.label}</span>
-              <span className="text-sm font-medium">{formatAnswer(q, answersByQ.get(q.id!))}</span>
+              <span className="text-sm font-medium">{formatAnswer(q, answersByQ.get(q.id!), t, locale)}</span>
             </div>
           ))}
         </CardContent>
@@ -145,24 +151,24 @@ export function EvaluationDetailView({
         <div className="flex justify-start gap-3">
           <Button onClick={approve} disabled={review.isPending}>
             {review.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-            اعتماد
+            {t("evaluations.approve")}
           </Button>
           <Button variant="destructive" onClick={() => setRejectOpen(true)} disabled={review.isPending}>
-            <X className="size-4" /> رفض
+            <X className="size-4" /> {t("evaluations.reject")}
           </Button>
         </div>
       )}
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>سبب الرفض</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("evaluations.rejectReasonTitle")}</DialogTitle></DialogHeader>
           <div className="space-y-2">
-            <Label>اكتب سبب رفض التقييم</Label>
+            <Label>{t("evaluations.writeRejectReason")}</Label>
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
           </div>
           <DialogFooter>
             <Button variant="destructive" onClick={reject} disabled={review.isPending}>
-              {review.isPending && <Loader2 className="size-4 animate-spin" />} تأكيد الرفض
+              {review.isPending && <Loader2 className="size-4 animate-spin" />} {t("evaluations.confirmReject")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { QuestionType } from "@/core/domain/enums";
 import { StarRating } from "./star-rating";
 import type { TemplateQuestion } from "@/features/templates/use-templates";
+import { useT } from "@/i18n/client";
 
 export type AnswerValue = unknown;
 
@@ -26,6 +27,7 @@ export function QuestionField({
   value: AnswerValue;
   onChange: (v: AnswerValue) => void;
 }) {
+  const t = useT();
   const cfg = question.config ?? {};
 
   switch (question.type) {
@@ -42,8 +44,8 @@ export function QuestionField({
       return (
         <div className="flex gap-2">
           {[
-            { v: true, label: "نعم" },
-            { v: false, label: "لا" },
+            { v: true, label: t("evaluations.yes") },
+            { v: false, label: t("evaluations.no") },
           ].map((o) => (
             <Button
               key={String(o.v)}
@@ -117,7 +119,7 @@ export function QuestionField({
       return (
         <Select value={(value as string) ?? ""} onValueChange={onChange}>
           <SelectTrigger className="max-w-sm">
-            <SelectValue placeholder="اختر..." />
+            <SelectValue placeholder={t("evaluations.choosePlaceholder")} />
           </SelectTrigger>
           <SelectContent>
             {(cfg.options ?? []).map((o) => (

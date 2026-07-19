@@ -23,8 +23,10 @@ import {
 import { useTemplate } from "@/features/templates/use-templates";
 import { QuestionField, type AnswerValue } from "./question-field";
 import { useCreateEvaluation } from "./use-evaluations";
+import { useT } from "@/i18n/client";
 
 export function EvaluationFill() {
+  const t = useT();
   const router = useRouter();
   const { data: lookups } = useLookups();
   const [employee, setEmployee] = useState<PickerEmployee | null>(null);
@@ -36,8 +38,8 @@ export function EvaluationFill() {
   const employeeId = employee?.id ?? "";
 
   async function save(submit: boolean) {
-    if (!employeeId) return toast.error("اختر الموظف");
-    if (!templateId) return toast.error("اختر النموذج");
+    if (!employeeId) return toast.error(t("evaluations.chooseEmployee"));
+    if (!templateId) return toast.error(t("evaluations.chooseTemplate"));
 
     const payload = {
       templateId,
@@ -49,32 +51,32 @@ export function EvaluationFill() {
     };
     try {
       await create.mutateAsync(payload);
-      toast.success(submit ? "تم إرسال التقييم للاعتماد" : "تم حفظ المسودة");
+      toast.success(submit ? t("evaluations.sentForApproval") : t("evaluations.draftSaved"));
       router.push("/dashboard/evaluations");
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : "تعذّر الحفظ");
+      toast.error(e instanceof ApiError ? e.message : t("evaluations.saveFailed"));
     }
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">تقييم جديد</h1>
+      <h1 className="text-2xl font-bold">{t("evaluations.newTitle")}</h1>
 
       <Card>
-        <CardHeader><CardTitle>البيانات الأساسية</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("evaluations.basicData")}</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
-            <Label>الموظف</Label>
+            <Label>{t("evaluations.employeeLabel")}</Label>
             <EmployeeSearchCombobox value={employee} onSelect={setEmployee} />
           </div>
           <div className="space-y-2">
-            <Label>نموذج التقييم</Label>
+            <Label>{t("evaluations.templateLabel")}</Label>
             <Select value={templateId} onValueChange={(v) => { setTemplateId(v); setAnswers({}); }}>
-              <SelectTrigger><SelectValue placeholder="اختر النموذج" /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t("evaluations.chooseTemplate")} /></SelectTrigger>
               <SelectContent>
-                {lookups?.templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                {lookups?.templates.map((tpl) => (
+                  <SelectItem key={tpl.id} value={tpl.id}>{tpl.title}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -121,10 +123,10 @@ export function EvaluationFill() {
           <div className="flex justify-start gap-3">
             <Button onClick={() => save(true)} disabled={create.isPending}>
               {create.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
-              إرسال للاعتماد
+              {t("evaluations.submitForApproval")}
             </Button>
             <Button variant="outline" onClick={() => save(false)} disabled={create.isPending}>
-              <Save className="size-4" /> حفظ كمسودة
+              <Save className="size-4" /> {t("evaluations.saveDraft")}
             </Button>
           </div>
         </>

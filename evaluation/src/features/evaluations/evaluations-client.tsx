@@ -8,20 +8,22 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import { useEvaluations } from "./use-evaluations";
+import { useI18n } from "@/i18n/client";
 
 const FILTERS = [
-  { value: "", label: "الكل" },
-  { value: "PENDING", label: "بانتظار الاعتماد" },
-  { value: "APPROVED", label: "معتمد" },
-  { value: "REJECTED", label: "مرفوض" },
-  { value: "DRAFT", label: "مسودة" },
+  { value: "", label: "common.all" },
+  { value: "PENDING", label: "evalStatus.PENDING" },
+  { value: "APPROVED", label: "evalStatus.APPROVED" },
+  { value: "REJECTED", label: "evalStatus.REJECTED" },
+  { value: "DRAFT", label: "evalStatus.DRAFT" },
 ];
 
-function fmt(d: string | null) {
-  return d ? new Date(d).toLocaleDateString("ar-EG") : "—";
+function fmt(d: string | null, locale: string) {
+  return d ? new Date(d).toLocaleDateString(locale === "ar" ? "ar-EG" : "en-US") : "—";
 }
 
 export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
+  const { t, locale } = useI18n();
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
   const { data, isLoading } = useEvaluations({ status, page });
@@ -33,14 +35,14 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <ClipboardList className="size-6 text-primary" /> التقييمات
+            <ClipboardList className="size-6 text-primary" /> {t("evaluations.title")}
           </h1>
-          <p className="text-sm text-muted-foreground">{meta?.total ?? 0} تقييم</p>
+          <p className="text-sm text-muted-foreground">{t("evaluations.count", { n: meta?.total ?? 0 })}</p>
         </div>
         {canCreate && (
           <Button asChild>
             <Link href="/dashboard/evaluations/new">
-              <Plus className="size-4" /> تقييم جديد
+              <Plus className="size-4" /> {t("evaluations.new")}
             </Link>
           </Button>
         )}
@@ -58,7 +60,7 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
                 : "hover:bg-muted",
             )}
           >
-            {f.label}
+            {t(f.label)}
           </button>
         ))}
       </div>
@@ -68,18 +70,18 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
           {isLoading ? (
             <div className="flex justify-center py-12"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
           ) : rows.length === 0 ? (
-            <p className="py-12 text-center text-sm text-muted-foreground">لا توجد تقييمات.</p>
+            <p className="py-12 text-center text-sm text-muted-foreground">{t("evaluations.none")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-right text-muted-foreground">
-                    <th className="px-3 py-2 font-medium">الموظف</th>
-                    <th className="px-3 py-2 font-medium">النموذج</th>
-                    <th className="px-3 py-2 font-medium">المقيّم</th>
-                    <th className="px-3 py-2 font-medium">النتيجة</th>
-                    <th className="px-3 py-2 font-medium">التاريخ</th>
-                    <th className="px-3 py-2 font-medium">الحالة</th>
+                    <th className="px-3 py-2 font-medium">{t("evaluations.colEmployee")}</th>
+                    <th className="px-3 py-2 font-medium">{t("evaluations.colTemplate")}</th>
+                    <th className="px-3 py-2 font-medium">{t("evaluations.colEvaluator")}</th>
+                    <th className="px-3 py-2 font-medium">{t("evaluations.colScore")}</th>
+                    <th className="px-3 py-2 font-medium">{t("common.date")}</th>
+                    <th className="px-3 py-2 font-medium">{t("common.status")}</th>
                     <th className="px-3 py-2 font-medium"></th>
                   </tr>
                 </thead>
@@ -96,11 +98,11 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
                           </span>
                         ) : "—"}
                       </td>
-                      <td className="px-3 py-3 tabular-nums text-muted-foreground">{fmt(e.submittedAt)}</td>
+                      <td className="px-3 py-3 tabular-nums text-muted-foreground">{fmt(e.submittedAt, locale)}</td>
                       <td className="px-3 py-3"><EvaluationStatusBadge status={e.status} /></td>
                       <td className="px-3 py-3">
                         <Button asChild variant="ghost" size="sm">
-                          <Link href={`/dashboard/evaluations/${e.id}`}>عرض</Link>
+                          <Link href={`/dashboard/evaluations/${e.id}`}>{t("common.view")}</Link>
                         </Button>
                       </td>
                     </tr>
@@ -112,10 +114,10 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
 
           {meta && meta.totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">صفحة {meta.page} من {meta.totalPages}</span>
+              <span className="text-xs text-muted-foreground">{t("common.pageOf", { page: meta.page, total: meta.totalPages })}</span>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}>السابق</Button>
-                <Button variant="outline" size="sm" disabled={!meta.hasNext} onClick={() => setPage((p) => p + 1)}>التالي</Button>
+                <Button variant="outline" size="sm" disabled={!meta.hasPrev} onClick={() => setPage((p) => p - 1)}>{t("common.previous")}</Button>
+                <Button variant="outline" size="sm" disabled={!meta.hasNext} onClick={() => setPage((p) => p + 1)}>{t("common.next")}</Button>
               </div>
             </div>
           )}
