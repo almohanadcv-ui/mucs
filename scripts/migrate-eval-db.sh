@@ -130,7 +130,9 @@ sudo -u postgres psql -c "CREATE DATABASE \"$LOCAL_DB\" OWNER \"$LOCAL_USER\";" 
   || { restore_app; die "تعذّر إنشاء القاعدة المحلية."; }
 ok "أُنشئت القاعدة '$LOCAL_DB' والمستخدم '$LOCAL_USER'"
 
-TARGET_URL="postgresql://${LOCAL_USER}:${LOCAL_PASS}@${LOCAL_HOST}:${LOCAL_PORT}/${LOCAL_DB}?schema=public"
+# رابطان لأن `?schema=public` معامل خاص بـPrisma ترفضه libpq (psql/pg_dump).
+TARGET_URL="postgresql://${LOCAL_USER}:${LOCAL_PASS}@${LOCAL_HOST}:${LOCAL_PORT}/${LOCAL_DB}"
+TARGET_URL_PRISMA="${TARGET_URL}?schema=public"
 
 # ── 4) استعادة البيانات محليًا ─────────────────────────────────────────
 step "4/7  استعادة البيانات في القاعدة المحلية"
@@ -175,7 +177,7 @@ ok "نسخة احتياطية من .env → $ENV_BACKUP"
 
 # يُقرأ من النسخة الاحتياطية (سليمة) ويُكتب إلى .env — لا قراءة وكتابة لنفس
 # الملف في آنٍ واحد. awk لأن الرابط يحتوي / و ? و = فتكسر sed.
-awk -v url="$TARGET_URL" '
+awk -v url="$TARGET_URL_PRISMA" '
   BEGIN { seen_db = 0; seen_direct = 0 }
   /^DATABASE_URL=/ { print "DATABASE_URL=\"" url "\""; seen_db = 1; next }
   /^DIRECT_URL=/   { print "DIRECT_URL=\""   url "\""; seen_direct = 1; next }
