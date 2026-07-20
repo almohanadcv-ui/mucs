@@ -33,6 +33,7 @@ export const Permission = {
   EVALUATION_VIEW_TEAM: "evaluation:view_team",
   EVALUATION_VIEW_ALL: "evaluation:view_all",
   EVALUATION_REVIEW: "evaluation:review", // approve / reject
+  EVALUATION_DELETE: "evaluation:delete", // IT + الإدارة only
 
   // Reports
   REPORT_VIEW: "report:view",
@@ -43,13 +44,31 @@ export type Permission = (typeof Permission)[keyof typeof Permission];
 
 const ALL: Permission[] = Object.values(Permission);
 
+/**
+ * الإدارة — oversight, not day-to-day work. Sees every employee and every
+ * evaluation, may remove an evaluation, and creates evaluator/reviewer logins.
+ * Deliberately without approve/reject: reviewing stays with the reviewer, and
+ * without the admin surfaces (settings, backups, imports).
+ */
+const MANAGEMENT: Permission[] = [
+  Permission.EMPLOYEE_VIEW,
+  Permission.MANAGER_CREATE,
+  Permission.TEMPLATE_VIEW,
+  Permission.EVALUATION_VIEW_ALL,
+  Permission.EVALUATION_DELETE,
+  Permission.AUDIT_VIEW,
+  Permission.REPORT_VIEW,
+  Permission.REPORT_EXPORT,
+];
+
+/** المراجع — approves or rejects, and now sees the whole roster. */
 const SUPERVISOR: Permission[] = [
-  Permission.EMPLOYEE_VIEW_TEAM,
+  Permission.EMPLOYEE_VIEW,
   Permission.EMPLOYEE_MANAGE,
   Permission.MANAGER_CREATE,
   Permission.TEMPLATE_VIEW,
   Permission.TEMPLATE_MANAGE,
-  Permission.EVALUATION_VIEW_TEAM,
+  Permission.EVALUATION_VIEW_ALL,
   Permission.EVALUATION_REVIEW,
   Permission.REPORT_VIEW,
   Permission.REPORT_EXPORT,
@@ -64,10 +83,26 @@ const EVALUATOR: Permission[] = [
 ];
 
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
-  [Role.ADMIN]: ALL,
+  [Role.ADMIN]: ALL, // IT
+  [Role.MANAGEMENT]: MANAGEMENT,
   [Role.SUPERVISOR]: SUPERVISOR,
   [Role.EVALUATOR]: EVALUATOR,
 };
+
+/**
+ * Which roles a given role may create accounts for. A role can never create one
+ * at or above its own level — that is how privilege escalation happens.
+ */
+export const CREATABLE_ROLES: Record<Role, Role[]> = {
+  [Role.ADMIN]: [Role.MANAGEMENT, Role.SUPERVISOR, Role.EVALUATOR],
+  [Role.MANAGEMENT]: [Role.SUPERVISOR, Role.EVALUATOR],
+  [Role.SUPERVISOR]: [Role.EVALUATOR],
+  [Role.EVALUATOR]: [],
+};
+
+export function canCreateRole(actor: Role, target: Role): boolean {
+  return CREATABLE_ROLES[actor].includes(target);
+}
 
 export function permissionsFor(role: Role): ReadonlySet<Permission> {
   return new Set(ROLE_PERMISSIONS[role]);

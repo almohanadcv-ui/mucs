@@ -75,12 +75,13 @@ export function EmployeesClient({
   canManage,
   canImport,
   canCreateManager,
-  isAdmin,
+  creatableRoles = [],
 }: {
   canManage: boolean;
   canImport?: boolean;
   canCreateManager?: boolean;
-  isAdmin?: boolean;
+  /** Roles this user may mint, from CREATABLE_ROLES on the server. */
+  creatableRoles?: string[];
 }) {
   const t = useT();
   const [search, setSearch] = useState("");
@@ -150,7 +151,7 @@ export function EmployeesClient({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {canCreateManager && <CreateManagerDialog canCreateSupervisor={isAdmin} />}
+          {canCreateManager && <CreateManagerDialog creatableRoles={creatableRoles} />}
           {canImport && (
             <>
               <input

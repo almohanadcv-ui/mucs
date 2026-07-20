@@ -58,10 +58,13 @@ export function evaluatorOwns(
  */
 function scopeForRole(user: SessionUser): Prisma.EmployeeWhereInput {
   switch (user.role) {
+    // IT, الإدارة and المراجع all work across the whole roster: management
+    // oversees it, and a reviewer approves evaluations for employees who are
+    // not necessarily linked to them.
     case Role.ADMIN:
-      return {};
+    case Role.MANAGEMENT:
     case Role.SUPERVISOR:
-      return { supervisorId: user.id };
+      return {};
     case Role.EVALUATOR:
       return evaluatorScope(user);
     default:

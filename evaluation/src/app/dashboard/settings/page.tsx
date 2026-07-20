@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic";
 
 const ROLE_LABEL_KEYS: Record<string, string> = {
   ADMIN: "topbar.roleAdmin",
+  MANAGEMENT: "topbar.roleManagement",
   SUPERVISOR: "topbar.roleSupervisor",
   EVALUATOR: "topbar.roleEvaluator",
 };

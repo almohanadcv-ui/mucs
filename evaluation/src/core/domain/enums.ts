@@ -4,8 +4,13 @@
  */
 
 export const Role = {
+  /** IT — unrestricted. */
   ADMIN: "ADMIN",
+  /** الإدارة — oversees evaluations org-wide. */
+  MANAGEMENT: "MANAGEMENT",
+  /** المراجع — approves or rejects submitted evaluations. */
   SUPERVISOR: "SUPERVISOR",
+  /** المقيّم — fills evaluations for their own team. */
   EVALUATOR: "EVALUATOR",
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];

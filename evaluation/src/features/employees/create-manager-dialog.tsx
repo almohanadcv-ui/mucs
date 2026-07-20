@@ -35,7 +35,14 @@ interface Result {
  * (employees imported with a matching «المدير المباشر») is auto-linked, and the
  * one-time email + password are shown to hand over.
  */
-export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervisor?: boolean }) {
+/** Label key per role, so the picker stays in step with the server's rule. */
+const ROLE_LABEL_KEY: Record<string, string> = {
+  MANAGEMENT: "manager.roleManagement",
+  SUPERVISOR: "manager.roleSupervisor",
+  EVALUATOR: "manager.roleEvaluator",
+};
+
+export function CreateManagerDialog({ creatableRoles = [] }: { creatableRoles?: string[] }) {
   const t = useT();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -131,7 +138,9 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
               <Label>{t("manager.emailOptional")}</Label>
               <Input dir="ltr" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </div>
-            {canCreateSupervisor && (
+            {/* Only shown when there is an actual choice: a reviewer may mint
+                evaluators only, so a one-option picker would be noise. */}
+            {creatableRoles.length > 1 && (
               <div className="space-y-2">
                 <Label>{t("manager.role")}</Label>
                 <Select value={role} onValueChange={setRole}>
@@ -139,8 +148,11 @@ export function CreateManagerDialog({ canCreateSupervisor }: { canCreateSupervis
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="EVALUATOR">{t("manager.roleEvaluator")}</SelectItem>
-                    <SelectItem value="SUPERVISOR">{t("manager.roleSupervisor")}</SelectItem>
+                    {creatableRoles.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {t(ROLE_LABEL_KEY[r] ?? r)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

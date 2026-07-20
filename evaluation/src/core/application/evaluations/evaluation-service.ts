@@ -124,7 +124,9 @@ const LIST_INCLUDE = {
 
 function scopeForRole(user: SessionUser): Prisma.EvaluationWhereInput {
   switch (user.role) {
+    // الإدارة oversees every evaluation in the organisation, like IT.
     case Role.ADMIN:
+    case Role.MANAGEMENT:
       return {};
     case Role.SUPERVISOR:
       // A supervisor is a reviewer. Scoping them to employee.supervisorId alone
@@ -379,6 +381,44 @@ export async function updateEvaluation(
 
   publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return evaluation;
+}
+
+/**
+ * Remove an evaluation. Soft delete: the row is retained so an approved score
+ * that fed reports and an employee's history can be recovered — deleting one is
+ * a correction, not something that should erase the record.
+ *
+ * Restricted to IT and الإدارة via EVALUATION_DELETE at the route; the scope
+ * check here is the second gate.
+ */
+export async function deleteEvaluation(
+  user: SessionUser,
+  meta: RequestMeta,
+  id: string,
+) {
+  const existing = await prisma.evaluation.findFirst({
+    where: { id, tenantId: user.tenantId, deletedAt: null, ...scopeForRole(user) },
+    select: { id: true, status: true, employeeId: true, score: true },
+  });
+  if (!existing) throw AppError.notFound("التقييم غير موجود");
+
+  await prisma.evaluation.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
+
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    action: AuditAction.DELETE,
+    entity: "Evaluation",
+    entityId: id,
+    before: { status: existing.status, score: existing.score },
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
 }
 
 export async function reviewEvaluation(

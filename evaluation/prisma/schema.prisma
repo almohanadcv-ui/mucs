@@ -21,9 +21,10 @@ datasource db {
 // ───────────────────────────── Enums ────────────────────────────────────────
 
 enum Role {
-  ADMIN
-  SUPERVISOR
-  EVALUATOR
+  ADMIN // IT — full control
+  MANAGEMENT // الإدارة — oversees evaluations across the org
+  SUPERVISOR // المراجع — approves/rejects
+  EVALUATOR // المقيّم — fills evaluations
 }
 
 enum EmployeeStatus {

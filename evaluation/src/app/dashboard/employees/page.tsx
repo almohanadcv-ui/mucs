@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getT } from "@/i18n/server";
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/infrastructure/auth/session";
-import { can, Permission } from "@/core/domain/permissions";
+import { can, Permission, CREATABLE_ROLES } from "@/core/domain/permissions";
 import { EmployeesClient } from "@/features/employees/employees-client";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -21,7 +21,7 @@ export default async function EmployeesPage() {
       canManage={canManage}
       canImport={canImport}
       canCreateManager={canCreateManager}
-      isAdmin={user.role === "ADMIN"}
+      creatableRoles={CREATABLE_ROLES[user.role]}
     />
   );
 }

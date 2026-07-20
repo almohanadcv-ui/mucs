@@ -10,6 +10,7 @@ import { getT } from "@/i18n/server";
 
 const ROLE_LABEL_KEYS: Record<string, string> = {
   ADMIN: "topbar.roleAdmin",
+  MANAGEMENT: "topbar.roleManagement",
   SUPERVISOR: "topbar.roleSupervisor",
   EVALUATOR: "topbar.roleEvaluator",
 };

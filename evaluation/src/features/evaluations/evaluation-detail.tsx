@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Check, X, Star } from "lucide-react";
+import { Loader2, Check, X, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,7 +18,12 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { QuestionType } from "@/core/domain/enums";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
-import { useEvaluation, useReviewEvaluation, type EvaluationDetail } from "./use-evaluations";
+import {
+  useEvaluation,
+  useReviewEvaluation,
+  useDeleteEvaluation,
+  type EvaluationDetail,
+} from "./use-evaluations";
 import { useI18n } from "@/i18n/client";
 
 type TFn = (key: string, params?: Record<string, string | number>) => string;
@@ -68,14 +73,19 @@ function formatAnswer(
 export function EvaluationDetailView({
   id,
   canReview,
+  canDelete,
 }: {
   id: string;
   canReview: boolean;
+  /** IT / الإدارة may remove an evaluation entirely. */
+  canDelete?: boolean;
 }) {
   const router = useRouter();
   const { t, locale } = useI18n();
   const { data, isLoading } = useEvaluation(id);
   const review = useReviewEvaluation(id);
+  const del = useDeleteEvaluation();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
 
@@ -170,6 +180,48 @@ export function EvaluationDetailView({
           </Button>
         </div>
       )}
+
+      {/* Removal is an oversight action (IT / الإدارة), so it stands apart from
+          the reviewer's approve-reject pair and is available in any status. */}
+      {canDelete && (
+        <div className="flex justify-start border-t pt-4">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setConfirmDelete(true)}
+            disabled={del.isPending}
+          >
+            <Trash2 className="size-4" /> {t("evaluations.deleteBtn")}
+          </Button>
+        </div>
+      )}
+
+      <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>{t("evaluations.deleteTitle")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">{t("evaluations.deleteConfirm")}</p>
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              disabled={del.isPending}
+              onClick={async () => {
+                try {
+                  await del.mutateAsync(id);
+                  toast.success(t("evaluations.deleted"));
+                  router.push("/dashboard/evaluations");
+                  router.refresh();
+                } catch (e) {
+                  toast.error(e instanceof ApiError ? e.message : t("evaluations.deleteFailed"));
+                }
+              }}
+            >
+              {del.isPending && <Loader2 className="size-4 animate-spin" />}{" "}
+              {t("evaluations.confirmDelete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
         <DialogContent className="max-w-md">

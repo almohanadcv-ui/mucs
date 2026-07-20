@@ -19,6 +19,7 @@ export default async function EvaluationDetailPage({
   if (!user) redirect("/login");
   const { id } = await params;
   return (
-    <EvaluationDetailView id={id} canReview={can(user.role, Permission.EVALUATION_REVIEW)} />
+    <EvaluationDetailView id={id} canReview={can(user.role, Permission.EVALUATION_REVIEW)}
+      canDelete={can(user.role, Permission.EVALUATION_DELETE)} />
   );
 }

@@ -5,13 +5,14 @@ import { hashPassword } from "@/infrastructure/security/password";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { AppError } from "@/core/application/errors";
 import { AuditAction, Role } from "@/core/domain/enums";
+import { canCreateRole } from "@/core/domain/permissions";
 import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
 
 export const createManagerSchema = z.object({
   name: z.string().trim().min(2, "الاسم مطلوب").max(150),
   email: z.string().trim().toLowerCase().email("بريد غير صالح").optional().or(z.literal("")),
-  role: z.enum([Role.EVALUATOR, Role.SUPERVISOR]).default(Role.EVALUATOR),
+  role: z.enum([Role.EVALUATOR, Role.SUPERVISOR, Role.MANAGEMENT]).default(Role.EVALUATOR),
 });
 export type CreateManagerInput = z.infer<typeof createManagerSchema>;
 
@@ -23,15 +24,22 @@ function tempPassword(): string {
 /**
  * Create a login for a direct-manager / evaluator by name, then auto-link every
  * employee whose `directManager` matches that name to the new account — so the
- * manager immediately sees exactly their own team. A Supervisor can only mint
- * Evaluator accounts; an Admin may also mint Supervisors.
+ * manager immediately sees exactly their own team.
+ *
+ * Who may create whom is decided by CREATABLE_ROLES, not here: a reviewer mints
+ * evaluators, الإدارة also mints reviewers, IT mints anything. Requesting a role
+ * above your own is rejected rather than silently downgraded — a silent
+ * downgrade hands over an account with quietly different powers.
  */
 export async function createManagerFromName(
   user: SessionUser,
   meta: RequestMeta,
   input: CreateManagerInput,
 ) {
-  const role = user.role === Role.ADMIN ? input.role : Role.EVALUATOR;
+  const role = input.role;
+  if (!canCreateRole(user.role, role)) {
+    throw AppError.forbidden("لا تملك صلاحية إنشاء حساب بهذا الدور");
+  }
   const name = input.name.trim();
 
   // Resolve a unique email (provided or generated).
