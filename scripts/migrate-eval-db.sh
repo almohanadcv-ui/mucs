@@ -46,11 +46,36 @@ SERVER_VER=$(psql "$SOURCE_URL" -tAc "SHOW server_version;" 2>/dev/null | grep -
 [ -n "$SERVER_VER" ] || die "تعذّر الاتصال بـNeon. تحقق من الإنترنت وصحة DIRECT_URL."
 echo "   إصدار pg_dump المحلي: $CLIENT_VER | إصدار Neon: $SERVER_VER"
 if [ "$CLIENT_VER" -lt "$SERVER_VER" ]; then
-  die "أدوات Postgres المحلية أقدم من Neon. ثبّت الأحدث:
-     sudo apt install -y postgresql-client-$SERVER_VER
+  die "أدوات Postgres المحلية أقدم من Neon (لا يمكن لـpg_dump قراءة خادم أحدث منه).
+   ثبّت الأحدث من مستودع PostgreSQL الرسمي:
+
+     sudo apt install -y curl ca-certificates
+     sudo install -d /usr/share/postgresql-common/pgdg
+     sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \\
+       https://www.postgresql.org/media/keys/ACCC4CF8.asc
+     echo \"deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \\
+https://apt.postgresql.org/pub/repos/apt \$(lsb_release -cs)-pgdg main\" \\
+       | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+     sudo apt update && sudo apt install -y postgresql-client-$SERVER_VER
+
    ثم أعد تشغيل هذا السكربت."
 fi
-ok "إصدارات الأدوات متوافقة"
+ok "أدوات النسخ متوافقة (تقرأ من Neon $SERVER_VER)"
+
+# خادم Postgres المحلي هو وجهة الاستعادة — إن كان أقدم من المصدر فقد يرفض
+# بعض صياغات الإصدار الأحدث. مخططات Prisma بسيطة (جداول/فهارس/enums) فتنجح
+# عادة، والاستعادة محميّة بـON_ERROR_STOP على أي حال: أي خطأ يوقف كل شيء
+# قبل تبديل الإعداد.
+LOCAL_SERVER_VER=$(sudo -u postgres psql -tAc "SHOW server_version;" 2>/dev/null | grep -oE '^[0-9]+')
+if [ -n "$LOCAL_SERVER_VER" ]; then
+  echo "   خادم Postgres المحلي: $LOCAL_SERVER_VER"
+  if [ "$LOCAL_SERVER_VER" -lt "$SERVER_VER" ]; then
+    warn "المحلي ($LOCAL_SERVER_VER) أقدم من المصدر ($SERVER_VER) — عادةً لا مشكلة."
+    warn "لو فشلت الاستعادة سيتوقف السكربت ويُرجع كل شيء إلى Neon سليمًا."
+  fi
+else
+  warn "تعذّر قراءة إصدار Postgres المحلي — سأتابع، والاستعادة محميّة."
+fi
 
 # ── 1) إيقاف التطبيق (لضمان عدم كتابة بيانات أثناء النسخ) ──────────────
 step "1/7  إيقاف نظام التقييم مؤقتًا"
