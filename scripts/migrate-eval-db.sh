@@ -34,6 +34,25 @@ step "0/7  فحص المتطلبات"
 command -v pg_dump >/dev/null || die "pg_dump غير مثبت. ثبّته: apt install postgresql-client"
 command -v psql    >/dev/null || die "psql غير مثبت. ثبّته: apt install postgresql-client"
 
+# على دبيان/أوبنتو، /usr/bin/pg_dump غلاف يختار الإصدار حسب *الخادم* المثبّت،
+# فتثبيت عميل أحدث وحده لا يغيّره. نبحث مباشرة عن أحدث ثنائيات مثبّتة.
+PG_DUMP="pg_dump"; PSQL="psql"
+NEWEST=""
+for d in /usr/lib/postgresql/*/bin; do
+  [ -x "$d/pg_dump" ] || continue
+  v=$(basename "$(dirname "$d")")
+  case "$v" in ''|*[!0-9]*) continue ;; esac
+  if [ -z "$NEWEST" ] || [ "$v" -gt "$NEWEST" ]; then NEWEST="$v"; fi
+done
+if [ -n "$NEWEST" ]; then
+  WRAPPER_VER=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
+  if [ "$NEWEST" -gt "$WRAPPER_VER" ]; then
+    PG_DUMP="/usr/lib/postgresql/$NEWEST/bin/pg_dump"
+    PSQL="/usr/lib/postgresql/$NEWEST/bin/psql"
+    ok "أستخدم أدوات Postgres $NEWEST مباشرة (الغلاف الافتراضي $WRAPPER_VER)"
+  fi
+fi
+
 SOURCE_URL=$(grep -E '^DIRECT_URL=' "$APP_DIR/.env" | head -1 | sed -E 's/^DIRECT_URL=//; s/^"//; s/"$//')
 [ -n "$SOURCE_URL" ] || die "لم أجد DIRECT_URL في .env"
 case "$SOURCE_URL" in
@@ -41,8 +60,8 @@ case "$SOURCE_URL" in
 esac
 ok "المصدر: Neon (سيُقرأ فقط)"
 
-CLIENT_VER=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
-SERVER_VER=$(psql "$SOURCE_URL" -tAc "SHOW server_version;" 2>/dev/null | grep -oE '^[0-9]+')
+CLIENT_VER=$("$PG_DUMP" --version | grep -oE '[0-9]+' | head -1)
+SERVER_VER=$("$PSQL" "$SOURCE_URL" -tAc "SHOW server_version;" 2>/dev/null | grep -oE '^[0-9]+')
 [ -n "$SERVER_VER" ] || die "تعذّر الاتصال بـNeon. تحقق من الإنترنت وصحة DIRECT_URL."
 echo "   إصدار pg_dump المحلي: $CLIENT_VER | إصدار Neon: $SERVER_VER"
 if [ "$CLIENT_VER" -lt "$SERVER_VER" ]; then
@@ -88,7 +107,7 @@ trap 'echo; fail "توقف السكربت قبل الاكتمال"; restore_app;
 # ── 2) أخذ نسخة من Neon ────────────────────────────────────────────────
 step "2/7  نسخ البيانات من Neon"
 DUMP="$WORK_DIR/neon-$(date +%Y%m%d%H%M%S).sql"
-if ! pg_dump "$SOURCE_URL" --no-owner --no-privileges --format=plain --file="$DUMP" 2>"$WORK_DIR/dump.err"; then
+if ! "$PG_DUMP" "$SOURCE_URL" --no-owner --no-privileges --format=plain --file="$DUMP" 2>"$WORK_DIR/dump.err"; then
   fail "فشل النسخ من Neon:"; tail -5 "$WORK_DIR/dump.err"; restore_app; die "لم يتغيّر شيء."
 fi
 ok "تم النسخ ($(du -h "$DUMP" | cut -f1)) → $DUMP"
@@ -115,7 +134,7 @@ TARGET_URL="postgresql://${LOCAL_USER}:${LOCAL_PASS}@${LOCAL_HOST}:${LOCAL_PORT}
 
 # ── 4) استعادة البيانات محليًا ─────────────────────────────────────────
 step "4/7  استعادة البيانات في القاعدة المحلية"
-if ! psql "$TARGET_URL" -v ON_ERROR_STOP=1 -q -f "$DUMP" >"$WORK_DIR/restore.log" 2>&1; then
+if ! "$PSQL" "$TARGET_URL" -v ON_ERROR_STOP=1 -q -f "$DUMP" >"$WORK_DIR/restore.log" 2>&1; then
   fail "فشلت الاستعادة:"; tail -8 "$WORK_DIR/restore.log"; restore_app; die "لم يتغيّر الإعداد."
 fi
 ok "تمت الاستعادة"
@@ -124,16 +143,16 @@ ok "تمت الاستعادة"
 step "5/7  التحقق من تطابق البيانات"
 counts_sql="SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY relname;"
 # ANALYZE أولًا حتى تكون الإحصاءات دقيقة على الهدف
-psql "$TARGET_URL" -q -c "ANALYZE;" >/dev/null 2>&1
+"$PSQL" "$TARGET_URL" -q -c "ANALYZE;" >/dev/null 2>&1
 
-SRC_LIST=$(psql "$SOURCE_URL" -tAF'|' -c "$counts_sql" 2>/dev/null | sort)
-DST_LIST=$(psql "$TARGET_URL" -tAF'|' -c "$counts_sql" 2>/dev/null | sort)
+SRC_LIST=$("$PSQL" "$SOURCE_URL" -tAF'|' -c "$counts_sql" 2>/dev/null | sort)
+DST_LIST=$("$PSQL" "$TARGET_URL" -tAF'|' -c "$counts_sql" 2>/dev/null | sort)
 
 MISMATCH=0
 while IFS='|' read -r tbl src_n; do
   [ -n "$tbl" ] || continue
-  exact_src=$(psql "$SOURCE_URL" -tAc "SELECT count(*) FROM \"$tbl\";" 2>/dev/null)
-  exact_dst=$(psql "$TARGET_URL" -tAc "SELECT count(*) FROM \"$tbl\";" 2>/dev/null)
+  exact_src=$("$PSQL" "$SOURCE_URL" -tAc "SELECT count(*) FROM \"$tbl\";" 2>/dev/null)
+  exact_dst=$("$PSQL" "$TARGET_URL" -tAc "SELECT count(*) FROM \"$tbl\";" 2>/dev/null)
   if [ "$exact_src" != "$exact_dst" ]; then
     fail "  $tbl: المصدر=$exact_src ≠ الهدف=$exact_dst"
     MISMATCH=1
@@ -187,7 +206,7 @@ ok "تمت إعادة التشغيل"
 
 # ── قياس الفرق ─────────────────────────────────────────────────────────
 step "قياس السرعة بعد النقل"
-LAT=$( { time -p psql "$TARGET_URL" -tAc "SELECT 1;" >/dev/null 2>&1; } 2>&1 | awk '/real/{printf "%.0f", $2*1000}' )
+LAT=$( { time -p "$PSQL" "$TARGET_URL" -tAc "SELECT 1;" >/dev/null 2>&1; } 2>&1 | awk '/real/{printf "%.0f", $2*1000}' )
 echo "   زمن الاستعلام للقاعدة المحلية: ${LAT:-?} مللي  (كان ~880 مللي مع Neon)"
 
 echo ""
