@@ -115,6 +115,41 @@ function isNonCriterionRow(label: string): boolean {
   );
 }
 
+/**
+ * A grade band as written in HR appraisal forms: "90-100", "60-69",
+ * "Below 60", "أقل من 60".
+ */
+function asGradeBand(s: string): { label: string; score: number } | null {
+  const t = norm(s).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+  const range = t.match(/^(\d{1,3})\s*[-–]\s*(\d{1,3})$/);
+  if (range) {
+    const lo = Number(range[1]);
+    const hi = Number(range[2]);
+    if (hi <= 100 && lo < hi) {
+      // Midpoint of the band, normalized to 0..1 — the form states a range, so
+      // its middle is the honest single value to score it with.
+      return { label: s.trim(), score: Math.round(((lo + hi) / 2 / 100) * 100) / 100 };
+    }
+  }
+  const below = t.match(/^(?:below|اقل من|أقل من|تحت)\s*(\d{1,3})$/i);
+  if (below) {
+    const n = Number(below[1]);
+    if (n <= 100) return { label: s.trim(), score: Math.round((n / 2 / 100) * 100) / 100 };
+  }
+  return null;
+}
+
+/**
+ * Bilingual forms glue the two languages together ("المظهرAppearance").
+ * Insert a separator at the Arabic→Latin boundary so both read cleanly.
+ */
+function splitBilingual(s: string): string {
+  return s
+    .replace(/([؀-ۿ])\s*([A-Za-z])/g, "$1 — $2")
+    .replace(/\s+—\s+/g, " — ")
+    .trim();
+}
+
 /** A header cell that is just a number ("1".."10") — a numeric rating scale. */
 function isNumericScale(s: string): boolean {
   const n = norm(s).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
@@ -136,6 +171,7 @@ const cellsOf = (row: Element) =>
 function tableToQuestions(
   table: Element,
   startOrder: number,
+  allowLoose: boolean,
 ): { questions: DraftQuestion[]; note?: string } {
   const rows = findAll((e) => e.name === "tr", [table]);
   if (rows.length < 2) return { questions: [] };
@@ -188,7 +224,64 @@ function tableToQuestions(
     }
   }
 
+  // ── Case 2b: grade-band layout (one criterion spanning several rows) ─
+  // HR appraisal forms write the factor once, then list its bands on the
+  // following rows ("90-100", "80-89", … "Below 60") with a tick box each. The
+  // criterion is therefore not one row, and a row-per-question reading finds
+  // nothing — which is why such a form previously imported as zero questions.
+  {
+    const criteria: { label: string; bands: { label: string; score: number }[] }[] = [];
+    for (const row of rows) {
+      const cells = cellsOf(row);
+      if (cells.length === 0) continue;
+
+      const bandsInRow: { label: string; score: number }[] = [];
+      for (const c of cells) {
+        const b = asGradeBand(c);
+        if (b && !bandsInRow.some((x) => x.label === b.label)) bandsInRow.push(b);
+      }
+
+      // A cell of real prose (not a tick, not a band) opens a new criterion.
+      const head = cells.find(
+        (c) => c.length > 6 && c !== "o" && !asGradeBand(c) && !isCriterionHeader(c),
+      );
+      if (head && !isNonCriterionRow(head)) {
+        criteria.push({ label: splitBilingual(stripNumbering(head)), bands: [...bandsInRow] });
+      } else if (criteria.length > 0 && bandsInRow.length > 0) {
+        const current = criteria[criteria.length - 1];
+        for (const b of bandsInRow) {
+          if (!current.bands.some((x) => x.label === b.label)) current.bands.push(b);
+        }
+      }
+    }
+
+    const usable = criteria.filter((c) => c.bands.length >= 2);
+    if (usable.length >= 2) {
+      const questions = usable.map((c, i) =>
+        build(
+          c.label,
+          startOrder + i,
+          {
+            weight: 1,
+            options: c.bands.map((b, j) => ({
+              value: `opt${j + 1}`,
+              label: b.label,
+              score: b.score,
+            })),
+          },
+          QuestionType.SINGLE_CHOICE,
+        ),
+      );
+      return { questions };
+    }
+  }
+
   // ── Case 3: no recognisable scale — recover the criteria anyway ──────
+  // Only as a document-level last resort. Run per-table it turns headers,
+  // signature blocks and "reason for appraisal" checklists into questions,
+  // burying the real criteria in noise.
+  if (!allowLoose) return { questions: [] };
+
   // The criterion column is the one carrying the most text; numbering and
   // tick columns are short or empty, descriptions are not.
   const body = rows.slice(headerIdx >= 0 ? headerIdx + 1 : 1);
@@ -260,14 +353,27 @@ export async function docxToTemplateDraft(
   const title = (heading ? cellText(heading) : "").slice(0, 150) || fallbackTitle;
 
   const tables = findAll((e) => e.name === "table", dom.children as Element[]);
+
+  // Two passes. The first accepts only tables with a recognisable rating
+  // structure; the loose reading runs afterwards and only if that found
+  // nothing, so a form with real criteria never gets padded with its own
+  // header, signature and recommendation tables.
   let skippedTables = 0;
-  for (const table of tables) {
-    const { questions: parsed, note } = tableToQuestions(table, questions.length);
-    if (parsed.length > 0) {
-      questions.push(...parsed);
-      if (note) warningSet.add(note);
-    } else {
-      skippedTables += 1;
+  for (const pass of ["strict", "loose"] as const) {
+    if (pass === "loose" && questions.length > 0) break;
+    skippedTables = 0;
+    for (const table of tables) {
+      const { questions: parsed, note } = tableToQuestions(
+        table,
+        questions.length,
+        pass === "loose",
+      );
+      if (parsed.length > 0) {
+        questions.push(...parsed);
+        if (note) warningSet.add(note);
+      } else {
+        skippedTables += 1;
+      }
     }
   }
   if (skippedTables > 0) {
