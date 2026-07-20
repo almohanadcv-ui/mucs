@@ -43,7 +43,11 @@ else
     ok "الحد مضبوط مسبقًا في $(basename "$SITE") — القيمة: ${CURRENT}"
     warn "لو كانت أقل من ${UPLOAD_LIMIT} فارفعها يدويًا."
   else
-    BACKUP="${SITE}.bak.$(date +%Y%m%d%H%M%S)"
+    # المهم: النسخة الاحتياطية خارج sites-enabled/conf.d — لأن nginx يحمّل كل
+    # ملف في تلك المجلدات، فنسخة بجانب الأصل تعني كتلة server مكرّرة.
+    BACKUP_DIR="/var/backups/nginx-mica"
+    mkdir -p "$BACKUP_DIR"
+    BACKUP="${BACKUP_DIR}/$(basename "$SITE").$(date +%Y%m%d%H%M%S)"
     cp "$SITE" "$BACKUP"
     # أدرج الأسطر بعد أول سطر "server {"
     awk -v lim="$UPLOAD_LIMIT" '
