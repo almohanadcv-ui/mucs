@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isAxiosError } from "axios";
 import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
@@ -13,6 +12,11 @@ import {
   uploadAttachment,
   type AttachmentItem,
 } from "@/features/media/api";
+import {
+  UploadRejected,
+  checkFileBeforeUpload,
+  describeUploadError,
+} from "@/features/media/upload-errors";
 import { PHOTO_SLOT_GROUPS } from "./photo-slots";
 
 /** Per-slot photo/video gallery for a vehicle (upload, view full-size, delete). */
@@ -36,18 +40,25 @@ export function VehicleGallery({
 
   const upload = useMutation({
     mutationFn: async ({ files, slot }: { files: File[]; slot: string }) => {
-      for (const f of files) await uploadAttachment("VEHICLE", vehicleId, f, slot);
+      for (const f of files) {
+        // Refuse locally first so an oversized photo (phone cameras produce
+        // far bigger files than laptops) fails with a reason instead of a
+        // bounced request.
+        const reason = checkFileBeforeUpload(f);
+        if (reason) throw new UploadRejected(reason);
+        try {
+          await uploadAttachment("VEHICLE", vehicleId, f, slot);
+        } catch (e) {
+          throw new UploadRejected(describeUploadError(e, f));
+        }
+      }
     },
     onSuccess: () => {
       toast.success("تم رفع الملفات");
       invalidate();
     },
     onError: (e) =>
-      toast.error(
-        isAxiosError(e)
-          ? ((e.response?.data as { message?: string })?.message ?? "تعذّر الرفع")
-          : "تعذّر الرفع",
-      ),
+      toast.error(e instanceof UploadRejected ? e.message : describeUploadError(e)),
   });
   const del = useMutation({
     mutationFn: (id: string) => deleteAttachment(id),

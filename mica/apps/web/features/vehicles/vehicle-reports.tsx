@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { isAxiosError } from "axios";
 import { Download, FileText, Loader2, Trash2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +10,11 @@ import {
   listAttachments,
   uploadAttachment,
 } from "@/features/media/api";
+import {
+  UploadRejected,
+  checkFileBeforeUpload,
+  describeUploadError,
+} from "@/features/media/upload-errors";
 
 const REPORT_SLOT = "REPORT";
 
@@ -33,18 +37,22 @@ export function VehicleReports({
 
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
-      for (const f of files) await uploadAttachment("VEHICLE", vehicleId, f, REPORT_SLOT);
+      for (const f of files) {
+        const reason = checkFileBeforeUpload(f);
+        if (reason) throw new UploadRejected(reason);
+        try {
+          await uploadAttachment("VEHICLE", vehicleId, f, REPORT_SLOT);
+        } catch (e) {
+          throw new UploadRejected(describeUploadError(e, f));
+        }
+      }
     },
     onSuccess: () => {
       toast.success("تم رفع التقرير");
       invalidate();
     },
     onError: (e) =>
-      toast.error(
-        isAxiosError(e)
-          ? ((e.response?.data as { message?: string })?.message ?? "تعذّر الرفع")
-          : "تعذّر الرفع",
-      ),
+      toast.error(e instanceof UploadRejected ? e.message : describeUploadError(e)),
   });
   const del = useMutation({
     mutationFn: (id: string) => deleteAttachment(id),

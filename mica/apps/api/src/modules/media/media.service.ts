@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Inject, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
 import { inferAttachmentKind, type EntityTypeValue } from "@mica-mab/shared-types";
@@ -9,6 +9,8 @@ const THUMBNAIL_WIDTH = 320;
 
 @Injectable()
 export class MediaService {
+  private readonly logger = new Logger(MediaService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
@@ -26,7 +28,24 @@ export class MediaService {
     const baseKey = `${entityType.toLowerCase()}/${entityId}/${randomUUID()}`;
     const fileKey = extension ? `${baseKey}.${extension}` : baseKey;
 
-    await this.storage.save(file.buffer, { key: fileKey, mimeType: file.mimetype });
+    // Logged for every upload: when a device-specific problem is reported
+    // ("works on laptop, fails on iPad"), these are the facts that identify it —
+    // the type and size the device actually sent.
+    const sizeKb = Math.round(file.size / 1024);
+    this.logger.log(
+      `Upload received: name="${file.originalname}" type=${file.mimetype} size=${sizeKb}KB ` +
+        `entity=${entityType}/${entityId} by=${uploadedById}`,
+    );
+
+    try {
+      await this.storage.save(file.buffer, { key: fileKey, mimeType: file.mimetype });
+    } catch (error) {
+      this.logger.error(
+        `Upload FAILED to store: name="${file.originalname}" type=${file.mimetype} ` +
+          `size=${sizeKb}KB — ${(error as Error).message}`,
+      );
+      throw error;
+    }
 
     let thumbnailKey: string | undefined;
     if (kind === "IMAGE") {
@@ -37,8 +56,13 @@ export class MediaService {
           .toBuffer();
         thumbnailKey = `${baseKey}-thumb.jpg`;
         await this.storage.save(thumbnailBuffer, { key: thumbnailKey, mimeType: "image/jpeg" });
-      } catch {
-        // Corrupt/unsupported image data — keep the original upload, skip the thumbnail.
+      } catch (error) {
+        // The original is already stored, so a thumbnail failure must not fail
+        // the upload — but it is recorded, because it is the signal that a
+        // phone format (e.g. HEIC from an iPhone/iPad) needs converting.
+        this.logger.warn(
+          `Thumbnail skipped for "${file.originalname}" (${file.mimetype}): ${(error as Error).message}`,
+        );
         thumbnailKey = undefined;
       }
     }
