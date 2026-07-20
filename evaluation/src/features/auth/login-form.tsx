@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { useQueryClient } from "@tanstack/react-query";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Loader2, ShieldCheck } from "lucide-react";
@@ -22,6 +23,7 @@ export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const t = useT();
+  const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [needsTotp, setNeedsTotp] = useState(false);
 
@@ -41,6 +43,10 @@ export function LoginForm() {
     const json = await res.json().catch(() => null);
 
     if (res.ok) {
+      // Also cleared here, not only on logout: a session can end without the
+      // logout button (expiry, a second tab, back-button into the login page),
+      // and whoever signs in next must never inherit the previous user's cache.
+      queryClient.clear();
       const next = params.get("next") || "/dashboard";
       router.replace(next);
       router.refresh();
