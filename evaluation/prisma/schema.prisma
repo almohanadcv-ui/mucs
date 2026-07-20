@@ -395,6 +395,11 @@ model Answer {
   valueDate   DateTime?
   valueJson   Json? // for MULTIPLE_CHOICE selections, file metadata, etc.
 
+  /// Free-text note the evaluator writes beside the answer — the «ملاحظات»
+  /// column printed appraisal forms carry next to each criterion. It never
+  /// affects the score.
+  remarks String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

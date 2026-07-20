@@ -23,6 +23,8 @@ export interface TemplateQuestion {
     options?: { value: string; label: string; score?: number }[];
     accept?: string[];
     maxSizeMB?: number;
+    /** Show a free-text «ملاحظات» box beside this question. */
+    allowRemarks?: boolean;
   } | null;
 }
 

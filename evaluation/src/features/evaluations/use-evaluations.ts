@@ -34,6 +34,8 @@ export interface EvaluationDetail extends EvaluationRow {
     valueBool: boolean | null;
     valueDate: string | null;
     valueJson: unknown;
+    /** Free-text note the evaluator wrote beside this answer. */
+    remarks: string | null;
   }[];
 }
 

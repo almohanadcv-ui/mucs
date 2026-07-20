@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Loader2, Send, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -33,6 +34,7 @@ export function EvaluationFill() {
   const [templateId, setTemplateId] = useState("");
   const { data: template, isLoading: loadingTemplate } = useTemplate(templateId || undefined);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
   const create = useCreateEvaluation();
 
   const employeeId = employee?.id ?? "";
@@ -41,13 +43,26 @@ export function EvaluationFill() {
     if (!employeeId) return toast.error(t("evaluations.chooseEmployee"));
     if (!templateId) return toast.error(t("evaluations.chooseTemplate"));
 
+    // A question is sent when it has an answer OR a note — a remark written
+    // without picking a grade is still worth keeping.
+    const ids = new Set([
+      ...Object.entries(answers)
+        .filter(([, v]) => v !== undefined && v !== null && v !== "")
+        .map(([id]) => id),
+      ...Object.entries(remarks)
+        .filter(([, v]) => v.trim().length > 0)
+        .map(([id]) => id),
+    ]);
+
     const payload = {
       templateId,
       employeeId,
       submit,
-      answers: Object.entries(answers)
-        .filter(([, v]) => v !== undefined && v !== null && v !== "")
-        .map(([questionId, value]) => ({ questionId, value })),
+      answers: [...ids].map((questionId) => ({
+        questionId,
+        value: answers[questionId],
+        remarks: remarks[questionId]?.trim() || null,
+      })),
     };
     try {
       await create.mutateAsync(payload);
@@ -107,12 +122,36 @@ export function EvaluationFill() {
                     {q.helpText && (
                       <p className="mb-2 text-xs text-muted-foreground">{q.helpText}</p>
                     )}
-                    <div className="mt-2">
+                    {/* Answer and its note sit side by side on wide screens,
+                        mirroring the «ملاحظات» column of the paper form, and
+                        stack on mobile. */}
+                    <div
+                      className={
+                        q.config?.allowRemarks
+                          ? "mt-2 grid gap-3 md:grid-cols-[1fr_16rem]"
+                          : "mt-2"
+                      }
+                    >
                       <QuestionField
                         question={q}
                         value={answers[q.id!]}
                         onChange={(v) => setAnswers((a) => ({ ...a, [q.id!]: v }))}
                       />
+                      {q.config?.allowRemarks && (
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">
+                            {t("evaluations.remarks")}
+                          </Label>
+                          <Textarea
+                            rows={4}
+                            value={remarks[q.id!] ?? ""}
+                            onChange={(e) =>
+                              setRemarks((r) => ({ ...r, [q.id!]: e.target.value }))
+                            }
+                            placeholder={t("evaluations.remarksPlaceholder")}
+                          />
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

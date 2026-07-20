@@ -10,6 +10,8 @@ export interface QuestionConfig {
   options?: { value: string; label: string; score?: number }[];
   accept?: string[];
   maxSizeMB?: number;
+  /** Show a free-text «ملاحظات» box beside this question. Never scored. */
+  allowRemarks?: boolean;
 }
 
 export interface QuestionLike {

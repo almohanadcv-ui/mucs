@@ -31,6 +31,7 @@ import type {
 interface AnswerInput {
   questionId: string;
   value: unknown;
+  remarks?: string | null;
 }
 
 function toQuestionLike(q: {
@@ -59,8 +60,9 @@ function buildAnswers(
 ) {
   const byId = new Map(questions.map((q) => [q.id, q]));
   const provided = new Map(answers.map((a) => [a.questionId, a.value]));
+  const notes = new Map(answers.map((a) => [a.questionId, a.remarks ?? null]));
 
-  const rows: { questionId: string; normalized: NormalizedAnswer }[] = [];
+  const rows: { questionId: string; normalized: NormalizedAnswer; remarks?: string | null }[] = [];
   const scoreEntries: { question: QuestionLike; answer: NormalizedAnswer }[] = [];
 
   for (const q of questions) {
@@ -75,8 +77,8 @@ function buildAnswers(
         normalized.valueBool == null &&
         normalized.valueDate == null &&
         normalized.valueJson == null;
-      if (empty && !q.required) continue;
-      rows.push({ questionId: q.id, normalized });
+      if (empty && !q.required && !notes.get(q.id)) continue;
+      rows.push({ questionId: q.id, normalized, remarks: notes.get(q.id) ?? null });
       scoreEntries.push({ question: q, answer: normalized });
     } catch (e) {
       if (e instanceof AnswerValidationError) {
@@ -99,9 +101,12 @@ function buildAnswers(
   return { rows, score };
 }
 
-function answerCreateData(rows: { questionId: string; normalized: NormalizedAnswer }[]) {
+function answerCreateData(
+  rows: { questionId: string; normalized: NormalizedAnswer; remarks?: string | null }[],
+) {
   return rows.map((r) => ({
     questionId: r.questionId,
+    remarks: r.remarks?.trim() || null,
     valueNumber: r.normalized.valueNumber,
     valueText: r.normalized.valueText,
     valueBool: r.normalized.valueBool,

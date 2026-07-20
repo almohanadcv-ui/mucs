@@ -246,6 +246,8 @@ export const ar = {
     templateLabel: "نموذج التقييم",
     submitForApproval: "إرسال للاعتماد",
     saveDraft: "حفظ كمسودة",
+    remarks: "ملاحظات",
+    remarksPlaceholder: "ملاحظات على هذا البند (اختياري)",
     choosePlaceholder: "اختر...",
   },
   approvals: {
@@ -312,6 +314,7 @@ export const ar = {
     questionN: "السؤال {n}",
     questionText: "نص السؤال",
     typeLabel: "النوع",
+    allowRemarks: "حقل ملاحظات",
     requiredLabel: "مطلوب",
     weightLabel: "الوزن",
     option1: "خيار 1",

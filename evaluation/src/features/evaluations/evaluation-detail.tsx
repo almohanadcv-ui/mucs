@@ -139,9 +139,21 @@ export function EvaluationDetailView({
         <CardHeader><CardTitle>{t("evaluations.answers")}</CardTitle></CardHeader>
         <CardContent className="divide-y">
           {data.template.questions.map((q, i) => (
-            <div key={q.id ?? i} className="flex items-start justify-between gap-4 py-3">
-              <span className="text-sm text-muted-foreground">{i + 1}. {q.label}</span>
-              <span className="text-sm font-medium">{formatAnswer(q, answersByQ.get(q.id!), t, locale)}</span>
+            <div key={q.id ?? i} className="py-3">
+              <div className="flex items-start justify-between gap-4">
+                <span className="text-sm text-muted-foreground">{i + 1}. {q.label}</span>
+                <span className="text-sm font-medium">
+                  {formatAnswer(q, answersByQ.get(q.id!), t, locale)}
+                </span>
+              </div>
+              {/* The evaluator's note travels with the answer so the reviewer
+                  reads the reasoning, not just the grade. */}
+              {answersByQ.get(q.id!)?.remarks && (
+                <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-medium">{t("evaluations.remarks")}: </span>
+                  {answersByQ.get(q.id!)!.remarks}
+                </p>
+              )}
             </div>
           ))}
         </CardContent>

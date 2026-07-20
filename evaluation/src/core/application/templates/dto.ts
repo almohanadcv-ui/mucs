@@ -36,6 +36,7 @@ export const questionConfigSchema = z
     maxLength: z.number().int().min(1).max(10_000).optional(), // TEXT/TEXTAREA
     options: z.array(optionSchema).max(50).optional(), // choice types
     accept: z.array(z.string().max(40)).max(20).optional(), // FILE_UPLOAD
+    allowRemarks: z.boolean().optional(), // free-text note beside the answer
     maxSizeMB: z.number().min(1).max(50).optional(), // FILE_UPLOAD
   })
   .strict();

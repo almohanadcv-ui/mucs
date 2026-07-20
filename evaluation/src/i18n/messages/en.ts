@@ -244,6 +244,8 @@ export const en: Messages = {
     templateLabel: "Evaluation template",
     submitForApproval: "Submit for approval",
     saveDraft: "Save as draft",
+    remarks: "Remarks",
+    remarksPlaceholder: "Notes on this item (optional)",
     choosePlaceholder: "Select...",
   },
   approvals: {
@@ -310,6 +312,7 @@ export const en: Messages = {
     questionN: "Question {n}",
     questionText: "Question text",
     typeLabel: "Type",
+    allowRemarks: "Remarks field",
     requiredLabel: "Required",
     weightLabel: "Weight",
     option1: "Option 1",

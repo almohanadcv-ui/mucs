@@ -234,6 +234,13 @@ function tableToQuestions(
   // criterion is therefore not one row, and a row-per-question reading finds
   // nothing — which is why such a form previously imported as zero questions.
   {
+    // Printed forms put a «ملاحظات / Remarks» column beside the criteria. When
+    // it is there, each question gets a free-text box so the imported template
+    // matches the paper form.
+    const hasRemarksColumn = rows
+      .slice(0, 3)
+      .some((r) => cellsOf(r).some((c) => /^(ملاحظات|remarks|notes)\b/i.test(norm(c))));
+
     const criteria: { label: string; bands: { label: string; score: number }[] }[] = [];
     for (const row of rows) {
       const cells = cellsOf(row);
@@ -272,6 +279,7 @@ function tableToQuestions(
               label: b.label,
               score: b.score,
             })),
+            ...(hasRemarksColumn ? { allowRemarks: true } : {}),
           },
           QuestionType.SINGLE_CHOICE,
         ),

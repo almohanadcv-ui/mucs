@@ -6,6 +6,8 @@ export const answerInputSchema = z.object({
   questionId: z.string().uuid(),
   // Value shape depends on the question type; validated in the domain layer.
   value: z.unknown(),
+  // Free-text note beside the answer; never scored.
+  remarks: z.string().trim().max(2000).optional().nullable(),
 });
 
 export const createEvaluationSchema = z.object({

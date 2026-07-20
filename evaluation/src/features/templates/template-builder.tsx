@@ -331,6 +331,16 @@ function QuestionCard({
                 />
                 <Label htmlFor={`req-${question._key}`} className="text-xs">{t("templates.requiredLabel")}</Label>
               </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={question.config?.allowRemarks ?? false}
+                  onCheckedChange={(v) => onConfig({ allowRemarks: v })}
+                  id={`rem-${question._key}`}
+                />
+                <Label htmlFor={`rem-${question._key}`} className="text-xs">
+                  {t("templates.allowRemarks")}
+                </Label>
+              </div>
               {meta.scoreable && (
                 <div className="flex items-center gap-2">
                   <Label className="text-xs">{t("templates.weightLabel")}</Label>
