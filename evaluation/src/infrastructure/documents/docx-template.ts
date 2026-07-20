@@ -108,52 +108,123 @@ function toOptions(labels: string[]): DraftQuestion["config"]["options"] {
 }
 
 /** Parse one table into questions, or return null if it isn't a rating table. */
-function tableToQuestions(table: Element, startOrder: number): DraftQuestion[] | null {
+/** Rows that close a form rather than ask something. */
+function isNonCriterionRow(label: string): boolean {
+  return /^(المجموع|الاجمالي|النتيجه|التوقيع|الملاحظات|ملاحظات|التاريخ|الاسم|اسم الموظف)/.test(
+    norm(label),
+  );
+}
+
+/** A header cell that is just a number ("1".."10") — a numeric rating scale. */
+function isNumericScale(s: string): boolean {
+  const n = norm(s).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+  return /^\d{1,2}$/.test(n) && Number(n) >= 0 && Number(n) <= 10;
+}
+
+const cellsOf = (row: Element) =>
+  findAll((e) => e.name === "td" || e.name === "th", [row]).map(cellText);
+
+/**
+ * Turn one table into questions.
+ *
+ * Word files vary far more than any fixed rule can predict, so this degrades
+ * instead of refusing: a recognised rating scale gives real options, a numeric
+ * scale gives numbered options, and anything else still yields the criteria as
+ * star-rating questions for the reviewer to adjust. Returning nothing is the
+ * last resort, not the default — an ignored table is a dead end for the user.
+ */
+function tableToQuestions(
+  table: Element,
+  startOrder: number,
+): { questions: DraftQuestion[]; note?: string } {
   const rows = findAll((e) => e.name === "tr", [table]);
-  if (rows.length < 2) return null;
+  if (rows.length < 2) return { questions: [] };
 
-  const headerCells = findAll(
-    (e) => e.name === "td" || e.name === "th",
-    [rows[0]],
-  ).map(cellText);
-  if (headerCells.length < 2) return null;
-
-  // The rating columns are the header cells that read as rating words. The
-  // remaining leading cells describe the criterion (e.g. «م» | «المعيار»).
-  const ratingStart = headerCells.findIndex((c) => isRatingWord(c));
-  if (ratingStart < 1) return null;
-
-  const ratingLabels = headerCells
-    .slice(ratingStart)
-    .filter((c) => c.length > 0 && !isCriterionHeader(c));
-  if (ratingLabels.length < 2) return null;
-
-  const options = toOptions(ratingLabels);
-  const questions: DraftQuestion[] = [];
-
-  for (const row of rows.slice(1)) {
-    const cells = findAll((e) => e.name === "td" || e.name === "th", [row]).map(cellText);
-    if (cells.length === 0) continue;
-
-    // The criterion is the last non-empty cell before the rating columns —
-    // skips a leading serial-number column without assuming one exists.
-    const label = stripNumbering(
-      cells.slice(0, ratingStart).reverse().find((c) => c.length > 1) ?? "",
-    );
-    if (!label || isCriterionHeader(label)) continue;
-    // A trailing total/signature row is not a criterion.
-    if (/^(المجموع|الاجمالي|التوقيع|الملاحظات|ملاحظات)/.test(norm(label))) continue;
-
-    questions.push({
-      type: QuestionType.SINGLE_CHOICE,
-      label,
-      required: true,
-      order: startOrder + questions.length,
-      config: { options, weight: 1 },
-    });
+  // The header is not always the first row (title/merged rows come first), so
+  // look through the opening rows for one that reads like a scale.
+  let headerIdx = -1;
+  let ratingStart = -1;
+  const scan = Math.min(3, rows.length - 1);
+  for (let i = 0; i < scan; i++) {
+    const cells = cellsOf(rows[i]);
+    if (cells.length < 2) continue;
+    const idx = cells.findIndex((c) => isRatingWord(c) || isNumericScale(c));
+    if (idx >= 1) {
+      headerIdx = i;
+      ratingStart = idx;
+      break;
+    }
   }
 
-  return questions.length > 0 ? questions : null;
+  const build = (
+    label: string,
+    order: number,
+    config: DraftQuestion["config"],
+    type: QuestionType,
+  ): DraftQuestion => ({ type, label, required: true, order, config });
+
+  // ── Case 1 & 2: a real scale in the header ───────────────────────────
+  if (headerIdx >= 0) {
+    const headerCells = cellsOf(rows[headerIdx]);
+    const labels = headerCells
+      .slice(ratingStart)
+      .filter((c) => c.length > 0 && !isCriterionHeader(c));
+
+    if (labels.length >= 2) {
+      const options = toOptions(labels);
+      const questions: DraftQuestion[] = [];
+      for (const row of rows.slice(headerIdx + 1)) {
+        const cells = cellsOf(row);
+        if (cells.length === 0) continue;
+        const label = stripNumbering(
+          cells.slice(0, ratingStart).reverse().find((c) => c.length > 1) ?? "",
+        );
+        if (!label || isCriterionHeader(label) || isNonCriterionRow(label)) continue;
+        questions.push(
+          build(label, startOrder + questions.length, { options, weight: 1 }, QuestionType.SINGLE_CHOICE),
+        );
+      }
+      if (questions.length > 0) return { questions };
+    }
+  }
+
+  // ── Case 3: no recognisable scale — recover the criteria anyway ──────
+  // The criterion column is the one carrying the most text; numbering and
+  // tick columns are short or empty, descriptions are not.
+  const body = rows.slice(headerIdx >= 0 ? headerIdx + 1 : 1);
+  const width = Math.max(...rows.map((r) => cellsOf(r).length));
+  if (width === 0) return { questions: [] };
+
+  let bestCol = -1;
+  let bestScore = 0;
+  for (let c = 0; c < width; c++) {
+    let score = 0;
+    for (const row of body) {
+      const cells = cellsOf(row);
+      const text = stripNumbering(cells[c] ?? "");
+      if (text.length > 3 && !/^\d+$/.test(text)) score += text.length;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestCol = c;
+    }
+  }
+  if (bestCol < 0) return { questions: [] };
+
+  const questions: DraftQuestion[] = [];
+  for (const row of body) {
+    const label = stripNumbering(cellsOf(row)[bestCol] ?? "");
+    if (label.length < 3 || isCriterionHeader(label) || isNonCriterionRow(label)) continue;
+    questions.push(
+      build(label, startOrder + questions.length, { max: 5, weight: 1 }, QuestionType.STAR_RATING),
+    );
+  }
+
+  if (questions.length === 0) return { questions: [] };
+  return {
+    questions,
+    note: "لم أتعرّف على مقياس التقدير في أحد الجداول، فحوّلت بنوده إلى تقييم بالنجوم (١-٥). عدّل النوع أو الخيارات إن أردت.",
+  };
 }
 
 /**
@@ -179,7 +250,9 @@ export async function docxToTemplateDraft(
   }
 
   const dom = parseDocument(html);
-  const warnings: string[] = [];
+  // A Set: a document with 30 tables used to emit the same sentence 30 times,
+  // burying the result under identical warnings.
+  const warningSet = new Set<string>();
   const questions: DraftQuestion[] = [];
 
   // Title: the document's first heading, else the file name.
@@ -187,10 +260,24 @@ export async function docxToTemplateDraft(
   const title = (heading ? cellText(heading) : "").slice(0, 150) || fallbackTitle;
 
   const tables = findAll((e) => e.name === "table", dom.children as Element[]);
+  let skippedTables = 0;
   for (const table of tables) {
-    const parsed = tableToQuestions(table, questions.length);
-    if (parsed) questions.push(...parsed);
-    else warnings.push("تم تجاهل جدول لم يُفهم كمعايير تقييم بخيارات.");
+    const { questions: parsed, note } = tableToQuestions(table, questions.length);
+    if (parsed.length > 0) {
+      questions.push(...parsed);
+      if (note) warningSet.add(note);
+    } else {
+      skippedTables += 1;
+    }
+  }
+  if (skippedTables > 0) {
+    // Counted once, not repeated per table — and only worth mentioning at all
+    // if something else was understood; otherwise the error below says more.
+    warningSet.add(
+      skippedTables === 1
+        ? "تم تجاهل جدول واحد لم يحتوِ على بنود قابلة للتحويل (غالباً جدول بيانات أو توقيع)."
+        : `تم تجاهل ${skippedTables} جداول لم تحتوِ على بنود قابلة للتحويل (غالباً جداول بيانات أو توقيع).`,
+    );
   }
 
   // No rating table: fall back to treating list items as criteria. Star rating
@@ -223,7 +310,7 @@ export async function docxToTemplateDraft(
       });
     }
     if (questions.length > 0) {
-      warnings.push(
+      warningSet.add(
         "لم يُعثر على جدول بخيارات، فحُوِّلت البنود إلى تقييم بالنجوم (١-٥). عدّل النوع إن أردت.",
       );
     }
@@ -235,5 +322,5 @@ export async function docxToTemplateDraft(
     );
   }
 
-  return { title, questions, warnings };
+  return { title, questions, warnings: [...warningSet] };
 }
