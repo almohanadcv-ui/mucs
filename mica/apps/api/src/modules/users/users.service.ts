@@ -175,8 +175,18 @@ export class UsersService {
   }
 
   async create(dto: CreateUserInput, actingUserId: string) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) throw new ConflictException("A user with this email already exists");
+    // Deletion is a soft delete, but `email` is uniquely indexed, so a removed
+    // account keeps holding its address. Re-inviting that address therefore
+    // revives the old record instead of failing — only a LIVE account is a
+    // genuine conflict.
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+      select: { id: true, deletedAt: true },
+    });
+    if (existing && !existing.deletedAt) {
+      throw new ConflictException("A user with this email already exists");
+    }
+    const reviveId = existing?.id ?? null;
 
     const temporaryPassword = randomBytes(9).toString("base64url");
     const passwordHash = await argon2.hash(temporaryPassword);
@@ -187,21 +197,56 @@ export class UsersService {
     const privileged = await this.isPrivilegedManager(actingUserId);
     const roleIds = privileged ? dto.roleIds : driverRoleId ? [driverRoleId] : [];
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        phone: dto.phone,
-        branchId: dto.branchId,
-        departmentId: dto.departmentId,
-        passwordHash,
-        status: "INVITED",
-        createdById: actingUserId,
-        roles: { create: roleIds.map((roleId) => ({ roleId })) },
-      },
-      include: { roles: { include: { role: true } }, branch: true, department: true },
-    });
+    const profile = {
+      email: dto.email,
+      firstName: dto.firstName,
+      lastName: dto.lastName,
+      phone: dto.phone,
+      branchId: dto.branchId,
+      departmentId: dto.departmentId,
+      passwordHash,
+      status: "INVITED" as const,
+    };
+    const include = {
+      roles: { include: { role: true } },
+      branch: true,
+      department: true,
+    };
+
+    const user = reviveId
+      ? await this.prisma.user.update({
+          where: { id: reviveId },
+          data: {
+            ...profile,
+            deletedAt: null,
+            updatedById: actingUserId,
+            // Nothing from the account's previous life may carry over: old
+            // lockout state, 2FA secret and roles all reset with the new invite.
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+            isTwoFactorEnabled: false,
+            twoFactorSecret: null,
+            lastLoginAt: null,
+            roles: { deleteMany: {}, create: roleIds.map((roleId) => ({ roleId })) },
+          },
+          include,
+        })
+      : await this.prisma.user.create({
+          data: {
+            ...profile,
+            createdById: actingUserId,
+            roles: { create: roleIds.map((roleId) => ({ roleId })) },
+          },
+          include,
+        });
+
+    // Nothing from before the deletion may survive the revival: old sessions are
+    // dropped (the new owner sets a fresh password) and the cached permissions
+    // are invalidated, since the roles were just replaced.
+    if (reviveId) {
+      await this.prisma.session.deleteMany({ where: { userId: reviveId } });
+      await this.permissionCache.invalidateUser(reviveId);
+    }
 
     // Assigning the Driver role auto-provisions the matching Driver profile.
     if (driverRoleId && roleIds.includes(driverRoleId)) {
