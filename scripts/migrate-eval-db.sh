@@ -136,7 +136,25 @@ TARGET_URL_PRISMA="${TARGET_URL}?schema=public"
 
 # ── 4) استعادة البيانات محليًا ─────────────────────────────────────────
 step "4/7  استعادة البيانات في القاعدة المحلية"
-if ! "$PSQL" "$TARGET_URL" -v ON_ERROR_STOP=1 -q -f "$DUMP" >"$WORK_DIR/restore.log" 2>&1; then
+
+# pg_dump يكتب في الترويسة إعدادات جلسة تخصّ إصداره (مثل transaction_timeout
+# في 17+). خادم أقدم يرفضها ويتوقف. نحيّد فقط ما لا يعرفه الخادم الهدف —
+# سؤالًا مباشرًا لا تخمينًا — فتبقى بقية الملف كما هي.
+CLEAN_DUMP="${DUMP%.sql}.clean.sql"
+cp "$DUMP" "$CLEAN_DUMP"
+UNKNOWN=""
+for param in $(grep -oE '^SET [a-z_]+ =' "$DUMP" | awk '{print $2}' | sort -u); do
+  if [ -z "$("$PSQL" "$TARGET_URL" -tAc "SELECT 1 FROM pg_settings WHERE name='$param'" 2>/dev/null)" ]; then
+    sed -i "s/^SET ${param} = /-- (تجاهُل: غير مدعوم في Postgres ${LOCAL_SERVER_VER}) SET ${param} = /" "$CLEAN_DUMP"
+    UNKNOWN="${UNKNOWN} ${param}"
+  fi
+done
+if [ -n "$UNKNOWN" ]; then
+  warn "حُيّدت إعدادات جلسة لا يعرفها خادمك:${UNKNOWN}"
+  warn "(إعدادات مهلة فقط — لا تمسّ البيانات ولا المخطط)"
+fi
+
+if ! "$PSQL" "$TARGET_URL" -v ON_ERROR_STOP=1 -q -f "$CLEAN_DUMP" >"$WORK_DIR/restore.log" 2>&1; then
   fail "فشلت الاستعادة:"; tail -8 "$WORK_DIR/restore.log"; restore_app; die "لم يتغيّر الإعداد."
 fi
 ok "تمت الاستعادة"
