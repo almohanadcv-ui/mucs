@@ -99,6 +99,39 @@ if [ -d "$REPO_DIR/evaluation" ]; then
 
   if pnpm build; then
     ok "بناء نظام التقييم نجح"
+    # لا بد من الترحيل هنا كما في ميكا: بدونه تُنشر ميزة تعتمد على عمود غير
+    # موجود، فتبدو وكأنها "لم تتغيّر" بلا أي رسالة خطأ.
+    if pnpm prisma migrate deploy; then
+      ok "ترحيل قاعدة نظام التقييم تم"
+
+      # Templates imported before the remarks feature carry no allowRemarks in
+      # their question config, so the box would not appear even after deploying.
+      # Backfill it for imported appraisal forms — the source documents have a
+      # «ملاحظات» column, which is why they were imported in the first place.
+      EVAL_DB=$(grep -oP '^DATABASE_URL="\K[^"]+' .env 2>/dev/null | sed 's/?schema=public//')
+      if [ -n "$EVAL_DB" ]; then
+        # Narrowed to questions whose options are grade bands ("90-100", "60-69"):
+        # that is the signature of an imported appraisal form, whose source
+        # document has a «ملاحظات» column. Hand-built templates keep whatever
+        # their author chose.
+        UPDATED=$(psql "$EVAL_DB" -tAc "
+          UPDATE questions SET config = COALESCE(config,'{}'::jsonb) || '{\"allowRemarks\":true}'::jsonb
+          WHERE COALESCE(config->>'allowRemarks','false') <> 'true'
+            AND EXISTS (
+              SELECT 1 FROM jsonb_array_elements(config->'options') o
+              WHERE o->>'label' ~ '^[0-9]{2,3}[-–][0-9]{2,3}$'
+            )
+            AND \"templateId\" IN (
+              SELECT id FROM evaluation_templates WHERE \"deletedAt\" IS NULL
+            )
+          RETURNING 1;" 2>/dev/null | grep -c 1)
+        [ "${UPDATED:-0}" -gt 0 ] && ok "فُعّل حقل الملاحظات لـ${UPDATED} سؤالاً في النماذج الحالية" \
+          || echo "   (لا أسئلة تحتاج تفعيل حقل الملاحظات)"
+      fi
+    else
+      fail "فشل ترحيل قاعدة نظام التقييم."
+      FAILED=1
+    fi
   else
     fail "فشل بناء نظام التقييم."
     FAILED=1
