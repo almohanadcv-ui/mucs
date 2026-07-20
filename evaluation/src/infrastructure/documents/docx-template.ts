@@ -145,8 +145,12 @@ function asGradeBand(s: string): { label: string; score: number } | null {
  */
 function splitBilingual(s: string): string {
   return s
+    // Editing leftovers: comment handles and tracked-change markers that Word
+    // renders inline and would otherwise become part of the question text.
+    .replace(/@[A-Za-z0-9._-]+/g, "")
     .replace(/([؀-ۿ])\s*([A-Za-z])/g, "$1 — $2")
     .replace(/\s+—\s+/g, " — ")
+    .replace(/\s{2,}/g, " ")
     .trim();
 }
 
