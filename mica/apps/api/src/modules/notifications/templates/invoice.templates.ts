@@ -1,6 +1,8 @@
 import { renderEmail, renderText, subject, type EmailContent } from "./layout";
 
 export interface RenderedEmail {
+  /** Set by the caller when a document should ride along. */
+  attachInvoiceId?: string;
   subject: string;
   html: string;
   text: string;
@@ -99,6 +101,10 @@ export function invoiceSubmittedEmail(data: InvoiceEmailData): RenderedEmail {
             { label: "عرض التفاصيل", url: decisionUrl },
           ]
         : [{ label: "مراجعة الفاتورة", url: decisionUrl, kind: "primary" }],
+      callout: {
+        label: "الفاتورة مرفقة",
+        body: "ملف الفاتورة مرفق بهذه الرسالة — افتحه من هنا مباشرة بلا حاجة لفتح النظام.",
+      },
       footnote:
         "الضغط يفتح صفحة تأكيد داخل النظام — لا يُعتمد ولا يُرفض شيء بمجرد فتح الرابط. الرابط صالح سبعة أيام ولمرة واحدة.",
     },

@@ -14,6 +14,8 @@ export interface SendMailOptions {
   html: string;
   /** Plain-text alternative. Mail that ships HTML only scores worse with spam filters. */
   text?: string;
+  /** Files to send with the message, beyond the inline logo. */
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 }
 
 export interface SendMailResult {
@@ -84,12 +86,13 @@ export class MailerService {
     // available on tenants that enforce modern authentication.
     if (this.config.get<string>("mail.provider") === "graph") {
       const logo = this.logoAttachment(options.html);
+      const attachments = [...(logo ? [logo] : []), ...(options.attachments ?? [])];
       return this.graph.send({
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text,
-        attachments: logo ? [logo] : undefined,
+        attachments: attachments.length ? attachments : undefined,
       });
     }
 
@@ -104,16 +107,24 @@ export class MailerService {
       // remote images until the reader asks for them, so a hosted logo would
       // show as a broken box on first open — on the message asking for a
       // decision. `contentDisposition: inline` keeps it out of the paperclip.
-      attachments: options.html.includes(`cid:${MAB_LOGO_CID}`)
-        ? [
-            {
-              filename: "mab-logo.png",
-              content: Buffer.from(MAB_LOGO_BASE64, "base64"),
-              cid: MAB_LOGO_CID,
-              contentDisposition: "inline" as const,
-            },
-          ]
-        : undefined,
+      attachments: [
+        ...(options.html.includes(`cid:${MAB_LOGO_CID}`)
+          ? [
+              {
+                filename: "mab-logo.png",
+                content: Buffer.from(MAB_LOGO_BASE64, "base64"),
+                cid: MAB_LOGO_CID,
+                contentDisposition: "inline" as const,
+              },
+            ]
+          : []),
+        // Documents, unlike the logo, belong in the paperclip.
+        ...(options.attachments ?? []).map((a) => ({
+          filename: a.filename,
+          content: a.content,
+          contentType: a.contentType,
+        })),
+      ],
     });
     this.logger.log(`Email sent to ${options.to}: ${options.subject}`);
     return { messageId: info?.messageId };

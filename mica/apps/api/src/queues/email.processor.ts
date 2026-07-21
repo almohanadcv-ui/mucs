@@ -1,10 +1,11 @@
 import { OnWorkerEvent, Processor, WorkerHost } from "@nestjs/bullmq";
-import { Logger } from "@nestjs/common";
+import { Inject, Logger } from "@nestjs/common";
 import type { Prisma } from "@prisma/client";
 import type { Job } from "bullmq";
 import { PrismaService } from "@/database/prisma/prisma.service";
 import { MailerService } from "./mailer.service";
 import { EMAIL_QUEUE } from "./bullmq.module";
+import { STORAGE_PROVIDER, type IStorageProvider } from "@/storage/storage-provider.interface";
 
 export interface EmailJobData {
   notificationId?: string;
@@ -12,7 +13,21 @@ export interface EmailJobData {
   subject: string;
   html: string;
   text?: string;
+  /**
+   * Invoice whose file should ride along. Carried as an id, not as bytes: job
+   * payloads live in Redis as JSON, so attaching the file here would put a
+   * copy of every invoice in the queue and inflate it by the size of the PDF.
+   * The worker fetches it from storage at send time instead.
+   */
+  attachInvoiceId?: string;
 }
+
+/**
+ * Graph refuses a message over 4MB, and base64 inflates by a third. 3MB of
+ * original file leaves room for the body and the logo; anything larger is sent
+ * without its attachment rather than not sent at all.
+ */
+const MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024;
 
 @Processor(EMAIL_QUEUE)
 export class EmailProcessor extends WorkerHost {
@@ -21,6 +36,7 @@ export class EmailProcessor extends WorkerHost {
   constructor(
     private readonly mailer: MailerService,
     private readonly prisma: PrismaService,
+    @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
   ) {
     super();
   }
@@ -36,7 +52,10 @@ export class EmailProcessor extends WorkerHost {
       await this.touch(notificationId, { status: "PROCESSING", attempts: attempt });
     }
 
-    const result = await this.mailer.send(job.data);
+    const result = await this.mailer.send({
+      ...job.data,
+      attachments: await this.invoiceAttachment(job.data.attachInvoiceId),
+    });
 
     if (notificationId) {
       await this.touch(notificationId, {
@@ -79,6 +98,44 @@ export class EmailProcessor extends WorkerHost {
       lastError,
       nextAttemptAt: new Date(Date.now() + delayMs * 2 ** job.attemptsMade),
     });
+  }
+
+  /**
+   * Loads the invoice file to attach, or nothing.
+   *
+   * Every failure here degrades to sending without the attachment: the mail
+   * asking for a decision is worth more than the convenience of having the
+   * file in it, and a storage hiccup must not stop an approval request from
+   * reaching anyone.
+   */
+  private async invoiceAttachment(invoiceId?: string) {
+    if (!invoiceId) return undefined;
+
+    try {
+      const invoice = await this.prisma.invoice.findUnique({
+        where: { id: invoiceId },
+        select: { fileKey: true, fileName: true, mimeType: true, sizeBytes: true },
+      });
+      if (!invoice) return undefined;
+
+      if (invoice.sizeBytes > MAX_ATTACHMENT_BYTES) {
+        this.logger.warn(
+          `Invoice ${invoiceId} is ${Math.round(invoice.sizeBytes / 1024)}KB; sending without it`,
+        );
+        return undefined;
+      }
+
+      return [
+        {
+          filename: invoice.fileName,
+          content: await this.storage.read(invoice.fileKey),
+          contentType: invoice.mimeType,
+        },
+      ];
+    } catch (e) {
+      this.logger.warn(`Could not attach invoice ${invoiceId}: ${(e as Error).message}`);
+      return undefined;
+    }
   }
 
   /**

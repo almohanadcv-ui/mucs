@@ -20,7 +20,16 @@ export interface NotificationPayload {
    * the channel falls back to the escaped `body`, so the five existing callers
    * keep working untouched.
    */
-  email?: { subject: string; html: string; text: string };
+  email?: {
+    subject: string;
+    html: string;
+    text: string;
+    /**
+     * Invoice whose file rides along, by id rather than bytes — the queue is
+     * JSON in Redis and must not carry a copy of every document.
+     */
+    attachInvoiceId?: string;
+  };
 }
 
 /** Every channel adapter (in-app, email, SMS, WhatsApp, push) implements this. */

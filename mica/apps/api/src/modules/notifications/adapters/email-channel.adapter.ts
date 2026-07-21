@@ -67,6 +67,7 @@ export class EmailChannelAdapter implements NotificationChannel {
       // (rejection reasons, workshop names) straight into HTML.
       html: notification.email?.html ?? `<p dir="rtl">${escapeHtml(notification.body)}</p>`,
       text: notification.email?.text ?? notification.body,
+      attachInvoiceId: notification.email?.attachInvoiceId,
     });
   }
 }

@@ -124,6 +124,9 @@ export class InvoicesService {
             publicUrl: this.publicUrl,
             actionToken,
           });
+          // The file travels with the request so a manager can read the
+          // invoice in their inbox instead of opening the site to see it.
+          email.attachInvoiceId = invoice.id;
 
           return this.notifications.notify({
             recipientId,
