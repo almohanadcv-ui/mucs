@@ -32,7 +32,7 @@ describe("EmailProcessor attachments", () => {
 
     expect(storage.read).toHaveBeenCalledWith("k");
     const [sent] = mailer.send.mock.calls[0] as [{ attachments?: { filename: string }[] }];
-    expect(sent.attachments?.[0].filename).toBe("inv.pdf");
+    expect(sent.attachments?.[0]?.filename).toBe("inv.pdf");
   });
 
   it("sends nothing extra when no invoice is named", async () => {

@@ -10,6 +10,50 @@ import { InvoicesService } from "./invoices.service";
  * testing module — the decision path touches Prisma and the notifier only, so
  * a container would add setup without adding coverage.
  */
+describe("InvoicesService approver notification", () => {
+  function build(approverIds: string[], superAdminIds: string[]) {
+    const prisma = {
+      userRole: {
+        findMany: jest.fn(async () => superAdminIds.map((userId) => ({ userId }))),
+      },
+    };
+    const permissionCache = { findUserIdsWithPermission: jest.fn(async () => approverIds) };
+    const service = new InvoicesService(
+      prisma as never,
+      {} as never,
+      permissionCache as never,
+      {} as never,
+      { get: jest.fn() } as never,
+      {} as never,
+    );
+    // Exercised through the public surface would need a full upload; this
+    // reaches the recipient rule directly, which is what the tests are about.
+    return (service as unknown as { approversToNotify(id: string): Promise<string[]> })
+      .approversToNotify.bind(service);
+  }
+
+  it("notifies Management, not the super admin who also holds the permission", async () => {
+    const notify = build(["mgmt-1", "it-1"], ["it-1"]);
+    await expect(notify("mech-1")).resolves.toEqual(["mgmt-1"]);
+  });
+
+  it("never emails the person who uploaded the invoice", async () => {
+    const notify = build(["mgmt-1", "mgmt-2"], []);
+    await expect(notify("mgmt-2")).resolves.toEqual(["mgmt-1"]);
+  });
+
+  it("falls back to the super admin when no Management account exists", async () => {
+    // Better a notification IT did not want than an invoice nobody is told about.
+    const notify = build(["it-1"], ["it-1"]);
+    await expect(notify("mech-1")).resolves.toEqual(["it-1"]);
+  });
+
+  it("returns nobody when the only approver is the uploader", async () => {
+    const notify = build(["it-1"], ["it-1"]);
+    await expect(notify("it-1")).resolves.toEqual([]);
+  });
+});
+
 describe("InvoicesService decisions", () => {
   const invoice = {
     id: "inv-1",

@@ -99,15 +99,13 @@ export class InvoicesService {
       createdById: actingUserId,
     });
 
-    // Fan out to everyone who can approve invoices (Management + Technical Support).
-    const approverIds = await this.permissionCache.findUserIdsWithPermission("invoices:approve");
+    const approverIds = await this.approversToNotify(actingUserId);
     const submitter = await this.prisma.user.findUnique({
       where: { id: actingUserId },
       select: { firstName: true, lastName: true },
     });
     await Promise.all(
       approverIds
-        .filter((uid) => uid !== actingUserId)
         .map(async (recipientId) => {
           // A token per recipient, so the audit trail shows whose link was
           // followed and one manager's link cannot be reused by another.
@@ -144,6 +142,46 @@ export class InvoicesService {
     );
 
     return invoice;
+  }
+
+  /**
+   * Who gets emailed when an invoice needs a decision.
+   *
+   * Approving is Management's job. Technical Support also holds
+   * `invoices:approve`, but only because that role is granted every permission
+   * by construction — being paged for every invoice is a side effect of being
+   * super admin, not a statement that IT reviews spending. They keep the
+   * ability to decide; they stop being notified about it.
+   *
+   * The uploader is dropped too: nobody needs an email about what they just did.
+   */
+  private async approversToNotify(actingUserId: string): Promise<string[]> {
+    const approverIds = await this.permissionCache.findUserIdsWithPermission("invoices:approve");
+
+    const superAdmins = await this.prisma.userRole.findMany({
+      where: { role: { name: "Technical Support" } },
+      select: { userId: true },
+    });
+    const superAdminIds = new Set(superAdmins.map((r) => r.userId));
+
+    const management = approverIds.filter(
+      (id) => id !== actingUserId && !superAdminIds.has(id),
+    );
+
+    // Nobody left — no Management account exists yet, or the only approvers are
+    // super admins. Falling back to them beats an invoice sitting unseen
+    // because the notification had no one to go to.
+    if (management.length === 0) {
+      const fallback = approverIds.filter((id) => id !== actingUserId);
+      if (fallback.length > 0) {
+        this.logger.warn(
+          "No Management approver to notify; falling back to Technical Support",
+        );
+      }
+      return fallback;
+    }
+
+    return management;
   }
 
   /**
