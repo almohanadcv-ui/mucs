@@ -22,6 +22,19 @@ export async function getMaintenanceCostReport(query: MaintenanceCostQuery) {
   return data;
 }
 
+/**
+ * Deletes every maintenance request behind one report row. Returns how many
+ * were removed and how many the server refused, so the caller can say so
+ * instead of reporting a clean success over a partial one.
+ */
+export async function deleteMaintenanceCostGroup(query: MaintenanceCostQuery, groupId: string) {
+  const { data } = await apiClient.delete<{ deleted: number; skipped: number }>(
+    `/reports/maintenance-cost/${groupId}`,
+    { params: query },
+  );
+  return data;
+}
+
 export async function downloadMaintenanceCostReport(
   query: MaintenanceCostQuery,
   format: "csv" | "excel",

@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Res } from "@nestjs/common";
+import { Controller, Delete, Get, Param, Query, Res } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import type { Response } from "express";
 import {
@@ -6,6 +6,8 @@ import {
   type MaintenanceCostReportQuery,
 } from "@mica-mab/shared-types";
 import { Permissions } from "@/common/decorators/permissions.decorator";
+import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import type { RequestUser } from "@/modules/auth/types/request-user.type";
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe";
 import { ReportsService } from "./reports.service";
 
@@ -20,6 +22,21 @@ export class ReportsController {
     @Query(new ZodValidationPipe(maintenanceCostReportQuerySchema)) query: MaintenanceCostReportQuery,
   ) {
     return this.service.maintenanceCostReport(query);
+  }
+
+  /**
+   * Gated on maintenance:delete, not reports:delete — what this removes is
+   * maintenance requests, and the permission should name the data at risk.
+   */
+  @Delete("maintenance-cost/:groupId")
+  @Permissions("maintenance:delete")
+  deleteGroup(
+    @Param("groupId") groupId: string,
+    @Query(new ZodValidationPipe(maintenanceCostReportQuerySchema))
+    query: MaintenanceCostReportQuery,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.service.deleteGroup(query, groupId, user.id);
   }
 
   @Get("maintenance-cost/export")

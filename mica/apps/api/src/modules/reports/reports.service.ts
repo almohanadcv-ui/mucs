@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import ExcelJS from "exceljs";
 import type { MaintenanceCostReportQuery } from "@mica-mab/shared-types";
 import { PrismaService } from "@/database/prisma/prisma.service";
@@ -15,8 +16,13 @@ export interface MaintenanceCostRow {
 export class ReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async maintenanceCostReport(query: MaintenanceCostReportQuery): Promise<MaintenanceCostRow[]> {
-    const where = {
+  /**
+   * The filter behind every row of the report. Deletion reuses it verbatim so
+   * that removing a row removes exactly the requests that row counted — never
+   * the ones a date filter had excluded from view.
+   */
+  private buildWhere(query: MaintenanceCostReportQuery) {
+    return {
       deletedAt: null,
       ...(query.branchId ? { branchId: query.branchId } : {}),
       ...(query.from || query.to
@@ -28,6 +34,10 @@ export class ReportsService {
           }
         : {}),
     };
+  }
+
+  async maintenanceCostReport(query: MaintenanceCostReportQuery): Promise<MaintenanceCostRow[]> {
+    const where = this.buildWhere(query);
 
     const groupField = query.groupBy === "branch" ? "branchId" : "vehicleId";
     const grouped = await this.prisma.maintenanceRequest.groupBy({
@@ -61,6 +71,51 @@ export class ReportsService {
         totalActualCost: Number(g._sum.actualCost ?? 0),
       }))
       .sort((a, b) => b.totalActualCost - a.totalActualCost);
+  }
+
+  /**
+   * Soft-deletes every maintenance request behind one row of the cost report.
+   *
+   * A report row is an aggregate, not a record, so "deleting a row" can only
+   * mean deleting what it sums. That is a bulk destructive action, so it is
+   * deliberately narrow: it deletes only what the caller's current filters
+   * already scoped, and the deletion is soft — every request lands in Trash and
+   * can be restored individually.
+   *
+   * The Mechanic never reaches here (no reports:view), but the state rule is
+   * enforced anyway rather than assumed, so the endpoint stays honest if the
+   * role bundles change later.
+   */
+  async deleteGroup(
+    query: MaintenanceCostReportQuery,
+    groupId: string,
+    actingUserId: string,
+  ): Promise<{ deleted: number; skipped: number }> {
+    const groupField = query.groupBy === "branch" ? "branchId" : "vehicleId";
+    const scope: Prisma.MaintenanceRequestWhereInput = {
+      ...this.buildWhere(query),
+      [groupField]: groupId,
+    };
+
+    const isPrivileged =
+      (await this.prisma.userRole.count({
+        where: {
+          userId: actingUserId,
+          role: { name: { in: ["Technical Support", "Management"] } },
+        },
+      })) > 0;
+
+    const total = await this.prisma.maintenanceRequest.count({ where: scope });
+    const deletable: Prisma.MaintenanceRequestWhereInput = isPrivileged
+      ? scope
+      : { ...scope, status: { in: ["DRAFT", "PENDING_APPROVAL"] } };
+
+    const { count } = await this.prisma.maintenanceRequest.updateMany({
+      where: deletable,
+      data: { deletedAt: new Date(), updatedById: actingUserId },
+    });
+
+    return { deleted: count, skipped: total - count };
   }
 
   toCsv(rows: MaintenanceCostRow[]): string {

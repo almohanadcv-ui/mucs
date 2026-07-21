@@ -22,9 +22,11 @@ import {
   getMaintenanceCostReport,
   type MaintenanceCostQuery,
 } from "@/features/reports/api";
+import { ReportRowDeleteButton } from "@/features/reports/report-row-delete-button";
 
 export default function ReportsPage() {
   const canExport = usePermission("reports:export");
+  const canDelete = usePermission("maintenance:delete");
   const [groupBy, setGroupBy] = useState<MaintenanceCostQuery["groupBy"]>("vehicle");
 
   const { data } = useQuery({
@@ -89,6 +91,7 @@ export default function ReportsPage() {
                 <TableHead className="text-right">الطلبات</TableHead>
                 <TableHead className="text-right">التكلفة التقديرية</TableHead>
                 <TableHead className="text-right">التكلفة الفعلية</TableHead>
+                {canDelete && <TableHead className="w-12 print:hidden" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -98,11 +101,21 @@ export default function ReportsPage() {
                   <TableCell className="text-right">{row.requestCount}</TableCell>
                   <TableCell className="text-right">{formatSAR(row.totalEstimatedCost)}</TableCell>
                   <TableCell className="text-right">{formatSAR(row.totalActualCost)}</TableCell>
+                  {canDelete && (
+                    <TableCell className="print:hidden">
+                      <ReportRowDeleteButton
+                        query={{ groupBy }}
+                        groupId={row.groupId}
+                        groupLabel={row.groupLabel}
+                        requestCount={row.requestCount}
+                      />
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
               {!data?.length && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                  <TableCell colSpan={canDelete ? 5 : 4} className="text-center text-muted-foreground">
                     لا توجد بيانات تكلفة صيانة لهذا التصنيف بعد.
                   </TableCell>
                 </TableRow>
@@ -114,6 +127,7 @@ export default function ReportsPage() {
                 <TableCell className="text-right">{totals.requests}</TableCell>
                 <TableCell className="text-right">{formatSAR(totals.estimated)}</TableCell>
                 <TableCell className="text-right">{formatSAR(totals.actual)}</TableCell>
+                {canDelete && <TableCell className="print:hidden" />}
               </TableRow>
             </TableFooter>
           </Table>
