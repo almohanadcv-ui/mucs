@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { isAxiosError } from "axios";
@@ -39,7 +39,6 @@ const BLOCKED: Record<Exclude<ActionState, "actionable">, string> = {
  */
 export default function InvoiceActionPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
-  const router = useRouter();
   const searchParams = useSearchParams();
   // The email's Approve/Reject buttons differ only in what opens preselected.
   const intent = searchParams.get("intent");
@@ -48,6 +47,9 @@ export default function InvoiceActionPage({ params }: { params: Promise<{ token:
     intent === "approve" || intent === "reject" ? intent : null,
   );
   const [reason, setReason] = useState("");
+  // The whole journey ends here: there is no session to carry anyone into the
+  // app, so the outcome has to be stated on this page.
+  const [done, setDone] = useState<"approve" | "reject" | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["invoice-action", token],
@@ -60,7 +62,7 @@ export default function InvoiceActionPage({ params }: { params: Promise<{ token:
       decideInvoiceAction(token, body),
     onSuccess: (_, body) => {
       toast.success(body.decision === "approve" ? "تم اعتماد الفاتورة" : "تم رفض الفاتورة");
-      router.push("/invoices");
+      setDone(body.decision);
     },
     onError: (error) => {
       // The server's message is shown as-is: it distinguishes "already decided"
@@ -72,6 +74,27 @@ export default function InvoiceActionPage({ params }: { params: Promise<{ token:
       refetch();
     },
   });
+
+  if (done) {
+    const approved = done === "approve";
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-3 py-12 text-center">
+          {approved ? (
+            <Check className="size-10 text-emerald-600" />
+          ) : (
+            <X className="size-10 text-destructive" />
+          )}
+          <p className="text-lg font-medium">
+            {approved ? "تم اعتماد الفاتورة" : "تم رفض الفاتورة"}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            سُجّل قرارك، وأُرسل إشعار إلى من رفع الفاتورة. يمكنك إغلاق هذه الصفحة.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -97,9 +120,7 @@ export default function InvoiceActionPage({ params }: { params: Promise<{ token:
                 {data.invoice.status === "ACCEPTED" ? "معتمدة" : "مرفوضة"}
               </p>
             )}
-            <Button variant="outline" onClick={() => router.push("/invoices")}>
-              الذهاب إلى الفواتير
-            </Button>
+
           </CardContent>
         </Card>
       </div>

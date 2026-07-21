@@ -1,10 +1,9 @@
-import { Body, Controller, Get, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, Post } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { z } from "zod";
-import { Permissions } from "@/common/decorators/permissions.decorator";
-import { CurrentUser } from "@/common/decorators/current-user.decorator";
+import { Public } from "@/common/decorators/public.decorator";
+import { Throttle } from "@nestjs/throttler";
 import { ZodValidationPipe } from "@/common/pipes/zod-validation.pipe";
-import type { RequestUser } from "@/modules/auth/types/request-user.type";
 import { InvoicesService } from "./invoices.service";
 
 export const decideFromEmailSchema = z
@@ -36,19 +35,33 @@ export type DecideFromEmailInput = z.infer<typeof decideFromEmailSchema>;
 export class InvoiceActionsController {
   constructor(private readonly service: InvoicesService) {}
 
+  /**
+   * Public: the token identifies the manager, so no session is required.
+   *
+   * This deliberately trusts the mailbox — the same trust the password-reset
+   * link already places in it, and a smaller one, since this can only decide a
+   * single invoice rather than take over an account. What it does not do is act
+   * on being fetched: mail scanners and link previews follow every URL in every
+   * message, and a GET that decided would approve invoices nobody clicked.
+   *
+   * Throttled per IP because there is no login to slow anyone down, though the
+   * token itself is 256 bits and not worth guessing.
+   */
+  @Public()
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get(":token")
-  @Permissions("invoices:view")
-  preview(@Param("token") token: string, @CurrentUser() user: RequestUser) {
-    return this.service.previewTokenAction(token, user.id);
+  preview(@Param("token") token: string) {
+    return this.service.previewTokenAction(token);
   }
 
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post(":token/decide")
-  @Permissions("invoices:approve")
+  @HttpCode(200)
   decide(
     @Param("token") token: string,
     @Body(new ZodValidationPipe(decideFromEmailSchema)) dto: DecideFromEmailInput,
-    @CurrentUser() user: RequestUser,
   ) {
-    return this.service.decideFromToken(token, dto, user.id);
+    return this.service.decideFromToken(token, dto);
   }
 }

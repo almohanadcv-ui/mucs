@@ -84,7 +84,7 @@ export function invoiceSubmittedEmail(data: InvoiceEmailData): RenderedEmail {
   ];
 
   const decisionUrl = data.actionToken
-    ? `${data.publicUrl}/invoices/action/${data.actionToken}`
+    ? `${data.publicUrl}/invoice-action/${data.actionToken}`
     : `${data.publicUrl}/invoices`;
 
   return render(

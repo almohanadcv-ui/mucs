@@ -31,11 +31,13 @@ describe("invoice email templates", () => {
       expect(mail.text).not.toContain("<");
     });
 
-    it("links into MICA rather than carrying the decision in the URL", () => {
+    it("links to the decision page rather than carrying the decision in the URL", () => {
       // A link that acts on being followed would fire on mail scanners and
-      // link previews, deciding an invoice nobody clicked.
-      expect(mail.html).toContain("https://mica.example.com/invoices");
-      expect(mail.html).not.toMatch(/action=(approve|reject)/);
+      // link previews, deciding an invoice nobody clicked. `intent` only
+      // preselects a button on the page; it decides nothing by itself.
+      const withToken = invoiceSubmittedEmail({ ...base, actionToken: "tok123" });
+      expect(withToken.html).toContain("https://mica.example.com/invoice-action/tok123");
+      expect(withToken.html).not.toMatch(/\/decide|action=(approve|reject)&?confirm/);
     });
 
     it("renders right-to-left", () => {

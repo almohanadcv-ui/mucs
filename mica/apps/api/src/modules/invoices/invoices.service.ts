@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -142,6 +143,12 @@ export class InvoicesService {
     );
 
     return invoice;
+  }
+
+  /** Does this user hold invoices:approve right now? */
+  private async stillMayApprove(userId: string): Promise<boolean> {
+    const approvers = await this.permissionCache.findUserIdsWithPermission("invoices:approve");
+    return approvers.includes(userId);
   }
 
   /**
@@ -292,16 +299,15 @@ export class InvoicesService {
    * invoice the token names. A link forwarded to a colleague without the
    * permission opens to a refusal, not to a live form.
    */
-  async previewTokenAction(token: string, actingUserId: string) {
+  async previewTokenAction(token: string) {
     const claims = await this.tokens.peek(token);
     if (typeof claims === "string") return { state: claims } as const;
 
     const invoice = await this.findById(claims.invoiceId);
+    // Checked at open time, not only at issue time: someone may have left the
+    // company or lost the role in the week since the email went out.
     const canDecide =
-      invoice.status === "PENDING" &&
-      (await this.permissionCache.findUserIdsWithPermission("invoices:approve")).includes(
-        actingUserId,
-      );
+      invoice.status === "PENDING" && (await this.stillMayApprove(claims.userId));
 
     const submitter = invoice.createdById
       ? await this.prisma.user.findUnique({
@@ -312,9 +318,6 @@ export class InvoicesService {
 
     return {
       state: canDecide ? ("actionable" as const) : ("decided" as const),
-      // Addressed to someone else: shown, but flagged, so the page can say so
-      // rather than pretending the link was theirs.
-      addressedToSomeoneElse: claims.userId !== actingUserId,
       invoice: {
         id: invoice.id,
         invoiceNumber: invoice.invoiceNumber,
@@ -341,7 +344,6 @@ export class InvoicesService {
   async decideFromToken(
     token: string,
     dto: { decision: "approve" | "reject"; rejectionReason?: string },
-    actingUserId: string,
   ) {
     const claims = await this.tokens.peek(token);
     if (typeof claims === "string") {
@@ -352,9 +354,18 @@ export class InvoicesService {
       );
     }
 
+    // The token names its holder, but the authority is checked now rather than
+    // trusted from when the mail was sent — a week is long enough for someone
+    // to lose the role, or the company.
+    if (!(await this.stillMayApprove(claims.userId))) {
+      throw new ForbiddenException("لم تعد تملك صلاحية اعتماد الفواتير.");
+    }
+
     if (!(await this.tokens.consume(token))) {
       throw new ConflictException("هذا الرابط استُخدم من قبل.");
     }
+
+    const actingUserId = claims.userId;
 
     const decided =
       dto.decision === "approve"

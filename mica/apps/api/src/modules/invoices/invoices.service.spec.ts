@@ -83,6 +83,9 @@ describe("InvoicesService decisions", () => {
       user: { findUnique: jest.fn(async () => ({ firstName: "سالم", lastName: "المدير" })) },
     };
     const notifications = { notify: jest.fn(async () => undefined) };
+    const permissionCache = {
+      findUserIdsWithPermission: jest.fn(async () => ["manager-1"]),
+    };
     const config = { get: jest.fn(() => "https://mica.example.com") };
     const tokens = {
       issue: jest.fn(async () => "tok"),
@@ -93,7 +96,7 @@ describe("InvoicesService decisions", () => {
     const service = new InvoicesService(
       prisma as never,
       {} as never,
-      {} as never,
+      permissionCache as never,
       notifications as never,
       config as never,
       tokens as never,
@@ -155,7 +158,7 @@ describe("InvoicesService decisions", () => {
     it("spends the token before touching the invoice", async () => {
       const { service, tokens, prisma } = build([1]);
 
-      await service.decideFromToken("tok", { decision: "approve" }, "manager-1");
+      await service.decideFromToken("tok", { decision: "approve" });
 
       // If the invoice were written first, a double-submitted form could
       // decide twice before either consume returned.
@@ -169,7 +172,7 @@ describe("InvoicesService decisions", () => {
       tokens.consume.mockResolvedValueOnce(false);
 
       await expect(
-        service.decideFromToken("tok", { decision: "approve" }, "manager-1"),
+        service.decideFromToken("tok", { decision: "approve" }),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
     });
@@ -179,7 +182,7 @@ describe("InvoicesService decisions", () => {
       tokens.peek.mockResolvedValueOnce("expired" as never);
 
       await expect(
-        service.decideFromToken("tok", { decision: "approve" }, "manager-1"),
+        service.decideFromToken("tok", { decision: "approve" }),
       ).rejects.toThrow(/انتهت صلاحية/);
       expect(prisma.invoice.updateMany).not.toHaveBeenCalled();
     });
@@ -187,7 +190,7 @@ describe("InvoicesService decisions", () => {
     it("retires the other managers' links once decided", async () => {
       const { service, tokens } = build([1]);
 
-      await service.decideFromToken("tok", { decision: "approve" }, "manager-1");
+      await service.decideFromToken("tok", { decision: "approve" });
 
       expect(tokens.revokeForInvoice).toHaveBeenCalledWith("inv-1");
     });
@@ -195,11 +198,10 @@ describe("InvoicesService decisions", () => {
     it("goes through the same reject path, reason included", async () => {
       const { service, prisma } = build([1]);
 
-      await service.decideFromToken(
-        "tok",
-        { decision: "reject", rejectionReason: "المبلغ غير مطابق" },
-        "manager-1",
-      );
+      await service.decideFromToken("tok", {
+        decision: "reject",
+        rejectionReason: "المبلغ غير مطابق",
+      });
 
       const [{ data }] = prisma.invoice.updateMany.mock.calls[0] as unknown as [
         { data: Record<string, unknown> },
