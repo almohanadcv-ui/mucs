@@ -77,6 +77,19 @@ export function SmtpSettingsForm() {
       <CardHeader>
         <CardTitle>SMTP / email delivery</CardTitle>
       </CardHeader>
+      {/* Another transport is configured, so nothing typed here is read. Said
+          plainly, because a form that quietly does nothing is worse than one
+          that is missing. */}
+      {data && !data.active && (
+        <div className="mx-6 mb-4 rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+          <p className="font-medium">البريد يُرسل عبر Microsoft Graph</p>
+          <p className="mt-1 text-muted-foreground">
+            هذه الإعدادات غير مستخدمة حاليًا. عنوان المرسل يُضبط من متغيّرات البيئة على
+            الخادم (<code className="font-mono text-xs">MICA_MAIL_FROM</code>). زر الاختبار
+            بالأسفل يمرّ على Graph لا على SMTP.
+          </p>
+        </div>
+      )}
       <form onSubmit={handleSubmit((values) => mutation.mutate(values))}>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">

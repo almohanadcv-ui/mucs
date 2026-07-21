@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import type { CompanySettingsInput, SmtpSettingsInput, ThemeSettingsInput } from "@mica-mab/shared-types";
 import { PrismaService } from "@/database/prisma/prisma.service";
 import { decryptSecret, encryptSecret } from "@/common/crypto/secret-box";
@@ -28,7 +29,10 @@ const DEFAULT_THEME: ThemeSettingsInput = {
  */
 @Injectable()
 export class SettingsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: ConfigService,
+  ) {}
 
   async get<T>(key: string, fallback: T): Promise<T> {
     const row = await this.prisma.setting.findUnique({ where: { key } });
@@ -52,8 +56,13 @@ export class SettingsService {
   }
 
   /** Password is never returned to the client — callers must explicitly ask for it via getSmtpWithSecret. */
-  async getSmtp(): Promise<Omit<SmtpSettingsInput, "password"> & { hasPassword: boolean }> {
+  async getSmtp(): Promise<
+    Omit<SmtpSettingsInput, "password"> & { hasPassword: boolean; active: boolean }
+  > {
     const stored = await this.get<SmtpSettingsInput | null>(SETTING_KEYS.SMTP, null);
+    // False when another transport is configured, so the UI can say these
+    // fields are being ignored rather than let someone edit them for nothing.
+    const active = (this.config.get<string>("mail.provider") ?? "smtp") === "smtp";
     if (!stored) {
       return {
         host: "",
@@ -63,10 +72,11 @@ export class SettingsService {
         fromName: "",
         fromAddress: "",
         hasPassword: false,
+        active,
       };
     }
     const { password, ...rest } = stored;
-    return { ...rest, hasPassword: Boolean(password) };
+    return { ...rest, hasPassword: Boolean(password), active };
   }
 
   /**

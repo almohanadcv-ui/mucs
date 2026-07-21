@@ -1,7 +1,11 @@
 import type { CompanySettingsInput, SmtpSettingsInput, ThemeSettingsInput } from "@mica-mab/shared-types";
 import { apiClient } from "@/lib/api-client";
 
-export type SmtpSettingsResponse = Omit<SmtpSettingsInput, "password"> & { hasPassword: boolean };
+export type SmtpSettingsResponse = Omit<SmtpSettingsInput, "password"> & {
+  hasPassword: boolean;
+  /** False when mail goes out through another transport and these fields are ignored. */
+  active: boolean;
+};
 
 export async function getCompanySettings() {
   const { data } = await apiClient.get<CompanySettingsInput>("/settings/company");
