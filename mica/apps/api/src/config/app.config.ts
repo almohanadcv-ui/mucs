@@ -12,4 +12,10 @@ export default registerAs("app", () => ({
   publicUrl: (process.env.MICA_PUBLIC_URL ?? process.env.CORS_ORIGIN ?? "http://localhost:3001")
     .trim()
     .replace(/\/$/, ""),
+  /**
+   * Demands an emailed code from every user at sign-in. Off by default so
+   * enabling it is a deliberate act — switching it on without working mail
+   * would lock the whole company out.
+   */
+  requireTwoFactor: process.env.MICA_REQUIRE_2FA === "true",
 }));

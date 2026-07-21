@@ -79,7 +79,12 @@
     "sendResetLink": "Request password reset",
     "sending": "Sending…",
     "checkEmail": "Request received",
-    "resetSent": "The IT department will send your password over WhatsApp as soon as possible."
+    "resetSent": "The IT department will send your password over WhatsApp as soon as possible.",
+    "twoFactorTitle": "Two-step verification",
+    "twoFactorSent": "We emailed you a 6-digit code. Enter it to finish signing in.",
+    "twoFactorCode": "Verification code",
+    "twoFactorVerify": "Verify code",
+    "twoFactorBack": "Back to sign in"
   },
   "dashboard": {
     "welcomeBack": "Welcome back, {name}",

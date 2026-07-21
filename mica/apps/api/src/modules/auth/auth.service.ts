@@ -12,6 +12,12 @@ import { PrismaService } from "@/database/prisma/prisma.service";
 import { PermissionCacheService } from "@/common/permission-cache/permission-cache.service";
 import { NotificationsService } from "@/modules/notifications/notifications.service";
 import { generateOpaqueToken, hashToken } from "./utils/token.util";
+import { LoginChallengeService } from "./login-challenge.service";
+import { MailerService } from "@/queues/mailer.service";
+import {
+  loginCodeEmail,
+  passwordResetEmail,
+} from "@/modules/notifications/templates/auth.templates";
 import type { AccessTokenPayload } from "./types/request-user.type";
 import type { AuthUser } from "@mica-mab/shared-types";
 
@@ -34,6 +40,8 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly permissionCache: PermissionCacheService,
     private readonly notifications: NotificationsService,
+    private readonly challenges: LoginChallengeService,
+    private readonly mailer: MailerService,
   ) {}
 
   async validateCredentials(email: string, password: string) {
@@ -74,6 +82,58 @@ export class AuthService {
     });
 
     return user;
+  }
+
+  /**
+   * Whether this sign-in needs a second factor.
+   *
+   * A per-user flag, or MICA_REQUIRE_2FA for everyone. A user with no email
+   * address is exempt rather than locked out: the code has nowhere to go, and
+   * a security control that bars people from their own system gets switched
+   * off entirely, which protects nobody.
+   */
+  private requiresSecondFactor(user: { isTwoFactorEnabled: boolean; email: string }): boolean {
+    if (!user.email) return false;
+    const requireAll = this.configService.get<boolean>("app.requireTwoFactor");
+    return Boolean(requireAll) || user.isTwoFactorEnabled;
+  }
+
+  /**
+   * Starts a sign-in whose password was already accepted. Returns either a
+   * challenge to complete, or nothing when no second factor applies.
+   */
+  async beginTwoFactor(
+    user: { id: string; email: string; firstName: string; isTwoFactorEnabled: boolean },
+    context: { rememberMe: boolean; ipAddress?: string | null },
+  ): Promise<{ challengeId: string } | null> {
+    if (!this.requiresSecondFactor(user)) return null;
+
+    const { challengeId, code } = await this.challenges.issue(user.id, {
+      rememberMe: context.rememberMe,
+    });
+
+    const email = loginCodeEmail({ code, ipAddress: context.ipAddress, minutes: 10 });
+    // Awaited, unlike most notifications: a sign-in that says "check your
+    // email" before the mail is accepted would strand anyone whose delivery
+    // fails, with no way to tell that is what happened.
+    await this.mailer.send({
+      to: user.email,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
+    });
+
+    this.logger.log(`Two-factor code issued for ${user.email}`);
+    return { challengeId };
+  }
+
+  /** Completes a sign-in by consuming its code. */
+  async completeTwoFactor(challengeId: string, code: string, device: DeviceContext) {
+    const { userId, rememberMe, deviceLabel } = await this.challenges.verify(challengeId, code);
+    return {
+      userId,
+      tokens: await this.issueTokensForUser(userId, rememberMe, device, deviceLabel),
+    };
   }
 
   createPasswordResetToken(userId: string, expiresIn = "20m"): string {
@@ -204,9 +264,25 @@ export class AuthService {
     // which emails are registered.
     if (!user) return;
 
-    // No public SMTP: record a reset request Technical Support can action, and
-    // ping them in-app.
+    // Kept as a trail Technical Support can see, and as the way through if the
+    // email never arrives.
     await this.prisma.passwordResetRequest.create({ data: { userId: user.id } });
+
+    // The user's own copy. Failure is logged, never raised: the caller's reply
+    // must not differ between a registered address and an unregistered one, or
+    // this endpoint becomes a way to enumerate who works here.
+    try {
+      const resetUrl = `${this.configService.get<string>("app.publicUrl")}/reset-password?token=${this.createPasswordResetToken(user.id)}`;
+      const email = passwordResetEmail({ resetUrl, minutes: 20 });
+      await this.mailer.send({
+        to: user.email,
+        subject: email.subject,
+        html: email.html,
+        text: email.text,
+      });
+    } catch (e) {
+      this.logger.warn(`Could not email reset link to ${email}: ${(e as Error).message}`);
+    }
 
     const supportUsers = await this.prisma.user.findMany({
       where: {

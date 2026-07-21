@@ -11,6 +11,14 @@ export async function loginRequest(input: LoginInput): Promise<LoginResponse> {
   return data;
 }
 
+export async function verifyTwoFactorRequest(
+  challengeId: string,
+  code: string,
+): Promise<LoginResponse> {
+  const { data } = await apiClient.post<LoginResponse>("/auth/2fa/verify", { challengeId, code });
+  return data;
+}
+
 export async function meRequest(): Promise<AuthUser> {
   const { data } = await apiClient.get<AuthUser>("/auth/me");
   return data;

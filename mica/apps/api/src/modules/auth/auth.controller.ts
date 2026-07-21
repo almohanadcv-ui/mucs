@@ -17,6 +17,7 @@ import type { Request, Response } from "express";
 import {
   forgotPasswordSchema,
   loginSchema,
+  verifyTwoFactorSchema,
   resetPasswordSchema,
   updateOwnProfileSchema,
   type LoginResponse,
@@ -72,15 +73,51 @@ export class AuthController {
       };
     }
 
+    // A correct password is not yet a session when a second factor applies.
+    const device = this.deviceContext(req);
+    const challenge = await this.authService.beginTwoFactor(user, {
+      rememberMe: body.rememberMe,
+      ipAddress: device.ipAddress,
+    });
+    if (challenge) {
+      return { requiresTwoFactor: true, challengeId: challenge.challengeId };
+    }
+
     const { accessToken, refreshToken, expiresAt } = await this.authService.issueTokensForUser(
       user.id,
       body.rememberMe,
-      this.deviceContext(req),
+      device,
     );
     this.setRefreshCookie(res, refreshToken, expiresAt);
 
     const authUser = await this.authService.getAuthUser(user.id);
     return { accessToken, user: authUser };
+  }
+
+  /**
+   * Second step of a sign-in. Rate-limited harder than the password step: the
+   * code is only six digits, so the ceiling on guessing has to be low even
+   * though each challenge also counts its own attempts.
+   */
+  @Public()
+  @Throttle({ default: { limit: 10, ttl: 300_000 } })
+  @Post("2fa/verify")
+  @HttpCode(200)
+  async verifyTwoFactor(
+    @Body(new ZodValidationPipe(verifyTwoFactorSchema))
+    body: { challengeId: string; code: string },
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<LoginResponse> {
+    const { userId, tokens } = await this.authService.completeTwoFactor(
+      body.challengeId,
+      body.code,
+      this.deviceContext(req),
+    );
+    this.setRefreshCookie(res, tokens.refreshToken, tokens.expiresAt);
+
+    const authUser = await this.authService.getAuthUser(userId);
+    return { accessToken: tokens.accessToken, user: authUser };
   }
 
   @Public()

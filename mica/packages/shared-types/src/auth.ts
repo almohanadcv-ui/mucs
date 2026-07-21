@@ -7,6 +7,14 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+export const verifyTwoFactorSchema = z.object({
+  challengeId: z.string().min(1),
+  // Exactly six digits: anything else is a typo, and rejecting it here spares
+  // the challenge one of its five attempts.
+  code: z.string().regex(/^\d{6}$/, "الرمز مكوّن من ٦ أرقام"),
+});
+export type VerifyTwoFactorInput = z.infer<typeof verifyTwoFactorSchema>;
+
 export const forgotPasswordSchema = z.object({
   email: z.string().email(),
 });
@@ -47,4 +55,9 @@ export type LoginResponse =
       mustChangePassword: true;
       passwordResetToken: string;
       user: Pick<AuthUser, "id" | "email" | "firstName" | "lastName" | "status">;
+    }
+  // The password was right, but a code was emailed and no session exists yet.
+  | {
+      requiresTwoFactor: true;
+      challengeId: string;
     };

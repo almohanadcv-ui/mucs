@@ -73,14 +73,45 @@ model User {
   savedFilters            SavedFilter[]
   favorites               Favorite[]
   passwordResetRequests   PasswordResetRequest[]
+  loginChallenges         LoginChallenge[]
 
   @@index([branchId])
   @@index([departmentId])
   @@map("users")
 }
 
-/// A user's "forgot password" request. There is no public SMTP, so Technical
-/// Support handles these manually (generate a link, send it over WhatsApp).
+/// A pending second factor: the password was right, and this is the code
+/// emailed to finish the sign-in.
+///
+/// The code is stored hashed, like any other credential — a database leak must
+/// not hand anyone a live sign-in. Attempts are counted on the row rather than
+/// per request, so guessing cannot be spread across connections to escape a
+/// rate limit.
+model LoginChallenge {
+  id     String @id @default(cuid())
+  userId String
+
+  codeHash String
+  /// Carried from the challenge to the verification so the session lands on
+  /// the device that started it, with the preference the user chose.
+  rememberMe  Boolean @default(false)
+  deviceLabel String?
+
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("login_challenges")
+}
+
+/// A user's "forgot password" request, kept as a record Technical Support can
+/// see and action. The user is now emailed a reset link directly, so this is a
+/// trail and a fallback rather than the only way through.
 model PasswordResetRequest {
   id          String    @id @default(cuid())
   userId      String
