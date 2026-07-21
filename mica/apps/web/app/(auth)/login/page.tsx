@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { useSession } from "@/lib/auth/session-context";
+import { safeRedirect } from "@/lib/auth/safe-redirect";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -45,7 +46,13 @@ export default function LoginPage() {
       }
 
       toast.success(t("welcomeBack"));
-      router.push(response.user.roles.includes("Driver") ? "/driver/vehicles" : "/dashboard");
+      const home = response.user.roles.includes("Driver") ? "/driver/vehicles" : "/dashboard";
+      // Returns the manager to the invoice their email link pointed at.
+      // Read at submit time rather than via useSearchParams: the hook forces
+      // the page out of static prerendering, and by now we are certainly in
+      // the browser.
+      const next = new URLSearchParams(window.location.search).get("next");
+      router.push(safeRedirect(next, home));
     } catch (error) {
       let message = "Something went wrong. Please try again.";
       if (isAxiosError(error)) {

@@ -16,6 +16,8 @@ export interface InvoiceEmailData {
   submittedBy?: string | null;
   submittedAt: Date;
   publicUrl: string;
+  /** One-time link to the decision page. Absent for the mechanic's copy. */
+  actionToken?: string;
 }
 
 /**
@@ -75,13 +77,26 @@ export function invoiceSubmittedEmail(data: InvoiceEmailData): RenderedEmail {
     { label: "تاريخ الرفع", value: date(data.submittedAt) },
   ];
 
+  // Both buttons lead to the same confirmation page, differing only in what it
+  // opens preselected. Neither carries the decision itself.
+  const decisionUrl = data.actionToken
+    ? `${data.publicUrl}/invoices/action/${data.actionToken}`
+    : `${data.publicUrl}/invoices`;
+
   return render(
     {
       heading: "فاتورة جديدة بانتظار الاعتماد",
       intro: "رُفعت فاتورة صيانة وتحتاج قرارك بالاعتماد أو الرفض.",
       rows,
-      buttons: [{ label: "مراجعة الفاتورة", url: `${data.publicUrl}/invoices`, primary: true }],
-      footnote: "الاعتماد والرفض يتمّان داخل النظام بعد تسجيل الدخول.",
+      buttons: data.actionToken
+        ? [
+            { label: "اعتماد", url: `${decisionUrl}?intent=approve`, primary: true },
+            { label: "رفض", url: `${decisionUrl}?intent=reject` },
+            { label: "عرض التفاصيل", url: decisionUrl },
+          ]
+        : [{ label: "مراجعة الفاتورة", url: decisionUrl, primary: true }],
+      footnote:
+        "الضغط يفتح صفحة تأكيد داخل النظام — لا يُعتمد ولا يُرفض شيء بمجرد فتح الرابط. الرابط صالح سبعة أيام ولمرة واحدة.",
     },
     "فاتورة جديدة بانتظار الاعتماد",
   );

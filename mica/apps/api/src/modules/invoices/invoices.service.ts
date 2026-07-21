@@ -22,6 +22,7 @@ import {
   invoiceDecidedEmail,
   invoiceSubmittedEmail,
 } from "@/modules/notifications/templates/invoice.templates";
+import { InvoiceActionTokenService } from "./invoice-action-token.service";
 
 const EXT_BY_MIME: Record<string, string> = {
   "application/pdf": "pdf",
@@ -44,6 +45,7 @@ export class InvoicesService {
     private readonly permissionCache: PermissionCacheService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService,
+    private readonly tokens: InvoiceActionTokenService,
   ) {}
 
   /** Base address for links that travel to an inbox. */
@@ -103,23 +105,27 @@ export class InvoicesService {
       where: { id: actingUserId },
       select: { firstName: true, lastName: true },
     });
-    const email = invoiceSubmittedEmail({
-      invoiceId: invoice.id,
-      invoiceNumber: invoice.invoiceNumber,
-      amount: invoice.amount.toString(),
-      plateNumber: vehicle.plateNumber,
-      vehicleName: vehicle.name,
-      workshopName: invoice.workshopName,
-      submittedBy: fullName(submitter),
-      submittedAt: invoice.createdAt,
-      publicUrl: this.publicUrl,
-    });
-
     await Promise.all(
       approverIds
         .filter((uid) => uid !== actingUserId)
-        .map((recipientId) =>
-          this.notifications.notify({
+        .map(async (recipientId) => {
+          // A token per recipient, so the audit trail shows whose link was
+          // followed and one manager's link cannot be reused by another.
+          const actionToken = await this.tokens.issue(invoice.id, recipientId);
+          const email = invoiceSubmittedEmail({
+            invoiceId: invoice.id,
+            invoiceNumber: invoice.invoiceNumber,
+            amount: invoice.amount.toString(),
+            plateNumber: vehicle.plateNumber,
+            vehicleName: vehicle.name,
+            workshopName: invoice.workshopName,
+            submittedBy: fullName(submitter),
+            submittedAt: invoice.createdAt,
+            publicUrl: this.publicUrl,
+            actionToken,
+          });
+
+          return this.notifications.notify({
             recipientId,
             type: "invoice.submitted",
             title: "فاتورة جديدة بانتظار الاعتماد",
@@ -130,8 +136,8 @@ export class InvoicesService {
             idempotencyKey: `MICA_INVOICE_SUBMITTED:${invoice.id}`,
             correlationId: invoice.id,
             channels: ["IN_APP", "EMAIL"],
-          }),
-        ),
+          });
+        }),
     );
 
     return invoice;
@@ -234,6 +240,93 @@ export class InvoicesService {
     }
 
     return this.findById(id);
+  }
+
+  /**
+   * What the confirmation page shows before anything is decided. Read-only by
+   * design: following the link must never change state.
+   *
+   * The token is not treated as proof of identity — the caller is already
+   * authenticated, and this only reports whether their session may act on the
+   * invoice the token names. A link forwarded to a colleague without the
+   * permission opens to a refusal, not to a live form.
+   */
+  async previewTokenAction(token: string, actingUserId: string) {
+    const claims = await this.tokens.peek(token);
+    if (typeof claims === "string") return { state: claims } as const;
+
+    const invoice = await this.findById(claims.invoiceId);
+    const canDecide =
+      invoice.status === "PENDING" &&
+      (await this.permissionCache.findUserIdsWithPermission("invoices:approve")).includes(
+        actingUserId,
+      );
+
+    const submitter = invoice.createdById
+      ? await this.prisma.user.findUnique({
+          where: { id: invoice.createdById },
+          select: { firstName: true, lastName: true },
+        })
+      : null;
+
+    return {
+      state: canDecide ? ("actionable" as const) : ("decided" as const),
+      // Addressed to someone else: shown, but flagged, so the page can say so
+      // rather than pretending the link was theirs.
+      addressedToSomeoneElse: claims.userId !== actingUserId,
+      invoice: {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        status: invoice.status,
+        amount: invoice.amount.toString(),
+        workshopName: invoice.workshopName,
+        rejectionReason: invoice.rejectionReason,
+        createdAt: invoice.createdAt,
+        submittedBy: fullName(submitter) ?? null,
+        vehicle: invoice.vehicle,
+      },
+    };
+  }
+
+  /**
+   * Applies a decision made from an email link.
+   *
+   * Routes through the same accept/reject the in-app buttons use, so the
+   * conditional status guard, the audit trail and the mechanic's notification
+   * are identical no matter where the click came from. The token is consumed
+   * first: consuming is itself a conditional update, so a double-submitted form
+   * is stopped before any invoice is touched.
+   */
+  async decideFromToken(
+    token: string,
+    dto: { decision: "approve" | "reject"; rejectionReason?: string },
+    actingUserId: string,
+  ) {
+    const claims = await this.tokens.peek(token);
+    if (typeof claims === "string") {
+      throw new ConflictException(
+        claims === "expired"
+          ? "انتهت صلاحية هذا الرابط. افتح الفاتورة من داخل النظام."
+          : "هذا الرابط استُخدم من قبل أو لم يعد صالحًا.",
+      );
+    }
+
+    if (!(await this.tokens.consume(token))) {
+      throw new ConflictException("هذا الرابط استُخدم من قبل.");
+    }
+
+    const decided =
+      dto.decision === "approve"
+        ? await this.accept(claims.invoiceId, {} as AcceptInvoiceInput, actingUserId)
+        : await this.reject(
+            claims.invoiceId,
+            { rejectionReason: dto.rejectionReason } as RejectInvoiceInput,
+            actingUserId,
+          );
+
+    // Every other manager's link for this invoice is now stale.
+    await this.tokens.revokeForInvoice(claims.invoiceId);
+    return decided;
   }
 
   async remove(id: string, actingUserId: string): Promise<void> {

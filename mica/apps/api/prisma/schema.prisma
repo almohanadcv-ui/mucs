@@ -412,6 +412,32 @@ model Invoice {
   @@map("invoices")
 }
 
+/// One-time link handed to an approver in an email so the decision page knows
+/// which invoice, and for whom, without putting either in a guessable URL.
+///
+/// The token is never a credential on its own: the page still requires a
+/// signed-in user holding the right permission. It scopes an already-
+/// authenticated session to one invoice, so a leaked link is not an approval.
+model InvoiceActionToken {
+  id String @id @default(cuid())
+
+  /// SHA-256 of the token. The plaintext exists only in the email that carried
+  /// it, so a database leak yields nothing usable.
+  tokenHash String @unique
+
+  invoiceId String
+  /// The approver the email was addressed to.
+  userId    String
+
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([invoiceId])
+  @@index([expiresAt])
+  @@map("invoice_action_tokens")
+}
+
 enum DriverStatus {
   ACTIVE
   SUSPENDED

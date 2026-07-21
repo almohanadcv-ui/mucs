@@ -16,7 +16,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated) {
-      router.replace("/login");
+      // Carries the destination through login, so an emailed invoice link
+      // survives the detour instead of dropping the manager on the dashboard.
+      const here = window.location.pathname + window.location.search;
+      router.replace(`/login?next=${encodeURIComponent(here)}`);
       return;
     }
     // Drivers get their own stripped-down portal — the admin shell (and its
