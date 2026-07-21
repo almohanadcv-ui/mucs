@@ -2,6 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createTransport, type Transporter } from "nodemailer";
 import { SettingsService } from "@/modules/settings/settings.service";
+import {
+  MAB_LOGO_BASE64,
+  MAB_LOGO_CID,
+} from "@/modules/notifications/templates/mab-logo";
 
 export interface SendMailOptions {
   to: string;
@@ -70,6 +74,20 @@ export class MailerService {
       subject: options.subject,
       html: options.html,
       text: options.text,
+      // Attached inline rather than linked. Outlook and most clients block
+      // remote images until the reader asks for them, so a hosted logo would
+      // show as a broken box on first open — on the message asking for a
+      // decision. `contentDisposition: inline` keeps it out of the paperclip.
+      attachments: options.html.includes(`cid:${MAB_LOGO_CID}`)
+        ? [
+            {
+              filename: "mab-logo.png",
+              content: Buffer.from(MAB_LOGO_BASE64, "base64"),
+              cid: MAB_LOGO_CID,
+              contentDisposition: "inline" as const,
+            },
+          ]
+        : undefined,
     });
     this.logger.log(`Email sent to ${options.to}: ${options.subject}`);
     return { messageId: info?.messageId };

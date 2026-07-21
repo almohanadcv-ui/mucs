@@ -42,6 +42,22 @@ describe("invoice email templates", () => {
       expect(mail.html).toContain('dir="rtl"');
     });
 
+    it("references the logo by CID, never as a remote URL", () => {
+      // A hosted image is blocked until the reader clicks "download pictures",
+      // so the branding would be a broken box on first open.
+      expect(mail.html).toContain('src="cid:mab-logo"');
+      expect(mail.html).not.toMatch(/<img[^>]+src="https?:/);
+      expect(mail.html).not.toMatch(/<img[^>]+src="data:/);
+    });
+
+    it("carries an alt text so the header reads with images off", () => {
+      expect(mail.html).toMatch(/<img[^>]+alt="MAB"/);
+    });
+
+    it("uses the brand blue taken from the wordmark", () => {
+      expect(mail.html).toContain("#1b76bd");
+    });
+
     it("shows the real invoice number, not a slice of the internal id", () => {
       expect(mail.html).toContain("INV-2026-000042");
       expect(mail.html).not.toContain("INVOICE1");
@@ -106,8 +122,15 @@ describe("invoice email templates", () => {
         rejectionReason: '<img src=x onerror="alert(1)">',
       });
 
-      expect(mail.html).not.toContain("<img");
-      expect(mail.html).toContain("&lt;img");
+      // The layout has a legitimate <img> for the logo, so the assertion is on
+      // the payload: the only <img> tag in the document is the logo's, and the
+      // injected one survives as inert text. ("onerror=" still appears in that
+      // text — the equals sign needs no escaping — which is exactly why the
+      // check is on the tag delimiters, not on the attribute name.)
+      const imgTags = mail.html.match(/<img[^>]*>/g) ?? [];
+      expect(imgTags).toHaveLength(1);
+      expect(imgTags[0]).toContain("cid:mab-logo");
+      expect(mail.html).toContain("&lt;img src=x");
     });
   });
 });

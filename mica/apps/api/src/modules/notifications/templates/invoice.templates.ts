@@ -69,32 +69,36 @@ function render(content: EmailContent, subjectText: string): RenderedEmail {
  */
 export function invoiceSubmittedEmail(data: InvoiceEmailData): RenderedEmail {
   const rows = [
+    // The amount leads: it is what the decision turns on.
+    { label: "المبلغ", value: money(data.amount), emphasis: true },
     { label: "رقم الفاتورة", value: data.invoiceNumber },
-    { label: "المركبة", value: data.vehicleName ? `${data.plateNumber} — ${data.vehicleName}` : data.plateNumber },
-    { label: "المبلغ", value: money(data.amount) },
+    {
+      label: "المركبة",
+      value: data.vehicleName ? `${data.plateNumber} — ${data.vehicleName}` : data.plateNumber,
+    },
     ...(data.workshopName ? [{ label: "الورشة", value: data.workshopName }] : []),
     ...(data.submittedBy ? [{ label: "رفعها", value: data.submittedBy }] : []),
     { label: "تاريخ الرفع", value: date(data.submittedAt) },
   ];
 
-  // Both buttons lead to the same confirmation page, differing only in what it
-  // opens preselected. Neither carries the decision itself.
   const decisionUrl = data.actionToken
     ? `${data.publicUrl}/invoices/action/${data.actionToken}`
     : `${data.publicUrl}/invoices`;
 
   return render(
     {
-      heading: "فاتورة جديدة بانتظار الاعتماد",
-      intro: "رُفعت فاتورة صيانة وتحتاج قرارك بالاعتماد أو الرفض.",
+      accent: "action",
+      eyebrow: "بانتظار قرارك",
+      heading: "فاتورة صيانة جديدة",
+      intro: "رُفعت فاتورة وتحتاج اعتمادك أو رفضك قبل الصرف.",
       rows,
       buttons: data.actionToken
         ? [
-            { label: "اعتماد", url: `${decisionUrl}?intent=approve`, primary: true },
-            { label: "رفض", url: `${decisionUrl}?intent=reject` },
+            { label: "اعتماد", url: `${decisionUrl}?intent=approve`, kind: "primary" },
+            { label: "رفض", url: `${decisionUrl}?intent=reject`, kind: "danger" },
             { label: "عرض التفاصيل", url: decisionUrl },
           ]
-        : [{ label: "مراجعة الفاتورة", url: decisionUrl, primary: true }],
+        : [{ label: "مراجعة الفاتورة", url: decisionUrl, kind: "primary" }],
       footnote:
         "الضغط يفتح صفحة تأكيد داخل النظام — لا يُعتمد ولا يُرفض شيء بمجرد فتح الرابط. الرابط صالح سبعة أيام ولمرة واحدة.",
     },
@@ -115,26 +119,31 @@ export function invoiceDecidedEmail(
   const heading = accepted ? "تم اعتماد فاتورتك" : "تم رفض فاتورتك";
 
   const rows = [
+    { label: "المبلغ", value: money(data.amount), emphasis: true },
     { label: "رقم الفاتورة", value: data.invoiceNumber },
     { label: "المركبة", value: data.plateNumber },
-    { label: "المبلغ", value: money(data.amount) },
     ...(data.decidedBy ? [{ label: accepted ? "اعتمدها" : "رفضها", value: data.decidedBy }] : []),
     { label: "وقت القرار", value: date(data.decidedAt) },
-    // The reason is the whole point of a rejection email, so it is a field of
-    // its own rather than a sentence buried in the intro.
-    ...(!accepted && data.rejectionReason
-      ? [{ label: "سبب الرفض", value: data.rejectionReason }]
-      : []),
   ];
 
   return render(
     {
+      accent: accepted ? "positive" : "negative",
+      eyebrow: accepted ? "معتمدة" : "مرفوضة",
       heading,
       intro: accepted
         ? "اعتُمدت الفاتورة ولا يلزمك أي إجراء."
         : "رُفضت الفاتورة. راجع السبب وأعد الرفع بعد التصحيح.",
       rows,
-      buttons: [{ label: "عرض الفاتورة", url: `${data.publicUrl}/invoices`, primary: true }],
+      // The reason is the whole point of a rejection email, so it gets its own
+      // block rather than a line buried among the details.
+      callout:
+        !accepted && data.rejectionReason
+          ? { label: "سبب الرفض", body: data.rejectionReason }
+          : undefined,
+      buttons: [
+        { label: "عرض الفاتورة", url: `${data.publicUrl}/invoices`, kind: "primary" },
+      ],
     },
     heading,
   );
