@@ -8,7 +8,7 @@ export interface RenderedEmail {
 
 export interface InvoiceEmailData {
   invoiceId: string;
-  invoiceNumber?: string | null;
+  invoiceNumber: string;
   amount: string;
   plateNumber: string;
   vehicleName?: string | null;
@@ -18,14 +18,37 @@ export interface InvoiceEmailData {
   publicUrl: string;
 }
 
-const money = (amount: string) => `${amount} ر.س`;
+/**
+ * Latin digits throughout, and a fixed Gregorian calendar.
+ *
+ * `ar-SA` alone would render Eastern Arabic numerals and, on some ICU builds,
+ * the Hijri calendar — so the same invoice could show a different date
+ * depending on where the API happens to run. Pinning the numbering system and
+ * the calendar makes the output identical everywhere and keeps amounts and
+ * dates in the same digits, which is what makes a column of them scannable.
+ */
+const LATIN = "ar-SA-u-nu-latn-ca-gregory";
 
-const date = (d: Date) =>
-  new Intl.DateTimeFormat("ar-SA", {
-    dateStyle: "medium",
-    timeStyle: "short",
+const money = (amount: string) =>
+  `${new Intl.NumberFormat(LATIN, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+    Number(amount.replace(/,/g, "")),
+  )} ر.س`;
+
+const date = (d: Date) => {
+  const parts = new Intl.DateTimeFormat(LATIN, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
     timeZone: "Asia/Riyadh",
-  }).format(d);
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  // Assembled by hand rather than trusting the locale's own ordering, which
+  // inserts RTL marks that turn "21/07/2026" into a jumble in a mail client.
+  return `${get("day")}/${get("month")}/${get("year")} — ${get("hour")}:${get("minute")}`;
+};
 
 function render(content: EmailContent, subjectText: string): RenderedEmail {
   return {
@@ -44,7 +67,7 @@ function render(content: EmailContent, subjectText: string): RenderedEmail {
  */
 export function invoiceSubmittedEmail(data: InvoiceEmailData): RenderedEmail {
   const rows = [
-    { label: "رقم الفاتورة", value: data.invoiceNumber || data.invoiceId.slice(-8).toUpperCase() },
+    { label: "رقم الفاتورة", value: data.invoiceNumber },
     { label: "المركبة", value: data.vehicleName ? `${data.plateNumber} — ${data.vehicleName}` : data.plateNumber },
     { label: "المبلغ", value: money(data.amount) },
     ...(data.workshopName ? [{ label: "الورشة", value: data.workshopName }] : []),
@@ -77,7 +100,7 @@ export function invoiceDecidedEmail(
   const heading = accepted ? "تم اعتماد فاتورتك" : "تم رفض فاتورتك";
 
   const rows = [
-    { label: "رقم الفاتورة", value: data.invoiceNumber || data.invoiceId.slice(-8).toUpperCase() },
+    { label: "رقم الفاتورة", value: data.invoiceNumber },
     { label: "المركبة", value: data.plateNumber },
     { label: "المبلغ", value: money(data.amount) },
     ...(data.decidedBy ? [{ label: accepted ? "اعتمدها" : "رفضها", value: data.decidedBy }] : []),

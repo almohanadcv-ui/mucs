@@ -377,7 +377,12 @@ enum InvoiceStatus {
 /// (PDF/PNG/JPG) is stored via the storage provider and served through a
 /// permission-gated endpoint. Management accepts or rejects it.
 model Invoice {
-  id           String        @id @default(cuid())
+  id String @id @default(cuid())
+
+  /// Human-facing reference, INV-{year}-{000001}. Managers and mechanics quote
+  /// this to each other; the cuid is an internal handle nobody can read aloud.
+  invoiceNumber String @unique
+
   vehicleId    String
   amount       Decimal       @db.Decimal(12, 2)
   description  String?

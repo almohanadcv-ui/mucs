@@ -84,20 +84,17 @@ export class InvoicesService {
     const fileKey = `invoices/${dto.vehicleId}/${randomUUID()}.${ext}`;
     await this.storage.save(file.buffer, { key: fileKey, mimeType: file.mimetype });
 
-    const invoice = await this.prisma.invoice.create({
-      data: {
-        vehicleId: dto.vehicleId,
-        amount: dto.amount,
-        description: dto.description,
-        workshopName: dto.workshopName,
-        invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : undefined,
-        fileKey,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-        sizeBytes: file.size,
-        createdById: actingUserId,
-      },
-      include: { vehicle: { select: { id: true, plateNumber: true, name: true } } },
+    const invoice = await this.createNumbered({
+      vehicleId: dto.vehicleId,
+      amount: dto.amount,
+      description: dto.description,
+      workshopName: dto.workshopName,
+      invoiceDate: dto.invoiceDate ? new Date(dto.invoiceDate) : undefined,
+      fileKey,
+      fileName: file.originalname,
+      mimeType: file.mimetype,
+      sizeBytes: file.size,
+      createdById: actingUserId,
     });
 
     // Fan out to everyone who can approve invoices (Management + Technical Support).
@@ -108,6 +105,7 @@ export class InvoicesService {
     });
     const email = invoiceSubmittedEmail({
       invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
       amount: invoice.amount.toString(),
       plateNumber: vehicle.plateNumber,
       vehicleName: vehicle.name,
@@ -137,6 +135,47 @@ export class InvoicesService {
     );
 
     return invoice;
+  }
+
+  /**
+   * Creates the invoice with the next number for the current year.
+   *
+   * The number is derived by reading the highest one issued, which two
+   * simultaneous uploads can read identically. Rather than serialise every
+   * upload behind a lock, this lets the unique index reject the loser and
+   * retries — collisions are rare, and a retry costs less than the contention
+   * a lock would add on the common path. Soft-deleted invoices still hold
+   * their numbers, so a deletion never causes one to be reused.
+   */
+  private async createNumbered(data: Omit<Prisma.InvoiceUncheckedCreateInput, "invoiceNumber">) {
+    const include = { vehicle: { select: { id: true, plateNumber: true, name: true } } };
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const invoiceNumber = await this.nextInvoiceNumber();
+      try {
+        return await this.prisma.invoice.create({ data: { ...data, invoiceNumber }, include });
+      } catch (e) {
+        const collided =
+          e instanceof Prisma.PrismaClientKnownRequestError &&
+          e.code === "P2002" &&
+          (e.meta?.target as string[] | undefined)?.includes("invoiceNumber");
+        if (!collided) throw e;
+        this.logger.warn(`Invoice number ${invoiceNumber} was taken; retrying`);
+      }
+    }
+    throw new ConflictException("تعذّر إصدار رقم فاتورة، حاول مرة أخرى");
+  }
+
+  private async nextInvoiceNumber(): Promise<string> {
+    const prefix = `INV-${new Date().getFullYear()}-`;
+    // Zero-padded to a fixed width, so lexical ordering is numeric ordering.
+    const last = await this.prisma.invoice.findFirst({
+      where: { invoiceNumber: { startsWith: prefix } },
+      orderBy: { invoiceNumber: "desc" },
+      select: { invoiceNumber: true },
+    });
+    const previous = last ? Number(last.invoiceNumber.slice(prefix.length)) : 0;
+    return prefix + String(previous + 1).padStart(6, "0");
   }
 
   async accept(id: string, dto: AcceptInvoiceInput, actingUserId: string) {
@@ -231,6 +270,7 @@ export class InvoicesService {
   private async notifyCreator(
     invoice: {
       id: string;
+      invoiceNumber: string;
       createdById: string | null;
       decidedById: string | null;
       rejectionReason: string | null;
@@ -256,6 +296,7 @@ export class InvoicesService {
 
     const email = invoiceDecidedEmail({
       invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
       amount: invoice.amount.toString(),
       plateNumber: invoice.vehicle.plateNumber,
       vehicleName: invoice.vehicle.name,

@@ -2,6 +2,7 @@ import { invoiceDecidedEmail, invoiceSubmittedEmail } from "./invoice.templates"
 
 const base = {
   invoiceId: "clx000000000000invoice1",
+  invoiceNumber: "INV-2026-000042",
   amount: "1500.00",
   plateNumber: "ABC-1234",
   vehicleName: "تويوتا هايلكس",
@@ -18,7 +19,7 @@ describe("invoice email templates", () => {
     });
 
     it("carries the details a manager needs to decide", () => {
-      for (const detail of ["ABC-1234", "1500.00", "ورشة النخبة", "أحمد"]) {
+      for (const detail of ["ABC-1234", "1,500.00", "ورشة النخبة", "أحمد"]) {
         expect(mail.html).toContain(detail);
         expect(mail.text).toContain(detail);
       }
@@ -39,6 +40,28 @@ describe("invoice email templates", () => {
 
     it("renders right-to-left", () => {
       expect(mail.html).toContain('dir="rtl"');
+    });
+
+    it("shows the real invoice number, not a slice of the internal id", () => {
+      expect(mail.html).toContain("INV-2026-000042");
+      expect(mail.html).not.toContain("INVOICE1");
+    });
+
+    it("uses Latin digits everywhere", () => {
+      // Eastern Arabic numerals in the date beside Latin ones in the amount
+      // made a column of invoices unreadable.
+      expect(mail.text).not.toMatch(/[٠-٩]/);
+      expect(mail.html).not.toMatch(/[٠-٩]/);
+    });
+
+    it("writes the date in a fixed, orderly form", () => {
+      // 09:00 UTC is noon in Riyadh.
+      expect(mail.text).toContain("21/07/2026 — 12:00");
+    });
+
+    it("formats the amount with thousands separators", () => {
+      const big = invoiceSubmittedEmail({ ...base, amount: "4850" });
+      expect(big.text).toContain("4,850.00 ر.س");
     });
 
     it("omits optional fields instead of printing empty rows", () => {

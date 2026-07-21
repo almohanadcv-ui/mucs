@@ -14,6 +14,7 @@ describe("InvoicesService decisions", () => {
   const invoice = {
     id: "inv-1",
     status: "PENDING",
+    invoiceNumber: "INV-2026-000042",
     createdById: "mechanic-1",
     decidedById: "manager-1",
     decidedAt: new Date("2026-07-21T09:00:00Z"),
