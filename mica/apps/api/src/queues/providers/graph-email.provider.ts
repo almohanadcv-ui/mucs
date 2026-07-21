@@ -102,6 +102,15 @@ export class GraphEmailProvider implements EmailProvider {
       message: {
         subject: message.subject,
         body: { contentType: "HTML", content: message.html },
+        // Same address, chosen display name. A recipient scanning their inbox
+        // reads the sender's name long before the address, so it should say
+        // what the mail is from rather than whatever the mailbox was named.
+        from: {
+          emailAddress: {
+            address: from,
+            name: this.config.get<string>("mail.graph.fromName") ?? "MICA Notifications",
+          },
+        },
         toRecipients: [{ emailAddress: { address: message.to } }],
         attachments: (message.attachments ?? []).map((a) => ({
           "@odata.type": "#microsoft.graph.fileAttachment",

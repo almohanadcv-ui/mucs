@@ -48,6 +48,24 @@ describe("GraphEmailProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("sets the display name recipients actually read", async () => {
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce(ok({ access_token: "tok", expires_in: 3600 }))
+      .mockResolvedValueOnce(ok());
+
+    const provider = build({ "mail.graph.fromName": "MAB IT" });
+    await provider.send(message);
+
+    const body = JSON.parse(
+      ((global.fetch as jest.Mock).mock.calls[1][1] as { body: string }).body,
+    );
+    expect(body.message.from.emailAddress.name).toBe("MAB IT");
+    // The address stays the sending mailbox: changing it would need SendAs
+    // rights on another mailbox and would fail.
+    expect(body.message.from.emailAddress.address).toBe("no-reply@example.com");
+  });
+
   it("does not keep a copy in the sending mailbox", async () => {
     jest
       .spyOn(global, "fetch")
