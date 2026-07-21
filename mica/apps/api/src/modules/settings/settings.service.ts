@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { CompanySettingsInput, SmtpSettingsInput, ThemeSettingsInput } from "@mica-mab/shared-types";
 import { PrismaService } from "@/database/prisma/prisma.service";
+import { decryptSecret, encryptSecret } from "@/common/crypto/secret-box";
 
 export const SETTING_KEYS = {
   COMPANY: "company.profile",
@@ -68,8 +69,15 @@ export class SettingsService {
     return { ...rest, hasPassword: Boolean(password) };
   }
 
-  getSmtpWithSecret(): Promise<SmtpSettingsInput | null> {
-    return this.get<SmtpSettingsInput | null>(SETTING_KEYS.SMTP, null);
+  /**
+   * Returns the SMTP settings with the password decrypted for use. Rows written
+   * before encryption existed are returned as-is and are re-encrypted the next
+   * time the settings are saved, so no backfill migration is needed.
+   */
+  async getSmtpWithSecret(): Promise<SmtpSettingsInput | null> {
+    const stored = await this.get<SmtpSettingsInput | null>(SETTING_KEYS.SMTP, null);
+    if (!stored?.password) return stored;
+    return { ...stored, password: decryptSecret(stored.password) };
   }
 
   async setSmtp(dto: SmtpSettingsInput, updatedById: string): Promise<void> {
@@ -79,7 +87,14 @@ export class SettingsService {
       const existing = await this.getSmtpWithSecret();
       password = existing?.password ?? "";
     }
-    await this.set(SETTING_KEYS.SMTP, { ...dto, password }, "company", updatedById);
+    // Encrypted at rest: this secret ends up in every database backup and
+    // pg_dump, and it is the credential for the company's real mailbox.
+    await this.set(
+      SETTING_KEYS.SMTP,
+      { ...dto, password: encryptSecret(password) },
+      "company",
+      updatedById,
+    );
   }
 
   getTheme(): Promise<ThemeSettingsInput> {
