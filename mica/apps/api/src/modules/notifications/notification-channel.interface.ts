@@ -15,6 +15,12 @@ export interface NotificationPayload {
   idempotencyKey?: string;
   /** Groups the notifications produced by one business action. */
   correlationId?: string;
+  /**
+   * Pre-rendered email. Supplied by callers that have a template; without it
+   * the channel falls back to the escaped `body`, so the five existing callers
+   * keep working untouched.
+   */
+  email?: { subject: string; html: string; text: string };
 }
 
 /** Every channel adapter (in-app, email, SMS, WhatsApp, push) implements this. */

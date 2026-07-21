@@ -4,8 +4,10 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import type {
   AcceptInvoiceInput,
@@ -16,6 +18,10 @@ import { PrismaService } from "@/database/prisma/prisma.service";
 import { STORAGE_PROVIDER, type IStorageProvider } from "@/storage/storage-provider.interface";
 import { PermissionCacheService } from "@/common/permission-cache/permission-cache.service";
 import { NotificationsService } from "@/modules/notifications/notifications.service";
+import {
+  invoiceDecidedEmail,
+  invoiceSubmittedEmail,
+} from "@/modules/notifications/templates/invoice.templates";
 
 const EXT_BY_MIME: Record<string, string> = {
   "application/pdf": "pdf",
@@ -23,14 +29,27 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
 };
 
+/** Undefined rather than a stray space when the user row is missing. */
+function fullName(user: { firstName: string; lastName: string } | null): string | undefined {
+  return user ? `${user.firstName} ${user.lastName}`.trim() : undefined;
+}
+
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(STORAGE_PROVIDER) private readonly storage: IStorageProvider,
     private readonly permissionCache: PermissionCacheService,
     private readonly notifications: NotificationsService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Base address for links that travel to an inbox. */
+  private get publicUrl(): string {
+    return this.config.get<string>("app.publicUrl") ?? "";
+  }
 
   list(filters: { vehicleId?: string; status?: string }) {
     return this.prisma.invoice.findMany({
@@ -83,6 +102,21 @@ export class InvoicesService {
 
     // Fan out to everyone who can approve invoices (Management + Technical Support).
     const approverIds = await this.permissionCache.findUserIdsWithPermission("invoices:approve");
+    const submitter = await this.prisma.user.findUnique({
+      where: { id: actingUserId },
+      select: { firstName: true, lastName: true },
+    });
+    const email = invoiceSubmittedEmail({
+      invoiceId: invoice.id,
+      amount: invoice.amount.toString(),
+      plateNumber: vehicle.plateNumber,
+      vehicleName: vehicle.name,
+      workshopName: invoice.workshopName,
+      submittedBy: fullName(submitter),
+      submittedAt: invoice.createdAt,
+      publicUrl: this.publicUrl,
+    });
+
     await Promise.all(
       approverIds
         .filter((uid) => uid !== actingUserId)
@@ -92,6 +126,7 @@ export class InvoicesService {
             type: "invoice.submitted",
             title: "فاتورة جديدة بانتظار الاعتماد",
             body: `فاتورة بقيمة ${invoice.amount} ر.س للمركبة ${vehicle.plateNumber} تحتاج مراجعة.`,
+            email,
             payload: { invoiceId: invoice.id, vehicleId: vehicle.id },
             // The invoice id alone is enough: an invoice is submitted once.
             idempotencyKey: `MICA_INVOICE_SUBMITTED:${invoice.id}`,
@@ -197,15 +232,44 @@ export class InvoicesService {
     invoice: {
       id: string;
       createdById: string | null;
+      decidedById: string | null;
       rejectionReason: string | null;
       decidedAt: Date | null;
-      vehicle: { plateNumber: string };
+      amount: Prisma.Decimal;
+      vehicle: { plateNumber: string; name: string | null };
     },
     outcome: "accepted" | "rejected",
   ): Promise<void> {
-    if (!invoice.createdById) return;
+    if (!invoice.createdById) {
+      // Worth seeing: an invoice with no recorded uploader means nobody is
+      // told the outcome, and that is a data problem, not a quiet no-op.
+      this.logger.warn(`Invoice ${invoice.id} has no createdById; skipping decision email`);
+      return;
+    }
+
+    const decider = invoice.decidedById
+      ? await this.prisma.user.findUnique({
+          where: { id: invoice.decidedById },
+          select: { firstName: true, lastName: true },
+        })
+      : null;
+
+    const email = invoiceDecidedEmail({
+      invoiceId: invoice.id,
+      amount: invoice.amount.toString(),
+      plateNumber: invoice.vehicle.plateNumber,
+      vehicleName: invoice.vehicle.name,
+      submittedAt: invoice.decidedAt ?? new Date(),
+      publicUrl: this.publicUrl,
+      outcome,
+      decidedBy: fullName(decider),
+      decidedAt: invoice.decidedAt ?? new Date(),
+      rejectionReason: invoice.rejectionReason,
+    });
+
     await this.notifications.notify({
       recipientId: invoice.createdById,
+      email,
       // decidedAt is part of the key so a later, legitimate second decision
       // (after a restore, say) is announced rather than swallowed as a
       // duplicate — while a retry of the same decision is not.

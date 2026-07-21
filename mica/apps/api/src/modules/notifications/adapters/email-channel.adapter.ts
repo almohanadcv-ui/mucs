@@ -62,10 +62,11 @@ export class EmailChannelAdapter implements NotificationChannel {
     await this.emailQueue.add("send", {
       notificationId: row.id,
       to: user.email,
-      subject: notification.title,
-      // Escaped: the body carries user-typed text (rejection reasons, workshop
-      // names) and is interpolated straight into HTML.
-      html: `<p dir="rtl">${escapeHtml(notification.body)}</p>`,
+      subject: notification.email?.subject ?? notification.title,
+      // Escaped in the fallback too: the body carries user-typed text
+      // (rejection reasons, workshop names) straight into HTML.
+      html: notification.email?.html ?? `<p dir="rtl">${escapeHtml(notification.body)}</p>`,
+      text: notification.email?.text ?? notification.body,
     });
   }
 }

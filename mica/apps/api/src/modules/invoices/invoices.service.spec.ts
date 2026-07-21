@@ -15,7 +15,12 @@ describe("InvoicesService decisions", () => {
     id: "inv-1",
     status: "PENDING",
     createdById: "mechanic-1",
+    decidedById: "manager-1",
+    decidedAt: new Date("2026-07-21T09:00:00Z"),
     rejectionReason: null,
+    // Prisma returns a Decimal; a string satisfies the .toString() the
+    // template calls without dragging the Decimal runtime into a unit test.
+    amount: "1500.00",
     vehicle: { id: "veh-1", plateNumber: "ABC-1234", name: null },
   };
 
@@ -30,13 +35,16 @@ describe("InvoicesService decisions", () => {
         })),
         findFirst: jest.fn(async () => found),
       },
+      user: { findUnique: jest.fn(async () => ({ firstName: "سالم", lastName: "المدير" })) },
     };
     const notifications = { notify: jest.fn(async () => undefined) };
+    const config = { get: jest.fn(() => "https://mica.example.com") };
     const service = new InvoicesService(
       prisma as never,
       {} as never,
       {} as never,
       notifications as never,
+      config as never,
     );
     return { service, prisma, notifications };
   }
