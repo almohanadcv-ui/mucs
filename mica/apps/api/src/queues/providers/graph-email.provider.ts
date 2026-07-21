@@ -79,6 +79,22 @@ export class GraphEmailProvider implements EmailProvider {
   }
 
   async send(message: EmailMessage): Promise<EmailSendResult> {
+    try {
+      return await this.attempt(message);
+    } catch (e) {
+      // A cached token predates any permission change, so the first send after
+      // an admin grants Mail.Send is refused with a token that never carried
+      // the role. Dropping it and retrying once turns a "restart the server"
+      // problem into a transparent recovery. Only 403 is retried: 401 means
+      // the credentials themselves are wrong, and retrying would just repeat.
+      if (!(e instanceof Error) || !e.message.includes("(403)")) throw e;
+      this.logger.warn("Graph refused the cached token; refreshing and retrying once");
+      this.token = null;
+      return this.attempt(message);
+    }
+  }
+
+  private async attempt(message: EmailMessage): Promise<EmailSendResult> {
     const from = this.cfg("from");
     const token = await this.accessToken();
 

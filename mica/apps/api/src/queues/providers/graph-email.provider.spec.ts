@@ -105,16 +105,57 @@ describe("GraphEmailProvider", () => {
     await expect(build().send(message)).rejects.toThrow(/Invalid client secret/);
   });
 
+  it("refreshes a stale token once when the send is refused", async () => {
+    // The token was issued before an admin granted Mail.Send, so it carries no
+    // such role. Without this, the first send after a permission change fails
+    // until someone restarts the server.
+    const fetchMock = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce(ok({ access_token: "stale", expires_in: 3600 }))
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => "denied" } as Response)
+      .mockResolvedValueOnce(ok({ access_token: "fresh", expires_in: 3600 }))
+      .mockResolvedValueOnce(ok());
+
+    await expect(build().send(message)).resolves.toEqual({});
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const [, sendOptions] = fetchMock.mock.calls[3] as [string, { headers: Record<string, string> }];
+    expect(sendOptions.headers.Authorization).toBe("Bearer fresh");
+  });
+
+  it("gives up after one retry rather than looping", async () => {
+    const fetchMock = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce(ok({ access_token: "t1", expires_in: 3600 }))
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => "denied" } as Response)
+      .mockResolvedValueOnce(ok({ access_token: "t2", expires_in: 3600 }))
+      .mockResolvedValueOnce({ ok: false, status: 403, text: async () => "denied" } as Response);
+
+    await expect(build().send(message)).rejects.toThrow(/403/);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not retry a 401, which means the credentials are wrong", async () => {
+    const fetchMock = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValueOnce(ok({ access_token: "t", expires_in: 3600 }))
+      .mockResolvedValueOnce({ ok: false, status: 401, text: async () => "bad" } as Response);
+
+    await expect(build().send(message)).rejects.toThrow(/401/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("surfaces a rejected send", async () => {
     jest
       .spyOn(global, "fetch")
       .mockResolvedValueOnce(ok({ access_token: "tok", expires_in: 3600 }))
       .mockResolvedValueOnce({
         ok: false,
-        status: 403,
-        text: async () => "ErrorAccessDenied",
+        status: 400,
+        text: async () => "ErrorInvalidRecipients",
       } as Response);
 
-    await expect(build().send(message)).rejects.toThrow(/403.*ErrorAccessDenied/);
+    // 400 is the message's fault, not the token's, so it fails straight away.
+    await expect(build().send(message)).rejects.toThrow(/400.*ErrorInvalidRecipients/);
   });
 });
