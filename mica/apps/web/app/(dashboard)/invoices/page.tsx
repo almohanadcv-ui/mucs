@@ -22,6 +22,7 @@ import { usePermission } from "@/lib/auth/use-permission";
 import { useLocale } from "@/lib/i18n/locale-context";
 import { UploadInvoiceDialog } from "@/features/invoices/upload-invoice-dialog";
 import { RejectInvoiceDialog } from "@/features/invoices/reject-invoice-dialog";
+import { InvoiceDeleteButton } from "@/features/invoices/invoice-delete-button";
 import { acceptInvoice, listInvoices, openInvoiceFile, type InvoiceItem } from "@/features/invoices/api";
 
 const STATUS_VARIANT: Record<InvoiceStatusValue, "default" | "secondary" | "destructive" | "outline"> = {
@@ -34,6 +35,7 @@ export default function InvoicesPage() {
   const canCreate = usePermission("invoices:create");
   const canApprove = usePermission("invoices:approve");
   const canReject = usePermission("invoices:reject");
+  const canDelete = usePermission("invoices:delete");
   const { locale } = useLocale();
   const t = useTranslations("invoices");
   const tc = useTranslations("common");
@@ -159,6 +161,12 @@ export default function InvoicesPage() {
                       >
                         {tc("reject")}
                       </Button>
+                    )}
+                    {canDelete && (
+                      <InvoiceDeleteButton
+                        invoiceId={invoice.id}
+                        label={invoice.vehicle?.plateNumber ?? formatSAR(invoice.amount)}
+                      />
                     )}
                   </div>
                 </TableCell>

@@ -288,6 +288,8 @@
     "subtitle": "Soft-deleted records. Restore anything removed by mistake.",
     "deletedVehicles": "Deleted vehicles",
     "deletedInvoices": "Deleted invoices",
+    "deletedMaintenance": "Deleted maintenance requests",
+    "colRequest": "Request no.",
     "colPlate": "Plate",
     "colVehicle": "Vehicle",
     "colDeleted": "Deleted",
@@ -298,7 +300,10 @@
     "vehicleRestored": "Vehicle restored",
     "vehicleRestoreFailed": "Failed to restore vehicle",
     "invoiceRestored": "Invoice restored",
-    "invoiceRestoreFailed": "Failed to restore invoice"
+    "invoiceRestoreFailed": "Failed to restore invoice",
+    "noMaintenance": "No deleted maintenance requests.",
+    "maintenanceRestored": "Maintenance request restored",
+    "maintenanceRestoreFailed": "Failed to restore maintenance request"
   },
   "statuses": {
     "ACTIVE": "Active",

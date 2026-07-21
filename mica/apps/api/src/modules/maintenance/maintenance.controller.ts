@@ -44,6 +44,19 @@ export class MaintenanceController {
     return this.service.list(query, { branchId, status, vehicleId });
   }
 
+  // Declared before :id so "deleted" isn't captured as an id param.
+  @Get("deleted")
+  @Permissions("maintenance:delete")
+  listDeleted() {
+    return this.service.listDeleted();
+  }
+
+  @Post(":id/restore")
+  @Permissions("maintenance:delete")
+  restore(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.service.restore(id, user.id);
+  }
+
   @Get(":id")
   @Permissions("maintenance:view")
   findById(@Param("id") id: string) {

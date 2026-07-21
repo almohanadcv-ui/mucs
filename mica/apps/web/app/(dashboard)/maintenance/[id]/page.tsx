@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePermission } from "@/lib/auth/use-permission";
+import { MaintenanceDeleteButton } from "@/features/maintenance/maintenance-delete-button";
 import { getMaintenanceHistory, getMaintenanceRequest } from "@/features/maintenance/api";
 import { StatusMoveMenu } from "@/features/maintenance/status-move-menu";
 import { ApprovalsPanel } from "@/features/maintenance/approvals-panel";
@@ -26,6 +27,7 @@ export default function MaintenanceDetailPage() {
   const t = useTranslations("maintenance");
   const canUpload = usePermission("media:create");
   const canDeleteMedia = usePermission("media:delete");
+  const canDelete = usePermission("maintenance:delete");
 
   const { data: request, isLoading } = useQuery({
     queryKey: ["maintenance", id],
@@ -52,8 +54,16 @@ export default function MaintenanceDetailPage() {
           </div>
           <p className="text-muted-foreground">{request.title}</p>
         </div>
-        <div className="w-40">
-          <StatusMoveMenu requestId={request.id} currentStatus={request.status} />
+        <div className="flex items-center gap-2">
+          {canDelete && (
+            <MaintenanceDeleteButton
+              requestId={request.id}
+              requestNumber={request.requestNumber}
+            />
+          )}
+          <div className="w-40">
+            <StatusMoveMenu requestId={request.id} currentStatus={request.status} />
+          </div>
         </div>
       </div>
 

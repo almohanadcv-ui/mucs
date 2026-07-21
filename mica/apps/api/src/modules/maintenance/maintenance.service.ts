@@ -204,15 +204,20 @@ export class MaintenanceService {
   async remove(id: string, actingUserId: string): Promise<void> {
     const request = await this.findById(id);
 
-    // Technical Support may delete a request in any state; everyone else (the
-    // Mechanic) only while it's still a Draft or awaiting approval — once
-    // approved/in-progress it can be edited but not deleted.
-    const isSuperAdmin =
+    // Technical Support and Management may delete a request in any state — they
+    // are the roles that answer for the record, and a request that turns out to
+    // be a duplicate or wrongly filed does not stop being wrong once approved.
+    // The Mechanic may only delete while it is still a Draft or awaiting
+    // approval; after that it can be edited but not removed.
+    const isPrivileged =
       (await this.prisma.userRole.count({
-        where: { userId: actingUserId, role: { name: "Technical Support" } },
+        where: {
+          userId: actingUserId,
+          role: { name: { in: ["Technical Support", "Management"] } },
+        },
       })) > 0;
     const deletableByMechanic = ["DRAFT", "PENDING_APPROVAL"];
-    if (!isSuperAdmin && !deletableByMechanic.includes(request.status)) {
+    if (!isPrivileged && !deletableByMechanic.includes(request.status)) {
       throw new ForbiddenException(
         "لا يمكن حذف الطلب بعد اعتماده أو بدء تنفيذه — يمكنك تعديله فقط",
       );
@@ -221,6 +226,25 @@ export class MaintenanceService {
     await this.prisma.maintenanceRequest.update({
       where: { id },
       data: { deletedAt: new Date(), updatedById: actingUserId },
+    });
+  }
+
+  listDeleted() {
+    return this.prisma.maintenanceRequest.findMany({
+      where: { deletedAt: { not: null } },
+      orderBy: { deletedAt: "desc" },
+      include: { vehicle: { select: { id: true, plateNumber: true, name: true } } },
+    });
+  }
+
+  async restore(id: string, actingUserId: string) {
+    const request = await this.prisma.maintenanceRequest.findUnique({ where: { id } });
+    if (!request || !request.deletedAt) {
+      throw new NotFoundException("Deleted maintenance request not found");
+    }
+    return this.prisma.maintenanceRequest.update({
+      where: { id },
+      data: { deletedAt: null, updatedById: actingUserId },
     });
   }
 

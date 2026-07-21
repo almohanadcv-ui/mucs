@@ -16,8 +16,10 @@ import {
 } from "@/components/ui/table";
 import {
   listDeletedInvoices,
+  listDeletedMaintenance,
   listDeletedVehicles,
   restoreInvoice,
+  restoreMaintenanceRequest,
   restoreVehicle,
 } from "@/features/trash/api";
 
@@ -30,8 +32,84 @@ export default function TrashPage() {
         <p className="text-muted-foreground">{t("subtitle")}</p>
       </div>
       <DeletedVehiclesCard />
+      <DeletedMaintenanceCard />
       <DeletedInvoicesCard />
     </div>
+  );
+}
+
+function DeletedMaintenanceCard() {
+  const t = useTranslations("trash");
+  const tc = useTranslations("common");
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ["trash", "maintenance"],
+    queryFn: listDeletedMaintenance,
+  });
+
+  const mutation = useMutation({
+    mutationFn: restoreMaintenanceRequest,
+    onSuccess: () => {
+      toast.success(t("maintenanceRestored"));
+      queryClient.invalidateQueries({ queryKey: ["trash", "maintenance"] });
+      queryClient.invalidateQueries({ queryKey: ["maintenance"] });
+    },
+    onError: () => toast.error(t("maintenanceRestoreFailed")),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("deletedMaintenance")}</CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="ps-6">{t("colRequest")}</TableHead>
+              <TableHead>{t("colVehicle")}</TableHead>
+              <TableHead>{t("colDeleted")}</TableHead>
+              <TableHead className="text-end pe-6">{t("colAction")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading && (
+              <TableRow>
+                <TableCell colSpan={4} className="px-6">
+                  <Skeleton className="h-6 w-full" />
+                </TableCell>
+              </TableRow>
+            )}
+            {!isLoading && data?.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={4} className="py-6 text-center text-muted-foreground">
+                  {t("noMaintenance")}
+                </TableCell>
+              </TableRow>
+            )}
+            {data?.map((req) => (
+              <TableRow key={req.id}>
+                <TableCell className="ps-6 font-medium">{req.requestNumber}</TableCell>
+                <TableCell>{req.vehicle?.plateNumber ?? "—"}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {req.deletedAt ? new Date(req.deletedAt).toLocaleString() : "—"}
+                </TableCell>
+                <TableCell className="pe-6 text-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={mutation.isPending}
+                    onClick={() => mutation.mutate(req.id)}
+                  >
+                    {tc("restore")}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 

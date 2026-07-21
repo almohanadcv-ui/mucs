@@ -68,6 +68,10 @@ export async function updateMaintenanceRequest(id: string, input: UpdateMaintena
   return data;
 }
 
+export async function deleteMaintenanceRequest(id: string) {
+  await apiClient.delete(`/maintenance/${id}`);
+}
+
 export async function transitionMaintenanceRequest(
   id: string,
   toStatus: MaintenanceStatusValue,

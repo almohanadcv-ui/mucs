@@ -20,6 +20,15 @@ export interface DeletedInvoice {
   vehicle: { id: string; plateNumber: string; name: string | null } | null;
 }
 
+export interface DeletedMaintenanceRequest {
+  id: string;
+  requestNumber: string;
+  title: string;
+  status: string;
+  deletedAt: string | null;
+  vehicle: { id: string; plateNumber: string; name: string | null } | null;
+}
+
 export async function listDeletedVehicles() {
   const { data } = await apiClient.get<DeletedVehicle[]>("/vehicles/deleted");
   return data;
@@ -36,4 +45,13 @@ export async function listDeletedInvoices() {
 
 export async function restoreInvoice(id: string) {
   await apiClient.post(`/invoices/${id}/restore`);
+}
+
+export async function listDeletedMaintenance() {
+  const { data } = await apiClient.get<DeletedMaintenanceRequest[]>("/maintenance/deleted");
+  return data;
+}
+
+export async function restoreMaintenanceRequest(id: string) {
+  await apiClient.post(`/maintenance/${id}/restore`);
 }

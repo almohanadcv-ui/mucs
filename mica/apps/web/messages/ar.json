@@ -288,6 +288,8 @@
     "subtitle": "السجلات المحذوفة. يمكنك استرجاع أي عنصر حُذف بالخطأ.",
     "deletedVehicles": "المركبات المحذوفة",
     "deletedInvoices": "الفواتير المحذوفة",
+    "deletedMaintenance": "طلبات الصيانة المحذوفة",
+    "colRequest": "رقم الطلب",
     "colPlate": "رقم اللوحة",
     "colVehicle": "المركبة",
     "colDeleted": "تاريخ الحذف",
@@ -298,7 +300,10 @@
     "vehicleRestored": "تم استرجاع المركبة",
     "vehicleRestoreFailed": "تعذّر استرجاع المركبة",
     "invoiceRestored": "تم استرجاع الفاتورة",
-    "invoiceRestoreFailed": "تعذّر استرجاع الفاتورة"
+    "invoiceRestoreFailed": "تعذّر استرجاع الفاتورة",
+    "noMaintenance": "لا توجد طلبات صيانة محذوفة.",
+    "maintenanceRestored": "تم استرجاع طلب الصيانة",
+    "maintenanceRestoreFailed": "تعذّر استرجاع طلب الصيانة"
   },
   "statuses": {
     "ACTIVE": "نشط",

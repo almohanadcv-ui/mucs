@@ -42,8 +42,11 @@ const ROLE_BUNDLES: RoleBundle[] = [
       // Approve/reject decisions on maintenance (and invoices once that ships).
       (def.resource === "maintenance" && ["approve", "reject"].includes(def.action)) ||
       (def.resource === "invoices" && ["approve", "reject"].includes(def.action)) ||
-      // Management may remove vehicles (and restore them from trash).
-      (def.resource === "vehicles" && def.action === "delete"),
+      // Management may remove the records it oversees. Every one of these is a
+      // soft delete recoverable from Trash, which is what makes handing the
+      // verb to a non-admin role safe.
+      (["vehicles", "maintenance", "invoices"].includes(def.resource) &&
+        def.action === "delete"),
     scope: PermissionScope.ALL,
   },
   {
@@ -64,7 +67,8 @@ const ROLE_BUNDLES: RoleBundle[] = [
       (def.resource === "media" && ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "maintenance" &&
         ["view", "create", "update", "transition", "comment", "delete"].includes(def.action)) ||
-      (def.resource === "invoices" && ["view", "create", "update"].includes(def.action)) ||
+      (def.resource === "invoices" &&
+        ["view", "create", "update", "delete"].includes(def.action)) ||
       (def.resource === "spare-parts" && ["view", "create", "update"].includes(def.action)) ||
       (def.resource === "appointments" && ["view", "create", "update"].includes(def.action)) ||
       (def.resource === "notifications" && def.action === "view") ||
