@@ -7,6 +7,13 @@ export interface SendMailOptions {
   to: string;
   subject: string;
   html: string;
+  /** Plain-text alternative. Mail that ships HTML only scores worse with spam filters. */
+  text?: string;
+}
+
+export interface SendMailResult {
+  /** Provider's id for the accepted message; the handle for tracing a delivery. */
+  messageId?: string;
 }
 
 /**
@@ -55,14 +62,16 @@ export class MailerService {
     };
   }
 
-  async send(options: SendMailOptions): Promise<void> {
+  async send(options: SendMailOptions): Promise<SendMailResult> {
     const { transporter, from } = await this.buildTransport();
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from,
       to: options.to,
       subject: options.subject,
       html: options.html,
+      text: options.text,
     });
     this.logger.log(`Email sent to ${options.to}: ${options.subject}`);
+    return { messageId: info?.messageId };
   }
 }

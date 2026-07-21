@@ -763,6 +763,10 @@ enum NotificationStatus {
   SENT
   FAILED
   READ
+  PROCESSING // claimed by a worker
+  RETRY // failed, another attempt is scheduled
+  DEAD // retries exhausted, no further attempts
+  SKIPPED // deliberately not delivered (e.g. recipient has no address)
 }
 
 model Notification {
@@ -777,11 +781,34 @@ model Notification {
   readAt      DateTime?
   sentAt      DateTime?
 
+  /// Which product raised this. Single-valued today; present so the module can
+  /// later serve more than MICA without a schema change at that point.
+  systemKey String @default("MICA")
+
+  /// Natural key of the thing being announced, e.g.
+  /// "MICA_INVOICE_ACCEPTED:{invoiceId}:{decidedAt}". Unique, so a retried
+  /// request or a re-queued job cannot produce a second copy. Nullable because
+  /// rows written before this column existed have none, and Postgres treats
+  /// every NULL as distinct under a unique index.
+  idempotencyKey String? @unique
+
+  /// Groups the notifications produced by one business action.
+  correlationId String?
+
+  /// Delivery bookkeeping. Kept on the row rather than only in the queue so a
+  /// failure can be diagnosed from the database instead of Redis internals.
+  attempts          Int       @default(0)
+  lastError         String?
+  providerMessageId String?
+  nextAttemptAt     DateTime?
+  failedAt          DateTime?
+
   createdAt DateTime @default(now())
 
   recipient User @relation(fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@index([recipientId, status, createdAt])
+  @@index([status, nextAttemptAt])
   @@map("notifications")
 }
 

@@ -93,6 +93,9 @@ export class InvoicesService {
             title: "فاتورة جديدة بانتظار الاعتماد",
             body: `فاتورة بقيمة ${invoice.amount} ر.س للمركبة ${vehicle.plateNumber} تحتاج مراجعة.`,
             payload: { invoiceId: invoice.id, vehicleId: vehicle.id },
+            // The invoice id alone is enough: an invoice is submitted once.
+            idempotencyKey: `MICA_INVOICE_SUBMITTED:${invoice.id}`,
+            correlationId: invoice.id,
             channels: ["IN_APP", "EMAIL"],
           }),
         ),
@@ -191,12 +194,23 @@ export class InvoicesService {
   }
 
   private async notifyCreator(
-    invoice: { id: string; createdById: string | null; rejectionReason: string | null; vehicle: { plateNumber: string } },
+    invoice: {
+      id: string;
+      createdById: string | null;
+      rejectionReason: string | null;
+      decidedAt: Date | null;
+      vehicle: { plateNumber: string };
+    },
     outcome: "accepted" | "rejected",
   ): Promise<void> {
     if (!invoice.createdById) return;
     await this.notifications.notify({
       recipientId: invoice.createdById,
+      // decidedAt is part of the key so a later, legitimate second decision
+      // (after a restore, say) is announced rather than swallowed as a
+      // duplicate — while a retry of the same decision is not.
+      idempotencyKey: `MICA_INVOICE_${outcome.toUpperCase()}:${invoice.id}:${invoice.decidedAt?.toISOString() ?? ""}`,
+      correlationId: invoice.id,
       type: `invoice.${outcome}`,
       title: outcome === "rejected" ? "تم رفض فاتورتك" : "تم قبول فاتورتك",
       body:
