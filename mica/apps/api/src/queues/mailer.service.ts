@@ -6,6 +6,7 @@ import {
   MAB_LOGO_BASE64,
   MAB_LOGO_CID,
 } from "@/modules/notifications/templates/mab-logo";
+import { GraphEmailProvider } from "./providers/graph-email.provider";
 
 export interface SendMailOptions {
   to: string;
@@ -33,7 +34,19 @@ export class MailerService {
   constructor(
     private readonly config: ConfigService,
     private readonly settings: SettingsService,
+    private readonly graph: GraphEmailProvider,
   ) {}
+
+  /** The logo, when the body actually references it. */
+  private logoAttachment(html: string) {
+    if (!html.includes(`cid:${MAB_LOGO_CID}`)) return undefined;
+    return {
+      filename: "mab-logo.png",
+      content: Buffer.from(MAB_LOGO_BASE64, "base64"),
+      contentType: "image/png",
+      cid: MAB_LOGO_CID,
+    };
+  }
 
   private async buildTransport(): Promise<{ transporter: Transporter; from: string }> {
     const stored = await this.settings.getSmtpWithSecret();
@@ -67,6 +80,19 @@ export class MailerService {
   }
 
   async send(options: SendMailOptions): Promise<SendMailResult> {
+    // Graph is chosen by configuration because SMTP submission is no longer
+    // available on tenants that enforce modern authentication.
+    if (this.config.get<string>("mail.provider") === "graph") {
+      const logo = this.logoAttachment(options.html);
+      return this.graph.send({
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+        attachments: logo ? [logo] : undefined,
+      });
+    }
+
     const { transporter, from } = await this.buildTransport();
     const info = await transporter.sendMail({
       from,

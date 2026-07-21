@@ -10,6 +10,7 @@ import redisConfig from "@/config/redis.config";
 import jwtConfig from "@/config/jwt.config";
 import storageConfig from "@/config/storage.config";
 import smtpConfig from "@/config/smtp.config";
+import mailConfig from "@/config/mail.config";
 import backupConfig from "@/config/backup.config";
 import { PrismaModule } from "@/database/prisma/prisma.module";
 import { RedisModule } from "@/redis/redis.module";
@@ -51,7 +52,7 @@ import { PhotoRequestsModule } from "@/modules/photo-requests/photo-requests.mod
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, databaseConfig, redisConfig, jwtConfig, storageConfig, smtpConfig, backupConfig],
+      load: [appConfig, databaseConfig, redisConfig, jwtConfig, storageConfig, smtpConfig, mailConfig, backupConfig],
     }),
     ScheduleModule.forRoot(),
     JwtModule.register({}),
