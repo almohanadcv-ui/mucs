@@ -6,6 +6,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import type {
   AcceptInvoiceInput,
   CreateInvoiceInput,
@@ -101,39 +102,61 @@ export class InvoicesService {
   }
 
   async accept(id: string, dto: AcceptInvoiceInput, actingUserId: string) {
-    await this.assertPending(id);
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data: {
-        status: "ACCEPTED",
-        decisionNotes: dto.notes,
-        rejectionReason: null,
-        decidedById: actingUserId,
-        decidedAt: new Date(),
-        updatedById: actingUserId,
-      },
-      include: { vehicle: { select: { id: true, plateNumber: true, name: true } } },
-    });
+    const updated = await this.decide(
+      id,
+      { status: "ACCEPTED", decisionNotes: dto.notes, rejectionReason: null },
+      actingUserId,
+    );
     await this.notifyCreator(updated, "accepted");
     return updated;
   }
 
   async reject(id: string, dto: RejectInvoiceInput, actingUserId: string) {
-    await this.assertPending(id);
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data: {
+    const updated = await this.decide(
+      id,
+      {
         status: "REJECTED",
         rejectionReason: dto.rejectionReason,
         decisionNotes: dto.notes,
-        decidedById: actingUserId,
-        decidedAt: new Date(),
-        updatedById: actingUserId,
       },
-      include: { vehicle: { select: { id: true, plateNumber: true, name: true } } },
-    });
+      actingUserId,
+    );
     await this.notifyCreator(updated, "rejected");
     return updated;
+  }
+
+  /**
+   * Applies an accept/reject decision, but only if the invoice is still
+   * PENDING at the moment of the write.
+   *
+   * This is a conditional update rather than a read-then-write: two managers
+   * deciding at the same instant would both pass a separate status check and
+   * both write, so the last one would silently overwrite the first and the
+   * mechanic would receive two contradicting emails. Putting `status:
+   * "PENDING"` in the WHERE clause makes the database itself the arbiter —
+   * exactly one update matches a row, and the loser gets a 409 instead of a
+   * false success. No transaction or version column is needed: a single
+   * conditional UPDATE is already atomic.
+   */
+  private async decide(
+    id: string,
+    decision: Prisma.InvoiceUpdateManyMutationInput,
+    actingUserId: string,
+  ) {
+    const { count } = await this.prisma.invoice.updateMany({
+      where: { id, status: "PENDING", deletedAt: null },
+      data: { ...decision, decidedById: actingUserId, decidedAt: new Date(), updatedById: actingUserId },
+    });
+
+    // Nothing matched: either the invoice is gone or somebody decided first.
+    // findById distinguishes the two and raises the same errors this method
+    // raised before, so callers and the API contract are unchanged.
+    if (count === 0) {
+      const existing = await this.findById(id);
+      throw new ConflictException(`Invoice is already ${existing.status.toLowerCase()}`);
+    }
+
+    return this.findById(id);
   }
 
   async remove(id: string, actingUserId: string): Promise<void> {
@@ -165,14 +188,6 @@ export class InvoicesService {
     const invoice = await this.findById(id);
     const buffer = await this.storage.read(invoice.fileKey);
     return { buffer, mimeType: invoice.mimeType, fileName: invoice.fileName };
-  }
-
-  private async assertPending(id: string) {
-    const invoice = await this.findById(id);
-    if (invoice.status !== "PENDING") {
-      throw new ConflictException(`Invoice is already ${invoice.status.toLowerCase()}`);
-    }
-    return invoice;
   }
 
   private async notifyCreator(

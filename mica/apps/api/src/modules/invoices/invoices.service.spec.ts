@@ -1,0 +1,109 @@
+import { ConflictException } from "@nestjs/common";
+import { InvoicesService } from "./invoices.service";
+
+/**
+ * Covers the decision path only: that an accept/reject writes conditionally on
+ * the invoice still being PENDING, and that a caller who loses the race is
+ * told so instead of silently overwriting the winner.
+ *
+ * The service is constructed directly with fakes rather than through the Nest
+ * testing module — the decision path touches Prisma and the notifier only, so
+ * a container would add setup without adding coverage.
+ */
+describe("InvoicesService decisions", () => {
+  const invoice = {
+    id: "inv-1",
+    status: "PENDING",
+    createdById: "mechanic-1",
+    rejectionReason: null,
+    vehicle: { id: "veh-1", plateNumber: "ABC-1234", name: null },
+  };
+
+  function build(updateManyCounts: number[], found: Record<string, unknown> = invoice) {
+    const counts = [...updateManyCounts];
+    const prisma = {
+      invoice: {
+        // Typed with its argument so the assertions below can read back the
+        // recorded call; a zero-arg jest.fn() records an empty tuple.
+        updateMany: jest.fn(async (_args: { data: Record<string, unknown> }) => ({
+          count: counts.shift() ?? 0,
+        })),
+        findFirst: jest.fn(async () => found),
+      },
+    };
+    const notifications = { notify: jest.fn(async () => undefined) };
+    const service = new InvoicesService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      notifications as never,
+    );
+    return { service, prisma, notifications };
+  }
+
+  it("accepts an invoice that is still pending", async () => {
+    const { service, prisma, notifications } = build([1]);
+
+    const result = await service.accept("inv-1", {} as never, "manager-1");
+
+    expect(result.id).toBe("inv-1");
+    expect(notifications.notify).toHaveBeenCalledTimes(1);
+    // The guard must live in the WHERE clause, not in a separate read.
+    expect(prisma.invoice.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: "inv-1", status: "PENDING" }),
+      }),
+    );
+  });
+
+  it("records who decided and when", async () => {
+    const { service, prisma } = build([1]);
+
+    await service.accept("inv-1", {} as never, "manager-1");
+
+    const [{ data }] = prisma.invoice.updateMany.mock.calls[0] as unknown as [
+      { data: Record<string, unknown> },
+    ];
+    expect(data.decidedById).toBe("manager-1");
+    expect(data.decidedAt).toBeInstanceOf(Date);
+    expect(data.status).toBe("ACCEPTED");
+  });
+
+  it("rejects with the supplied reason", async () => {
+    const { service, prisma } = build([1]);
+
+    await service.reject("inv-1", { rejectionReason: "المبلغ غير مطابق" } as never, "manager-1");
+
+    const [{ data }] = prisma.invoice.updateMany.mock.calls[0] as unknown as [
+      { data: Record<string, unknown> },
+    ];
+    expect(data.status).toBe("REJECTED");
+    expect(data.rejectionReason).toBe("المبلغ غير مطابق");
+  });
+
+  it("refuses a second decision on an already-decided invoice", async () => {
+    const { service, notifications } = build([0], { ...invoice, status: "ACCEPTED" });
+
+    await expect(service.accept("inv-1", {} as never, "manager-2")).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    // The mechanic must not receive a second, contradicting email.
+    expect(notifications.notify).not.toHaveBeenCalled();
+  });
+
+  it("lets exactly one of two concurrent managers win", async () => {
+    // Both callers see PENDING; the database matches one row and zero rows.
+    const { service, notifications } = build([1, 0], invoice);
+
+    const results = await Promise.allSettled([
+      service.accept("inv-1", {} as never, "manager-1"),
+      service.reject("inv-1", { rejectionReason: "مكررة" } as never, "manager-2"),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(notifications.notify).toHaveBeenCalledTimes(1);
+  });
+});

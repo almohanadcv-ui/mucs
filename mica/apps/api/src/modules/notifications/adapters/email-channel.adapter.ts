@@ -6,6 +6,7 @@ import { PrismaService } from "@/database/prisma/prisma.service";
 import { EMAIL_QUEUE } from "@/queues/bullmq.module";
 import type { EmailJobData } from "@/queues/email.processor";
 import type { NotificationChannel, NotificationPayload } from "../notification-channel.interface";
+import { escapeHtml } from "../escape-html";
 
 @Injectable()
 export class EmailChannelAdapter implements NotificationChannel {
@@ -39,7 +40,9 @@ export class EmailChannelAdapter implements NotificationChannel {
       notificationId: row.id,
       to: user.email,
       subject: notification.title,
-      html: `<p>${notification.body}</p>`,
+      // Escaped: the body carries user-typed text (rejection reasons, workshop
+      // names) and is interpolated straight into HTML.
+      html: `<p dir="rtl">${escapeHtml(notification.body)}</p>`,
     });
   }
 }
