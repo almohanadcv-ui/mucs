@@ -14,10 +14,13 @@ import {
 import {
   normalizeAnswer,
   computeScore,
+  formatAnswerDisplay,
   AnswerValidationError,
   type QuestionLike,
   type NormalizedAnswer,
 } from "@/core/domain/answers";
+import { sendEmail } from "@/infrastructure/email/mailer";
+import { evaluationResultEmail } from "@/infrastructure/email/templates";
 import { buildMeta, toSkipTake, type Paginated } from "@/lib/pagination";
 import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
@@ -484,6 +487,73 @@ export async function reviewEvaluation(
     userAgent: meta.userAgent,
   });
 
+  // Once approved, send the employee their own result — best-effort, so a mail
+  // outage can never fail an approval, which is a committed database decision.
+  if (approved) {
+    void sendApprovedEvaluationToEmployee(id).catch((err) =>
+      console.error(`[evaluations] result email for ${id} failed:`, err),
+    );
+  }
+
   publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return updated;
+}
+
+/**
+ * Email an approved evaluation's result to the employee it is about.
+ *
+ * A no-op when the employee has no email on file. Answers are rendered to human
+ * text (choice questions show their option label) and ordered as on the form.
+ */
+async function sendApprovedEvaluationToEmployee(evaluationId: string): Promise<void> {
+  const ev = await prisma.evaluation.findUnique({
+    where: { id: evaluationId },
+    select: {
+      score: true,
+      reviewedAt: true,
+      employee: { select: { name: true, email: true } },
+      template: { select: { title: true } },
+      answers: {
+        select: {
+          valueNumber: true,
+          valueText: true,
+          valueBool: true,
+          valueDate: true,
+          valueJson: true,
+          remarks: true,
+          question: { select: { id: true, label: true, type: true, required: true, config: true, order: true } },
+        },
+      },
+    },
+  });
+
+  if (!ev || !ev.employee.email) return;
+
+  const items = ev.answers
+    .slice()
+    .sort((a, b) => a.question.order - b.question.order)
+    .map((a) => {
+      const question = toQuestionLike(a.question);
+      const normalized: NormalizedAnswer = {
+        valueNumber: a.valueNumber,
+        valueText: a.valueText,
+        valueBool: a.valueBool,
+        valueDate: a.valueDate,
+        valueJson: a.valueJson,
+      };
+      return {
+        label: a.question.label,
+        value: formatAnswerDisplay(question, normalized),
+        remarks: a.remarks,
+      };
+    });
+
+  const mail = evaluationResultEmail({
+    employeeName: ev.employee.name,
+    templateTitle: ev.template.title,
+    score: ev.score,
+    reviewedAt: ev.reviewedAt ?? new Date(),
+    items,
+  });
+  await sendEmail({ to: ev.employee.email, subject: mail.subject, html: mail.html, text: mail.text });
 }

@@ -132,6 +132,7 @@ model User {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   refreshTokens        RefreshToken[]
+  loginChallenges      LoginChallenge[]
   auditLogs            AuditLog[]
   notifications        Notification[]
   // Domain links: a User (SUPERVISOR/EVALUATOR) maps to an Employee record via profile
@@ -168,6 +169,28 @@ model RefreshToken {
   @@index([family])
   @@index([expiresAt])
   @@map("refresh_tokens")
+}
+
+/// Short-lived email sign-in code (the "verification code" step). After the
+/// password is verified a six-digit code is emailed and must be entered to
+/// finish signing in — mirrors MICA's login challenge. Only a hash is stored.
+model LoginChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  codeHash   String
+  attempts   Int       @default(0)
+  rememberMe Boolean   @default(false)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+  @@index([expiresAt])
+  @@map("login_challenges")
 }
 
 // ───────────────────────────── Org structure ────────────────────────────────
@@ -239,6 +262,11 @@ model Employee {
   contractEndDate    DateTime?
   probationStartDate DateTime?
   probationEndDate   DateTime?
+
+  /// When the "probation ending soon" reminder was last emailed to the
+  /// evaluator, so the daily job notifies once per employee rather than every
+  /// day inside the 90-day window.
+  probationReminderSentAt DateTime?
 
   branchId     String?  @db.Uuid
   departmentId String?  @db.Uuid

@@ -1,15 +1,16 @@
 import { NextRequest } from "next/server";
-import { login } from "@/core/application/auth/auth-service";
+import { completeLoginChallenge } from "@/core/application/auth/auth-service";
+import { setAuthCookies } from "@/infrastructure/auth/cookies";
 import { rateLimit } from "@/infrastructure/security/rate-limit";
 import { requestMeta, ok, handleApiError, fail } from "@/lib/http";
 
 export const runtime = "nodejs";
 
+/** Second step of sign-in: verify the emailed code and mint the session. */
 export async function POST(req: NextRequest) {
   const meta = requestMeta(req);
   try {
-    // Stricter limit on auth endpoints to blunt brute-force / credential stuffing.
-    const limit = await rateLimit(`login:${meta.ip ?? "unknown"}`, {
+    const limit = await rateLimit(`login-verify:${meta.ip ?? "unknown"}`, {
       limit: 10,
       windowMs: 60_000,
     });
@@ -18,10 +19,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    // Password verified → a six-digit code is emailed. No session yet; the
-    // client must post the code to /api/auth/login/verify to finish.
-    const { challengeId } = await login(body, meta);
-    return ok({ challengeRequired: true, challengeId });
+    const { user, tokens } = await completeLoginChallenge(body, meta);
+    await setAuthCookies(tokens);
+    return ok({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    });
   } catch (err) {
     return handleApiError(err);
   }

@@ -32,6 +32,23 @@ const serverSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   AUTH_MAX_FAILED_ATTEMPTS: z.coerce.number().int().positive().default(5),
   AUTH_LOCKOUT_MINUTES: z.coerce.number().int().positive().default(15),
+
+  // Email (Microsoft Graph, app-only / client-credentials). The same Azure app
+  // registration as MICA is reused across every system; only the display name
+  // differs so each product signs its mail with its own identity. Left optional
+  // so the app boots without mail configured — the mailer throws a clear error
+  // only when a send is actually attempted.
+  GRAPH_TENANT_ID: z.string().optional(),
+  GRAPH_CLIENT_ID: z.string().optional(),
+  GRAPH_CLIENT_SECRET: z.string().optional(),
+  /** Mailbox the app sends *as* (must be covered by the Graph app access policy). */
+  MAIL_FROM: z.string().email().optional(),
+  /** Sender display name — this system's own name in the inbox. */
+  MAIL_FROM_NAME: z.string().default("نظام تقييم الأداء"),
+
+  // Shared secret guarding the cron-triggered endpoints (probation reminders).
+  // Required in production so the endpoint can't be hit anonymously.
+  CRON_SECRET: z.string().min(16).optional(),
 });
 
 const clientSchema = z.object({

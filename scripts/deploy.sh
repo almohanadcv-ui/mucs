@@ -79,6 +79,11 @@ if [ -d "$REPO_DIR/mica" ]; then
   cd "$REPO_DIR/mica" || exit 1
   pnpm install --frozen-lockfile >/dev/null 2>&1 || pnpm install >/dev/null 2>&1
 
+  # لا بد من توليد Prisma Client قبل البناء: install --frozen-lockfile قد يتخطّى
+  # سكربتات التوليد إذا لم تتغيّر الحزم، فيبقى Client قديمًا ويُدمَج في البناء.
+  pnpm --filter @mica-mab/api exec prisma generate >/dev/null 2>&1 \
+    && ok "توليد Prisma Client (ميكا) تم" || warn "فشل توليد Prisma Client (ميكا)"
+
   if pnpm build; then
     ok "بناء ميكا نجح"
     pnpm --filter @mica-mab/api exec prisma migrate deploy && ok "ترحيل قاعدة ميكا تم" || { fail "فشل ترحيل ميكا"; FAILED=1; }
@@ -96,6 +101,11 @@ step "3/3  نظام التقييم — بناء ونشر"
 if [ -d "$REPO_DIR/evaluation" ]; then
   cd "$REPO_DIR/evaluation" || exit 1
   pnpm install --frozen-lockfile >/dev/null 2>&1 || pnpm install >/dev/null 2>&1
+
+  # حرجة: توليد Prisma Client قبل البناء. هذا بالضبط ما كان ناقصًا وسبّب خطأ
+  # «Unknown argument `remarks`» — البناء دُمج معه Client قديم بلا العمود الجديد.
+  pnpm prisma generate >/dev/null 2>&1 \
+    && ok "توليد Prisma Client (تقييم) تم" || warn "فشل توليد Prisma Client (تقييم)"
 
   if pnpm build; then
     ok "بناء نظام التقييم نجح"

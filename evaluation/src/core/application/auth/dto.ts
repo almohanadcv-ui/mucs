@@ -13,6 +13,13 @@ export const loginSchema = z.object({
 
 export type LoginInput = z.infer<typeof loginSchema>;
 
+export const verifyChallengeSchema = z.object({
+  challengeId: z.string().uuid("طلب غير صالح"),
+  code: z.string().regex(/^\d{6}$/u, "الرمز يجب أن يكون 6 أرقام"),
+});
+
+export type VerifyChallengeInput = z.infer<typeof verifyChallengeSchema>;
+
 export interface RequestMeta {
   ip?: string | null;
   userAgent?: string | null;

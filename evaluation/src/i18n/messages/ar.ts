@@ -377,6 +377,15 @@ export const ar = {
     invalidEmail: "بريد إلكتروني غير صالح",
     passwordRequired: "كلمة المرور مطلوبة",
     failed: "تعذّر تسجيل الدخول. حاول مجدداً.",
+    codeTitle: "أدخل رمز التحقق",
+    codeSent: "أرسلنا رمزاً مكوّناً من 6 أرقام إلى بريدك الإلكتروني. أدخله لإكمال الدخول.",
+    codeLabel: "رمز التحقق",
+    verify: "تأكيد ودخول",
+    verifying: "جارٍ التحقق…",
+    resend: "إعادة إرسال الرمز",
+    resent: "تم إرسال رمز جديد إلى بريدك.",
+    back: "رجوع",
+    codeInvalidLen: "الرمز يجب أن يكون 6 أرقام",
   },
   topbar: {
     signOut: "تسجيل الخروج",
@@ -517,6 +526,7 @@ export const ar = {
     sessionExpiredLogin: "انتهت الجلسة، الرجاء تسجيل الدخول",
     sessionReuse: "تم اكتشاف إعادة استخدام الجلسة",
     accountUnavailable: "الحساب غير متاح",
+    codeSendFailed: "تعذّر إرسال رمز التحقق، الرجاء المحاولة لاحقاً أو التواصل مع الدعم",
   },
   notif: {
     pendingTitle: "تقييم بانتظار الاعتماد",
@@ -526,6 +536,8 @@ export const ar = {
     rejectedTitle: "تم رفض التقييم",
     approvedBody: "تم اعتماد تقييمك للموظف {name}.",
     rejectedBody: "تم رفض تقييمك للموظف {name}. السبب: {reason}",
+    probationReminderTitle: "تذكير بتقييم قبل انتهاء التجربة",
+    probationReminderBody: "تبقّى {days} يومًا على انتهاء تجربة {name}. الرجاء تقييمه.",
   },
 };
 

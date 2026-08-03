@@ -131,6 +131,46 @@ export function normalizeAnswer(
   }
 }
 
+/**
+ * Human-readable value for a single answer — used when presenting a finished
+ * evaluation back to the employee (the result email). Choice questions resolve
+ * to their option label rather than the stored value; empty answers read "—".
+ */
+export function formatAnswerDisplay(question: QuestionLike, a: NormalizedAnswer): string {
+  const cfg = question.config ?? {};
+  const dash = "—";
+  const labelFor = (value: string) =>
+    cfg.options?.find((o) => o.value === value)?.label ?? value;
+
+  switch (question.type) {
+    case QuestionType.STAR_RATING:
+      return a.valueNumber != null ? `${a.valueNumber} / ${cfg.max ?? 5}` : dash;
+    case QuestionType.NUMBER:
+      return a.valueNumber != null ? String(a.valueNumber) : dash;
+    case QuestionType.YES_NO:
+      return a.valueBool == null ? dash : a.valueBool ? "نعم" : "لا";
+    case QuestionType.TEXT:
+    case QuestionType.TEXTAREA:
+    case QuestionType.TIME:
+      return a.valueText || dash;
+    case QuestionType.DATE:
+      return a.valueDate ? a.valueDate.toLocaleDateString("en-CA") : dash;
+    case QuestionType.SINGLE_CHOICE:
+    case QuestionType.DROPDOWN:
+      return a.valueText ? labelFor(a.valueText) : dash;
+    case QuestionType.MULTIPLE_CHOICE:
+      return Array.isArray(a.valueJson) && a.valueJson.length
+        ? (a.valueJson as string[]).map(labelFor).join("، ")
+        : dash;
+    case QuestionType.FILE_UPLOAD: {
+      const meta = a.valueJson as { name?: string } | null;
+      return meta?.name ?? "ملف";
+    }
+    default:
+      return a.valueText || dash;
+  }
+}
+
 /** Normalized 0..1 score for a single answer, or null if it doesn't count. */
 export function scoreAnswer(
   question: QuestionLike,

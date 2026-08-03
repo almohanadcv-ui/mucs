@@ -375,6 +375,15 @@ export const en: Messages = {
     invalidEmail: "Invalid email address",
     passwordRequired: "Password is required",
     failed: "Sign in failed. Please try again.",
+    codeTitle: "Enter your verification code",
+    codeSent: "We emailed you a 6-digit code. Enter it to finish signing in.",
+    codeLabel: "Verification code",
+    verify: "Verify & sign in",
+    verifying: "Verifying…",
+    resend: "Resend code",
+    resent: "A new code has been sent to your email.",
+    back: "Back",
+    codeInvalidLen: "The code must be 6 digits",
   },
   topbar: {
     signOut: "Sign out",
@@ -515,6 +524,7 @@ export const en: Messages = {
     sessionExpiredLogin: "Session expired, please sign in",
     sessionReuse: "Session reuse detected",
     accountUnavailable: "Account unavailable",
+    codeSendFailed: "Couldn't send the verification code. Try again later or contact support.",
   },
   notif: {
     pendingTitle: "Evaluation awaiting approval",
@@ -524,5 +534,7 @@ export const en: Messages = {
     rejectedTitle: "Evaluation rejected",
     approvedBody: "Your evaluation for {name} was approved.",
     rejectedBody: "Your evaluation for {name} was rejected. Reason: {reason}",
+    probationReminderTitle: "Reminder: evaluate before probation ends",
+    probationReminderBody: "{days} days left until {name}'s probation ends. Please evaluate them.",
   },
 };

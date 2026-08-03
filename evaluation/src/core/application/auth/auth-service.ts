@@ -11,7 +11,19 @@ import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { AppError } from "@/core/application/errors";
 import { getT } from "@/i18n/server";
 import { AuditAction } from "@/core/domain/enums";
-import { loginSchema, type LoginInput, type RequestMeta } from "./dto";
+import {
+  loginSchema,
+  verifyChallengeSchema,
+  type LoginInput,
+  type RequestMeta,
+} from "./dto";
+import {
+  issueLoginChallenge,
+  verifyLoginChallenge,
+  LoginChallengeError,
+} from "./login-challenge-service";
+import { sendEmail } from "@/infrastructure/email/mailer";
+import { loginCodeEmail } from "@/infrastructure/email/templates";
 import { randomUUID } from "node:crypto";
 
 export interface IssuedTokens {
@@ -72,7 +84,7 @@ async function prepareTokens(
 export async function login(
   rawInput: unknown,
   meta: RequestMeta,
-): Promise<{ user: AuthenticatedUser; tokens: IssuedTokens }> {
+): Promise<{ challengeId: string }> {
   const t = await getT();
   const parsed = loginSchema.safeParse(rawInput);
   if (!parsed.success) {
@@ -163,10 +175,82 @@ export async function login(
     }
   }
 
-  // Opportunistic password rehash if parameters were upgraded
+  // Password (and TOTP, if enabled) verified. Clear the lockout counter and
+  // opportunistically rehash now — the raw password is only available here.
+  // No session is minted yet: the account still owes the email code below.
   const rehash = needsRehash(user.passwordHash)
     ? await hashPassword(input.password)
     : undefined;
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      ...(rehash ? { passwordHash: rehash } : {}),
+    },
+  });
+
+  // Second factor for everyone: email a six-digit code and require it to finish
+  // (mirrors MICA). The session is issued only in completeLoginChallenge.
+  const { challengeId, code } = await issueLoginChallenge(user.id, {
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+
+  const mail = loginCodeEmail(code, user.name);
+  try {
+    const sent = await sendEmail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text });
+    // In production a code the user can't receive is a dead end, so surface it
+    // rather than leave them stuck on the code screen. In dev the code is
+    // logged to the server console, so let sign-in proceed.
+    if (!sent && env.NODE_ENV === "production") {
+      throw new AppError("INTERNAL", t("authErr.codeSendFailed"));
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    if (env.NODE_ENV === "production") {
+      throw new AppError("INTERNAL", t("authErr.codeSendFailed"));
+    }
+    // Dev/transport hiccup: the code is in the server log, so continue.
+    console.error("[auth] login code email failed:", err);
+  }
+
+  return { challengeId };
+}
+
+/**
+ * Finish a login by verifying the emailed code, then mint the session.
+ *
+ * The lockout counter and rehash were already handled at the password step; all
+ * that remains is to confirm the code, record the successful login and issue
+ * tokens.
+ */
+export async function completeLoginChallenge(
+  rawInput: unknown,
+  meta: RequestMeta,
+): Promise<{ user: AuthenticatedUser; tokens: IssuedTokens }> {
+  const t = await getT();
+  const parsed = verifyChallengeSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    throw AppError.validation(t("authErr.invalidInput"), parsed.error.flatten());
+  }
+
+  let userId: string;
+  try {
+    ({ userId } = await verifyLoginChallenge(parsed.data.challengeId, parsed.data.code));
+  } catch (err) {
+    if (err instanceof LoginChallengeError) {
+      throw new AppError("INVALID_CREDENTIALS", err.message);
+    }
+    throw err;
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, deletedAt: null, tenant: { deletedAt: null, isActive: true } },
+  });
+  if (!user || !user.isActive) {
+    throw AppError.unauthorized(t("authErr.accountUnavailable"));
+  }
 
   const { tokens, persist } = await prepareTokens(
     { id: user.id, tenantId: user.tenantId, role: user.role, name: user.name },
@@ -180,12 +264,7 @@ export async function login(
     persist,
     prisma.user.update({
       where: { id: user.id },
-      data: {
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        lastLoginAt: new Date(),
-        ...(rehash ? { passwordHash: rehash } : {}),
-      },
+      data: { lastLoginAt: new Date() },
     }),
     writeAudit({
       tenantId: user.tenantId,
