@@ -3,6 +3,7 @@
 import { Navbar } from "@/components/navbar";
 import { Hero } from "@/components/hero";
 import { SystemSection } from "@/components/system-section";
+import { SystemGrid } from "@/components/system-grid";
 import { Footer } from "@/components/footer";
 import { Reveal } from "@/components/reveal";
 import { systems } from "@/config/systems";
@@ -55,13 +56,19 @@ export default function Home() {
 
         {/* ---------------------------------------------------------- Systems */}
         <div id="systems" className="scroll-mt-20">
-          <div className="container-page pt-8 text-center">
+          <div className="container-page pb-10 pt-8 text-center">
             <Reveal>
               <h2 className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground">
                 {t("systems.heading")}
               </h2>
+              <p className="mx-auto mt-4 max-w-xl text-balance text-muted-foreground">
+                {t("systems.gridHint")}
+              </p>
             </Reveal>
           </div>
+
+          {/* App launcher: the quick way in. Detailed sections follow below. */}
+          <SystemGrid />
 
           {systems.map((system, index) => (
             <SystemSection key={system.id} system={system} index={index} />

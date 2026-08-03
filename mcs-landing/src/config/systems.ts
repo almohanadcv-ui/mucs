@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Headset, ShieldCheck, Wrench, ClipboardCheck } from "lucide-react";
+import { Headset, ShieldCheck, Wrench, ClipboardCheck, ListChecks } from "lucide-react";
 import type { Locale } from "@/i18n/messages";
 
 /**
@@ -156,6 +156,36 @@ export const systems: SystemConfig[] = [
     color: "#f2994a",
     status: "beta",
     preview: "form",
+  },
+  {
+    id: "tasks",
+    name: "Task Allocator",
+    eyebrow: { en: "Task Allocation", ar: "توزيع المهام" },
+    description: {
+      en: "A focused system for assigning and tracking team tasks across disciplines — Technical, QS, Shop Drawings, BIM, and Variations — so every job has a clear owner, a clear status, and a clear record from assignment to completion.",
+      ar: "نظام مخصّص لتوزيع مهام الفريق ومتابعتها عبر التخصصات — الفني، حساب الكميات، مخططات التنفيذ، BIM، وأوامر التغيير — بحيث يكون لكل مهمة مسؤول واضح وحالة واضحة وسجل كامل من الإسناد حتى الإنجاز.",
+    },
+    features: {
+      en: [
+        "Assign tasks to the right person",
+        "Track status across disciplines",
+        "Clear ownership for every job",
+        "Full history from start to finish",
+        "Workload visibility across the team",
+      ],
+      ar: [
+        "إسناد المهام للشخص المناسب",
+        "متابعة الحالة عبر كل التخصصات",
+        "مسؤول واضح لكل مهمة",
+        "سجل كامل من البداية للنهاية",
+        "رؤية توزيع الأحمال على الفريق",
+      ],
+    },
+    url: env("NEXT_PUBLIC_TASKS_URL", "https://tasks.mucs.online"),
+    icon: ListChecks,
+    color: "#e0457b",
+    status: "live",
+    preview: "kanban",
   },
 ];
 

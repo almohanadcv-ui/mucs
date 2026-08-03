@@ -23,7 +23,7 @@ export const messages = {
       stat2: "Independent & isolated",
       stat3: "Unified gateway",
     },
-    systems: { heading: "Our Systems" },
+    systems: { heading: "Our Systems", gridHint: "Pick a system to open it, or scroll for the details." },
     status: { live: "Live", beta: "Beta", maintenance: "Maintenance", "coming-soon": "Coming soon" },
     section: { enter: "Enter System" },
     footer: {
@@ -57,7 +57,7 @@ export const messages = {
       stat2: "مستقلة ومعزولة بالكامل",
       stat3: "بوابة موحّدة",
     },
-    systems: { heading: "أنظمتنا" },
+    systems: { heading: "أنظمتنا", gridHint: "اختر نظامًا لفتحه، أو مرّر لأسفل لمعرفة التفاصيل." },
     status: { live: "مباشر", beta: "تجريبي", maintenance: "صيانة", "coming-soon": "قريباً" },
     section: { enter: "ادخل النظام" },
     footer: {
