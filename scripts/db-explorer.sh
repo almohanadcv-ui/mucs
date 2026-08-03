@@ -135,7 +135,7 @@ main_menu() {
     done
     hr
     printf "  ${C_DIM}اكتب رقم النظام، أو q للخروج${C_OFF}\n› "
-    read -r choice
+    read -r choice < /dev/tty
     [ "$choice" = "q" ] && { clear; exit 0; }
     [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#SYSTEMS[@]}" ] || continue
 
@@ -154,7 +154,7 @@ tables_menu() {
     hr
     mapfile -t TABLES < <(table_names)
     if [ "${#TABLES[@]}" -eq 0 ]; then
-      echo "لا توجد جداول (أو تعذّر الاتصال)."; read -r; return
+      echo "لا توجد جداول (أو تعذّر الاتصال)."; read -r < /dev/tty; return
     fi
     local i=1
     for t in "${TABLES[@]}"; do
@@ -163,15 +163,18 @@ tables_menu() {
     done
     hr
     printf "  ${C_DIM}رقم الجدول لعرضه · b رجوع · q خروج${C_OFF}\n› "
-    read -r c
+    read -r c < /dev/tty
     [ "$c" = "q" ] && { clear; exit 0; }
     [ "$c" = "b" ] && return
     [[ "$c" =~ ^[0-9]+$ ]] && [ "$c" -ge 1 ] && [ "$c" -le "${#TABLES[@]}" ] || continue
 
     clear
     printf "${C_HEAD}%s ← %s${C_OFF} ${C_DIM}(أول ٥٠ صفًا)${C_OFF}\n" "$sys_name" "${TABLES[$((c-1))]}"
+    printf "${C_DIM}الأسهم ← → للتحرك · اضغط q للرجوع${C_OFF}\n"
     hr
-    show_table "${TABLES[$((c-1))]}" | less -SR
+    # -F: لو النتيجة تسع الشاشة، يعرضها ويخرج مباشرة بلا وضع تصفّح محيّر.
+    # --tty: يقرأ مفاتيح التصفّح من الطرفية لا من المدخل المُمرَّر.
+    show_table "${TABLES[$((c-1))]}" | less -SRF --tty=/dev/tty
   done
 }
 
