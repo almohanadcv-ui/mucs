@@ -1,0 +1,23 @@
+{
+  "name": "mab-task-allocator",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Company task allocation platform.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev -w @mab/web",
+    "dev:api": "npm run dev -w @mab/api",
+    "build": "npm run build -w @mab/web",
+    "preview": "npm run preview -w @mab/web",
+    "typecheck": "npm run typecheck -w @mab/web",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,316 @@
+CREATE TABLE IF NOT EXISTS users (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  username text NOT NULL,
+  password_hash text NOT NULL,
+  role text NOT NULL CHECK (role IN ('superadmin', 'admin', 'user')),
+  department text NOT NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS departments (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  created_by_id text REFERENCES users(id) ON DELETE SET NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_name_ci ON departments (lower(name));
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users (lower(username));
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  last_active_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS attendance_records (
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  work_date text NOT NULL,
+  first_login_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  last_login_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  login_count integer NOT NULL DEFAULT 1,
+  PRIMARY KEY (user_id, work_date)
+);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  description text NOT NULL DEFAULT '',
+  department text NOT NULL,
+  created_by_id text REFERENCES users(id) ON DELETE SET NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS project_members (
+  project_id text NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (project_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id text PRIMARY KEY,
+  title text NOT NULL,
+  department text NOT NULL,
+  priority text NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  status text NOT NULL CHECK (status IN ('new', 'assigned', 'in_progress', 'blocked', 'under_review', 'done')),
+  assignee_id text REFERENCES users(id) ON DELETE SET NULL,
+  project_id text REFERENCES projects(id) ON DELETE SET NULL,
+  task_type text NOT NULL DEFAULT 'Technical',
+  task_code text,
+  due_date text,
+  complexity integer NOT NULL DEFAULT 3 CHECK (complexity BETWEEN 1 AND 5),
+  started_at text,
+  claim_requested_by_id text REFERENCES users(id) ON DELETE SET NULL,
+  claim_requested_at text,
+  progress integer NOT NULL DEFAULT 0 CHECK (progress BETWEEN 0 AND 100),
+  review_comment text,
+  completed_at text,
+  created_by_id text REFERENCES users(id) ON DELETE SET NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  updated_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS task_assignees (
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_claim_requests (
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  requested_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  PRIMARY KEY (task_id, user_id)
+);
+
+ALTER TABLE tasks ALTER COLUMN due_date DROP NOT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS complexity integer NOT NULL DEFAULT 3;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS started_at text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_requested_by_id text REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_requested_at text;
+DO $$ BEGIN
+  ALTER TABLE tasks ADD CONSTRAINT tasks_complexity_check CHECK (complexity BETWEEN 1 AND 5);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+UPDATE tasks SET complexity = 3 WHERE complexity IS NULL OR complexity < 1 OR complexity > 5;
+UPDATE tasks SET started_at = created_at
+WHERE started_at IS NULL AND EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_id = tasks.id);
+UPDATE tasks SET due_date = NULL, started_at = NULL
+WHERE status != 'done' AND NOT EXISTS (SELECT 1 FROM task_assignees WHERE task_assignees.task_id = tasks.id);
+
+INSERT INTO task_claim_requests (task_id, user_id, requested_at)
+SELECT id, claim_requested_by_id, COALESCE(claim_requested_at, created_at)
+FROM tasks
+WHERE claim_requested_by_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS task_worker_approvals (
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  approved_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  PRIMARY KEY (task_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_reopen_events (
+  id text PRIMARY KEY,
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  reviewer_id text REFERENCES users(id) ON DELETE SET NULL,
+  comment text NOT NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS task_events (
+  id text PRIMARY KEY,
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  actor_id text REFERENCES users(id) ON DELETE SET NULL,
+  actor_name text NOT NULL,
+  event_type text NOT NULL,
+  details text NOT NULL DEFAULT '',
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+INSERT INTO task_events (id, task_id, actor_id, actor_name, event_type, details, created_at)
+SELECT 'created-' || tasks.id, tasks.id, tasks.created_by_id, COALESCE(users.name, 'System'), 'created', 'Task created', tasks.created_at
+FROM tasks LEFT JOIN users ON users.id = tasks.created_by_id
+WHERE NOT EXISTS (SELECT 1 FROM task_events existing WHERE existing.task_id = tasks.id AND existing.event_type = 'created')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO task_events (id, task_id, actor_id, actor_name, event_type, details, created_at)
+SELECT 'completed-' || tasks.id, tasks.id, NULL, 'Manager', 'approved', 'Task approved and completed', tasks.completed_at
+FROM tasks WHERE tasks.status = 'done' AND tasks.completed_at IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM task_events existing WHERE existing.task_id = tasks.id AND existing.event_type = 'approved')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO task_events (id, task_id, actor_id, actor_name, event_type, details, created_at)
+SELECT 'reopen-' || task_reopen_events.id, task_reopen_events.task_id, task_reopen_events.reviewer_id,
+  COALESCE(users.name, 'Manager'), 'reopened', task_reopen_events.comment, task_reopen_events.created_at
+FROM task_reopen_events LEFT JOIN users ON users.id = task_reopen_events.reviewer_id
+ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS task_code_sequences (
+  prefix text PRIMARY KEY,
+  next_number integer NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS task_messages (
+  id text PRIMARY KEY,
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author_id text REFERENCES users(id) ON DELETE SET NULL,
+  author_name text NOT NULL,
+  body text NOT NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS task_files (
+  id text PRIMARY KEY,
+  task_id text NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  uploaded_by text NOT NULL,
+  uploaded_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  storage_name text,
+  mime_type text,
+  size integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind text NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  task_id text REFERENCES tasks(id) ON DELETE CASCADE,
+  channel_id text,
+  dedupe_key text,
+  is_read integer NOT NULL DEFAULT 0,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS system_audit_logs (
+  id text PRIMARY KEY,
+  actor_id text REFERENCES users(id) ON DELETE SET NULL,
+  actor_name text NOT NULL,
+  action text NOT NULL,
+  entity_type text NOT NULL,
+  entity_id text,
+  department text,
+  details text NOT NULL DEFAULT '',
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS channel_id text;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key text;
+
+CREATE TABLE IF NOT EXISTS todos (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  task_id text REFERENCES tasks(id) ON DELETE SET NULL,
+  title text NOT NULL,
+  is_completed integer NOT NULL DEFAULT 0,
+  completed_at text,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  updated_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS chat_groups (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  department text NOT NULL,
+  created_by_id text REFERENCES users(id) ON DELETE SET NULL,
+  task_id text REFERENCES tasks(id) ON DELETE CASCADE,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id text PRIMARY KEY,
+  channel_id text NOT NULL,
+  department text NOT NULL,
+  author_id text REFERENCES users(id) ON DELETE SET NULL,
+  author_name text NOT NULL,
+  body text NOT NULL DEFAULT '',
+  reply_to_id text REFERENCES chat_messages(id) ON DELETE SET NULL,
+  deleted_at text,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+
+ALTER TABLE chat_messages ALTER COLUMN body SET DEFAULT '';
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reply_to_id text REFERENCES chat_messages(id) ON DELETE SET NULL;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS deleted_at text;
+
+CREATE TABLE IF NOT EXISTS chat_message_hidden (
+  message_id text NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  hidden_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  PRIMARY KEY (message_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS chat_message_files (
+  id text PRIMARY KEY,
+  message_id text NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+  name text NOT NULL,
+  uploaded_by text NOT NULL,
+  uploaded_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  storage_name text NOT NULL,
+  mime_type text,
+  size integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS chat_reads (
+  channel_id text NOT NULL,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_read_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  PRIMARY KEY (channel_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_department ON tasks(department);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_code ON tasks(task_code);
+CREATE INDEX IF NOT EXISTS idx_task_assignees_user ON task_assignees(user_id, task_id);
+CREATE INDEX IF NOT EXISTS idx_task_claim_requests_user ON task_claim_requests(user_id, task_id);
+CREATE INDEX IF NOT EXISTS idx_task_reopen_events_task ON task_reopen_events(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_task_events_task ON task_events(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_task_events_actor_type ON task_events(actor_id, event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_task_messages_task ON task_messages(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_task_files_task ON task_files(task_id, uploaded_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_dedupe ON notifications(dedupe_key) WHERE dedupe_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_audit_created ON system_audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_department ON system_audit_logs(department, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_todos_user ON todos(user_id, is_completed, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_activity ON sessions(last_active_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_user_date ON attendance_records(user_id, work_date DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_groups_department ON chat_groups(department, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_chat_groups_task ON chat_groups(task_id) WHERE task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_chat_messages_department ON chat_messages(department, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_channel ON chat_messages(channel_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_message_files_message ON chat_message_files(message_id);
+CREATE INDEX IF NOT EXISTS idx_chat_reads_user ON chat_reads(user_id, channel_id);
+CREATE INDEX IF NOT EXISTS idx_chat_message_hidden_user ON chat_message_hidden(user_id, message_id);
+
+INSERT INTO departments (id, name)
+VALUES
+  ('department-executive', 'Executive'),
+  ('department-mechanical', 'Mechanical Technical office engineer'),
+  ('department-electrical', 'Electrical Technical office engineer'),
+  ('department-document-control', 'Document Controller')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO departments (id, name)
+SELECT 'department-' || md5(department), department
+FROM (
+  SELECT department FROM users
+  UNION SELECT department FROM projects
+  UNION SELECT department FROM tasks
+  UNION SELECT department FROM chat_groups
+) existing_departments
+WHERE department IS NOT NULL AND department != ''
+ON CONFLICT DO NOTHING;

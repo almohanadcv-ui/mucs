@@ -1,0 +1,49 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "5173:5173"
+    environment:
+      PORT: 5173
+      API_UPSTREAM: http://api:4000
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://mab_user:mab_password@postgres:5432/mab_task_allocator
+      ATTACHMENTS_PATH: /data/attachments
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - api-attachments:/data/attachments
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: mab_task_allocator
+      POSTGRES_USER: mab_user
+      POSTGRES_PASSWORD: mab_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mab_user -d mab_task_allocator"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+
+volumes:
+  postgres-data:
+  api-attachments:

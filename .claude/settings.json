@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rg -rln \"إضافة سائق|branchId|اختر فرع\" features/drivers app)",
+      "Bash(rg -rn \"branchId|branches|useBranches|listBranches|اختر فرع\" features/drivers/*.tsx)",
+      "Bash(rg -rn \"listBranches|createBranch|/branches|/organization\" features)",
+      "Bash(rg -n \"@Get|@Post|@Patch|@Delete|@Permissions|@Controller\" apps/api/src/modules/branches/*.controller.ts)",
+      "Bash(rg -n \"@Get|@Post|@Controller|@Permissions\" apps/api/src/modules/departments/*.controller.ts)",
+      "Bash(rg -rn \"createBranchSchema|createDepartmentSchema\" packages/shared-types/src -A 6)",
+      "Bash(cd \"c:/Users/lenovo/Desktop/mcs/MICA/apps/web\" && echo \"=== features/departments موجود؟ ===\"; ls features/departments/api.ts 2>/dev/null && cat features/departments/api.ts | head -30 || echo \"لا يوجد departments api\"; echo \"=== createDepartmentSchema fields ===\"; rg -n \"createDepartmentSchema\" -A 5 ../../packages/shared-types/src/org.ts)",
+      "Read(//c/Users/lenovo/packages/shared-types/src/**)"
+    ]
+  }
+}
