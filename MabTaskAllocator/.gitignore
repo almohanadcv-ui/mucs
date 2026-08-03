@@ -10,3 +10,6 @@ npm-debug.log*
 coverage
 postgres-data
 apps/api/data/
+
+# Local dev Postgres data dir (this project names it .local-postgres)
+.local-postgres/
