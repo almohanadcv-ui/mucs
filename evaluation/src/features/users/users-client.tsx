@@ -242,6 +242,7 @@ export function UsersClient() {
                   <SelectContent>
                     <SelectItem value="EVALUATOR">{t("users.roleEvaluator")}</SelectItem>
                     <SelectItem value="MANAGEMENT">{t("users.roleManagement")}</SelectItem>
+                    <SelectItem value="PRIMARY_REVIEWER">{t("users.rolePrimaryReviewer")}</SelectItem>
                     <SelectItem value="SUPERVISOR">{t("users.roleSupervisor")}</SelectItem>
                     <SelectItem value="ADMIN">{t("users.roleAdmin")}</SelectItem>
                   </SelectContent>
