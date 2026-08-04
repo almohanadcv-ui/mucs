@@ -2,25 +2,16 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import PDFDocument from "pdfkit";
-import { convertArabic } from "arabic-reshaper";
-import bidiFactory from "bidi-js";
 import { loadArabicFont } from "./arabic-font";
 import { getServerEnv } from "@/lib/env";
 
-const bidi = bidiFactory();
-
 /**
- * Turn logical Arabic text into a visually-ordered string pdfkit can draw.
- * pdfkit neither shapes Arabic (joins letters) nor applies the bidi algorithm,
- * so we do both here: reshape to presentation forms, then reorder for RTL —
- * which keeps embedded numbers and Latin runs (e.g. "90 / 100") in reading
- * order instead of reversing them, as a naive string-reverse would.
+ * Arabic text is passed to pdfkit RAW — no reshaping, no bidi. Modern pdfkit
+ * (via fontkit) runs the OpenType Arabic shaper itself, joining letters and
+ * emitting glyphs in visual (RTL) order, exactly like HarfBuzz. Pre-reshaping
+ * or reversing the string double-processes it and produces the disconnected,
+ * mirrored text that a manual reshaper+bidi pipeline yielded here before.
  */
-function vis(text: string): string {
-  const reshaped = convertArabic(text);
-  const levels = bidi.getEmbeddingLevels(reshaped, "rtl");
-  return bidi.getReorderedString(reshaped, levels);
-}
 
 export interface EvaluationPdfItem {
   label: string;
@@ -38,6 +29,12 @@ export interface EvaluationPdfInput {
   reviewedAt: Date;
   items: EvaluationPdfItem[];
 }
+
+const NAVY = "#0f2b46";
+const INK = "#1f2933";
+const MUTED = "#7b8794";
+const LINE = "#e4e7eb";
+const ZEBRA = "#f7f9fb";
 
 /**
  * Render an approved evaluation as an A4 PDF (returns null if the Arabic font
@@ -57,122 +54,125 @@ export async function buildEvaluationPdf(input: EvaluationPdfInput): Promise<Buf
   const right = doc.page.width - doc.page.margins.right;
   const fullWidth = right - left;
 
-  /** Right-aligned Arabic paragraph with correct per-line wrapping. Returns new y. */
-  function rtl(
+  /** Draw text and return the y after it. pdfkit shapes + wraps + RTL-orders. */
+  const draw = (
     text: string,
     x: number,
     y: number,
     width: number,
-    size: number,
-    color = "#1f2933",
-  ): number {
-    doc.fontSize(size).fillColor(color);
-    const lineHeight = size * 1.7;
-    const words = text.split(/\s+/).filter(Boolean);
-    const lines: string[] = [];
-    let current = "";
-    for (const w of words) {
-      const candidate = current ? `${current} ${w}` : w;
-      if (doc.widthOfString(convertArabic(candidate)) > width && current) {
-        lines.push(current);
-        current = w;
-      } else {
-        current = candidate;
-      }
-    }
-    if (current) lines.push(current);
-    if (lines.length === 0) lines.push("");
-    for (const line of lines) {
-      doc.text(vis(line), x, y, { width, align: "right", lineBreak: false });
-      y += lineHeight;
-    }
-    return y;
-  }
+    opts: { size?: number; color?: string; align?: "right" | "left" | "center" } = {},
+  ): number => {
+    doc.fontSize(opts.size ?? 12).fillColor(opts.color ?? INK);
+    doc.text(text, x, y, { width, align: opts.align ?? "right" });
+    return doc.y;
+  };
 
-  // ── Header: logo + brand + title ────────────────────────────────────────────
+  // ── Header band ──────────────────────────────────────────────────────────────
+  const bandH = 96;
+  doc.save().rect(0, 0, doc.page.width, bandH).fill(NAVY).restore();
   if (logo) {
     try {
-      doc.image(logo, left, 40, { height: 34 });
+      doc.image(logo, doc.page.width / 2 - 46, 24, { width: 92 });
     } catch {
       /* a bad image must not abort the document */
     }
   }
-  doc.fontSize(11).fillColor("#7b8794").text(vis(input.brand), left, 46, {
-    width: fullWidth,
-    align: "right",
+  doc.fontSize(11).fillColor("#aebfd4").text(input.brand, 0, 70, {
+    width: doc.page.width,
+    align: "center",
   });
 
-  let y = 92;
-  y = rtl("نموذج تقييم الأداء الوظيفي", left, y, fullWidth, 20, "#0f2b46");
-  y = rtl(input.templateTitle, left, y + 2, fullWidth, 13, "#3e4c59");
+  let y = bandH + 26;
 
-  y += 10;
-  doc.moveTo(left, y).lineTo(right, y).strokeColor("#e4e7eb").stroke();
-  y += 14;
+  // ── Title ────────────────────────────────────────────────────────────────────
+  y = draw("تقرير تقييم الأداء الوظيفي", left, y, fullWidth, { size: 20, color: NAVY, align: "center" });
+  y = draw(input.templateTitle, left, y + 2, fullWidth, { size: 12, color: MUTED, align: "center" });
+  y += 12;
+  doc.moveTo(left, y).lineTo(right, y).lineWidth(0.5).strokeColor(LINE).stroke();
+  y += 16;
 
-  // ── Meta rows ───────────────────────────────────────────────────────────────
-  const meta: string[] = [
-    `الموظف: ${input.employeeName}${input.employeeNo ? ` (${input.employeeNo})` : ""}`,
-    input.evaluatorName ? `المقيّم: ${input.evaluatorName}` : "",
-    `تاريخ الاعتماد: ${input.reviewedAt.toLocaleDateString("en-CA")}`,
-  ].filter(Boolean);
-  for (const line of meta) y = rtl(line, left, y, fullWidth, 12, "#3e4c59");
+  // ── Meta rows ─────────────────────────────────────────────────────────────────
+  const meta: [string, string][] = [
+    ["الموظف", input.employeeName + (input.employeeNo ? ` (${input.employeeNo})` : "")],
+    ["نموذج التقييم", input.templateTitle],
+    ["تاريخ الاعتماد", input.reviewedAt.toLocaleDateString("en-CA")],
+    ...(input.evaluatorName ? ([["المقيّم", input.evaluatorName]] as [string, string][]) : []),
+  ];
+  const labelW = 110;
+  for (const [k, v] of meta) {
+    const rowH = 24;
+    doc.save().rect(left, y, fullWidth, rowH).fill(ZEBRA).restore();
+    doc.save().rect(left, y, fullWidth, rowH).lineWidth(0.5).stroke(LINE).restore();
+    draw(k, right - labelW - 8, y + 6, labelW, { size: 10.5, color: MUTED });
+    draw(v, left + 8, y + 6, fullWidth - labelW - 24, { size: 10.5, color: INK });
+    y += rowH;
+  }
+  y += 20;
 
-  // ── Score ───────────────────────────────────────────────────────────────────
+  // ── Score chip ──────────────────────────────────────────────────────────────
   if (input.score != null) {
-    y += 8;
-    const boxW = 200;
-    const boxX = right - boxW;
-    doc.roundedRect(boxX, y, boxW, 40, 8).fillColor("#eaf5ef").fill();
-    doc.fillColor("#0f6b46");
-    rtl("النتيجة الإجمالية", boxX + 10, y + 6, boxW - 20, 10, "#0f6b46");
-    doc.fontSize(18).fillColor("#0f6b46").text(`${input.score} / 100`, boxX + 10, y + 18, {
-      width: boxW - 20,
-      align: "left",
-    });
-    y += 52;
+    const chipW = 220;
+    const chipH = 62;
+    const cx = doc.page.width / 2 - chipW / 2;
+    const col = input.score >= 75 ? "#0f766e" : input.score >= 50 ? "#d97706" : "#dc2626";
+    doc.save().roundedRect(cx, y, chipW, chipH, 10).fillOpacity(0.08).fill(col).restore();
+    doc.save().roundedRect(cx, y, chipW, chipH, 10).lineWidth(1).strokeOpacity(0.35).stroke(col).restore();
+    doc.fontSize(10).fillColor(MUTED).text("النتيجة الإجمالية", cx, y + 11, { width: chipW, align: "center" });
+    doc.fontSize(26).fillColor(col).text(`${input.score} / 100`, cx, y + 25, { width: chipW, align: "center" });
+    y += chipH + 22;
   }
 
-  // ── Items table ─────────────────────────────────────────────────────────────
-  y += 6;
-  const valueW = 130;
-  const labelW = fullWidth - valueW - 16;
-  const labelX = left + valueW + 16;
+  // ── Items table ───────────────────────────────────────────────────────────────
+  const valueW = 120;
+  const labelX = left + valueW + 12;
+  const labelW2 = right - labelX;
 
-  for (const it of input.items) {
-    if (y > doc.page.height - 90) {
+  const headH = 26;
+  doc.save().rect(left, y, fullWidth, headH).fill(NAVY).restore();
+  doc.fontSize(11).fillColor("#ffffff").text("البند", labelX, y + 7, { width: labelW2, align: "right" });
+  doc.fontSize(11).fillColor("#ffffff").text("التقييم", left + 8, y + 7, { width: valueW - 8, align: "left" });
+  y += headH;
+
+  input.items.forEach((it, i) => {
+    doc.fontSize(11);
+    const labelH = doc.heightOfString(it.label, { width: labelW2 });
+    const remarksH = it.remarks ? doc.heightOfString(`ملاحظة: ${it.remarks}`, { width: labelW2 }) + 2 : 0;
+    const rowH = Math.max(26, labelH + remarksH + 12);
+
+    if (y + rowH > doc.page.height - doc.page.margins.bottom - 26) {
       doc.addPage();
       y = doc.page.margins.top;
     }
-    const startY = y;
-    // Value on the left, label filling the right.
-    doc.fontSize(12).fillColor("#0f2b46").text(vis(it.value), left, y, {
-      width: valueW,
-      align: "left",
-      lineBreak: false,
-    });
-    let labelY = rtl(it.label, labelX, y, labelW, 12, "#1f2933");
+
+    doc.save().rect(left, y, fullWidth, rowH).fill(i % 2 ? "#ffffff" : ZEBRA).restore();
+    doc.save().rect(left, y, fullWidth, rowH).lineWidth(0.5).stroke(LINE).restore();
+    doc.save().moveTo(labelX - 6, y).lineTo(labelX - 6, y + rowH).lineWidth(0.5).stroke(LINE).restore();
+
+    doc.fillColor(INK).fontSize(11).text(it.label, labelX, y + 6, { width: labelW2, align: "right" });
     if (it.remarks) {
-      labelY = rtl(`ملاحظة: ${it.remarks}`, labelX, labelY, labelW, 9.5, "#7b8794");
+      doc.fillColor(MUTED).fontSize(9).text(`ملاحظة: ${it.remarks}`, labelX, y + 6 + labelH + 2, {
+        width: labelW2,
+        align: "right",
+      });
     }
-    y = Math.max(labelY, startY + 12 * 1.7) + 6;
-    doc.moveTo(left, y - 3).lineTo(right, y - 3).strokeColor("#eef1f4").stroke();
-  }
+    doc.fillColor(NAVY).fontSize(11).text(it.value, left + 8, y + 6, { width: valueW - 12, align: "left" });
+    y += rowH;
+  });
 
   if (input.items.length === 0) {
-    rtl("لا توجد بنود مفصّلة.", left, y, fullWidth, 11, "#7b8794");
+    draw("لا توجد بنود مفصّلة.", left, y + 6, fullWidth, { size: 11, color: MUTED });
   }
 
-  // ── Footer on every page ────────────────────────────────────────────────────
+  // ── Footer on every page ───────────────────────────────────────────────────────
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
-    doc.fontSize(9).fillColor("#a0aab5");
-    doc.text(vis(`${input.brand} — مستند آلي`), left, doc.page.height - 40, {
-      width: fullWidth,
-      align: "right",
-      lineBreak: false,
-    });
+    doc.fontSize(8).fillColor(MUTED).text(
+      `وثيقة رسمية من ${input.brand} · ${new Date().toLocaleDateString("en-CA")}`,
+      left,
+      doc.page.height - 34,
+      { width: fullWidth, align: "center" },
+    );
   }
 
   doc.end();
