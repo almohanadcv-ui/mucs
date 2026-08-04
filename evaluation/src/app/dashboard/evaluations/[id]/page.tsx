@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getT } from "@/i18n/server";
 import type { Metadata } from "next";
 import { getCurrentUser } from "@/infrastructure/auth/session";
-import { can, Permission } from "@/core/domain/permissions";
+import { can, canAny, Permission, REVIEW_PERMISSIONS } from "@/core/domain/permissions";
 import { EvaluationDetailView } from "@/features/evaluations/evaluation-detail";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -19,7 +19,13 @@ export default async function EvaluationDetailPage({
   if (!user) redirect("/login");
   const { id } = await params;
   return (
-    <EvaluationDetailView id={id} canReview={can(user.role, Permission.EVALUATION_REVIEW)}
-      canDelete={can(user.role, Permission.EVALUATION_DELETE)} />
+    <EvaluationDetailView
+      id={id}
+      canPreliminary={can(user.role, Permission.EVALUATION_APPROVE_PRELIMINARY)}
+      canFinal={can(user.role, Permission.EVALUATION_APPROVE_FINAL)}
+      canReturn={can(user.role, Permission.EVALUATION_RETURN)}
+      canReview={canAny(user.role, REVIEW_PERMISSIONS)}
+      canDelete={can(user.role, Permission.EVALUATION_DELETE)}
+    />
   );
 }

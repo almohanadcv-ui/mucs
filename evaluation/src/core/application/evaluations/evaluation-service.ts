@@ -5,6 +5,7 @@ import { publishToTenant } from "@/infrastructure/realtime/bus";
 import { notify, notifyMany } from "@/core/application/notifications/notification-service";
 import { evaluatorOwns } from "@/core/application/employees/employee-service";
 import { AppError } from "@/core/application/errors";
+import { can, Permission } from "@/core/domain/permissions";
 import {
   AuditAction,
   EvaluationStatus,
@@ -128,23 +129,13 @@ const LIST_INCLUDE = {
 
 function scopeForRole(user: SessionUser): Prisma.EvaluationWhereInput {
   switch (user.role) {
-    // الإدارة oversees every evaluation in the organisation, like IT.
+    // These roles all hold EVALUATION_VIEW_ALL. Which evaluations they may *act*
+    // on is enforced per-status in reviewEvaluation; for listing they see all.
     case Role.ADMIN:
     case Role.MANAGEMENT:
-      return {};
+    case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
-      // A supervisor is a reviewer. Scoping them to employee.supervisorId alone
-      // hid the approval queue almost entirely, because that link is set for
-      // barely any employee — so submitted evaluations were invisible to the
-      // very people meant to approve them. They see their own team, anything
-      // awaiting review, and whatever they have already ruled on.
-      return {
-        OR: [
-          { employee: { supervisorId: user.id } },
-          { status: EvaluationStatus.PENDING },
-          { reviewerId: user.id },
-        ],
-      };
+      return {};
     case Role.EVALUATOR:
       return { evaluatorId: user.id };
     default:
@@ -218,55 +209,56 @@ async function loadEmployeeForEvaluator(user: SessionUser, employeeId: string) {
   return employee;
 }
 
-/**
- * Everyone who should be told an evaluation is waiting for approval: the
- * employee's own supervisor if they have one, plus every reviewer (SUPERVISOR)
- * and support account (ADMIN) in the tenant.
- *
- * It deliberately does not rely on employee.supervisorId alone. That column is
- * only set when an employee is linked to a supervisor by hand, and in practice
- * almost none are — so submissions were notifying nobody at all and sat unseen.
- * The submitter is excluded; they don't need telling about their own work.
- */
-async function notifyReviewers(
-  user: SessionUser,
-  employeeName: string,
-  evaluationId: string,
-  extra: { supervisorId?: string | null; isDocument?: boolean },
-) {
-  const reviewers = await prisma.user.findMany({
+/** Notify every active user holding one of `roles` (the actor excluded). */
+async function notifyRoles(params: {
+  tenantId: string;
+  roles: Role[];
+  excludeUserId: string;
+  title: string;
+  body: string;
+  evaluationId: string;
+  i18n: NonNullable<Parameters<typeof notifyMany>[0]["i18n"]>;
+}): Promise<number> {
+  const recipients = await prisma.user.findMany({
     where: {
-      tenantId: user.tenantId,
+      tenantId: params.tenantId,
       deletedAt: null,
       isActive: true,
-      role: { in: [Role.SUPERVISOR, Role.ADMIN] },
-      id: { not: user.id },
+      role: { in: params.roles },
+      id: { not: params.excludeUserId },
     },
     select: { id: true },
   });
-
-  const userIds = reviewers.map((r) => r.id);
-  if (extra.supervisorId && extra.supervisorId !== user.id) {
-    userIds.push(extra.supervisorId);
-  }
-
-  const sent = await notifyMany({
-    tenantId: user.tenantId,
-    userIds,
+  return notifyMany({
+    tenantId: params.tenantId,
+    userIds: recipients.map((r) => r.id),
     type: NotificationType.ASSIGNMENT,
-    title: "تقييم بانتظار الاعتماد",
-    body: `تقييم جديد${extra.isDocument ? " (ملف وورد)" : ""} للموظف ${employeeName} بانتظار مراجعتك.`,
-    data: { evaluationId },
-    i18n: {
-      titleKey: "notif.pendingTitle",
-      bodyKey: extra.isDocument ? "notif.pendingBodyDoc" : "notif.pendingBody",
-      params: { name: employeeName },
-    },
+    title: params.title,
+    body: params.body,
+    data: { evaluationId: params.evaluationId },
+    i18n: params.i18n,
   });
+}
 
+/** Preliminary reviewers to notify when an evaluation enters PENDING. */
+const PRELIM_REVIEWER_ROLES = [Role.SUPERVISOR, Role.MANAGEMENT, Role.ADMIN];
+/** Final reviewers to notify when an evaluation is preliminarily approved. */
+const FINAL_REVIEWER_ROLES = [Role.PRIMARY_REVIEWER, Role.MANAGEMENT, Role.ADMIN];
+
+/** Tell the preliminary reviewers a submission is waiting. */
+async function notifySubmitted(user: SessionUser, employeeName: string, evaluationId: string) {
+  const sent = await notifyRoles({
+    tenantId: user.tenantId,
+    roles: PRELIM_REVIEWER_ROLES,
+    excludeUserId: user.id,
+    title: "تقييم بانتظار الاعتماد المبدئي",
+    body: `تقييم للموظف ${employeeName} بانتظار مراجعتك (اعتماد مبدئي).`,
+    evaluationId,
+    i18n: { titleKey: "notif.pendingTitle", bodyKey: "notif.pendingBody", params: { name: employeeName } },
+  });
   if (sent === 0) {
     console.error(
-      `[evaluations] ${evaluationId} submitted but no reviewer or admin exists in tenant ${user.tenantId} — nobody was notified`,
+      `[evaluations] ${evaluationId} submitted but no preliminary reviewer exists in tenant ${user.tenantId}`,
     );
   }
 }
@@ -317,16 +309,18 @@ export async function createEvaluation(
   });
 
   if (input.submit) {
-    await notifyReviewers(user, employee.name, evaluation.id, {
-      supervisorId: employee.supervisorId,
-    });
+    await notifySubmitted(user, employee.name, evaluation.id);
   }
 
   publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
   return evaluation;
 }
 
-/** Update a DRAFT evaluation's answers, optionally submitting it for review. */
+/**
+ * Update a DRAFT or NEEDS_EDIT evaluation's answers, optionally re-submitting it.
+ * NEEDS_EDIT is the returned-for-correction state, so the evaluator can fix and
+ * send it back into the review flow.
+ */
 export async function updateEvaluation(
   user: SessionUser,
   meta: RequestMeta,
@@ -341,7 +335,10 @@ export async function updateEvaluation(
     },
   });
   if (!existing) throw AppError.notFound("التقييم غير موجود");
-  if (existing.status !== EvaluationStatus.DRAFT) {
+  if (
+    existing.status !== EvaluationStatus.DRAFT &&
+    existing.status !== EvaluationStatus.NEEDS_EDIT
+  ) {
     throw new AppError("CONFLICT", "لا يمكن تعديل تقييم تم إرساله");
   }
   if (!existing.template) {
@@ -360,6 +357,8 @@ export async function updateEvaluation(
         status,
         score,
         submittedAt: input.submit ? new Date() : null,
+        // Re-submitting after a return clears the old reason.
+        ...(input.submit ? { rejectionReason: null } : {}),
         answers: { create: answerCreateData(rows) },
       },
       include: LIST_INCLUDE,
@@ -367,9 +366,7 @@ export async function updateEvaluation(
   });
 
   if (input.submit) {
-    await notifyReviewers(user, existing.employee.name, id, {
-      supervisorId: existing.employee.supervisorId,
-    });
+    await notifySubmitted(user, existing.employee.name, id);
   }
 
   await writeAudit({
@@ -431,66 +428,114 @@ export async function reviewEvaluation(
   id: string,
   input: ReviewEvaluationInput,
 ) {
-  // Must match what scopeForRole lets a supervisor see, or the approval queue
-  // shows rows that answer "التقييم غير موجود" when acted on. Reviewers act on
-  // the pending queue regardless of whether the employee is linked to them.
   const evaluation = await prisma.evaluation.findFirst({
-    where: {
-      id,
-      tenantId: user.tenantId,
-      deletedAt: null,
-      ...scopeForRole(user),
-    },
+    where: { id, tenantId: user.tenantId, deletedAt: null, ...scopeForRole(user) },
     include: { evaluator: { select: { id: true } }, employee: { select: { name: true } } },
   });
   if (!evaluation) throw AppError.notFound("التقييم غير موجود");
-  if (evaluation.status !== EvaluationStatus.PENDING) {
-    throw new AppError("CONFLICT", "لا يمكن مراجعة تقييم ليس بحالة الانتظار");
+
+  const name = evaluation.employee.name;
+  const status = evaluation.status;
+  const canPrelim = can(user.role, Permission.EVALUATION_APPROVE_PRELIMINARY);
+  const canFinal = can(user.role, Permission.EVALUATION_APPROVE_FINAL);
+  const canReturn = can(user.role, Permission.EVALUATION_RETURN);
+
+  const data: Prisma.EvaluationUncheckedUpdateInput = {};
+  let auditAction: AuditAction;
+
+  if (input.action === "RETURN") {
+    if (!canReturn) throw AppError.forbidden("لا تملك صلاحية إعادة التقييم");
+    if (status !== EvaluationStatus.PENDING && status !== EvaluationStatus.PRELIMINARY_APPROVED) {
+      throw new AppError("CONFLICT", "لا يمكن إعادة التقييم في حالته الحالية");
+    }
+    data.status = EvaluationStatus.NEEDS_EDIT;
+    data.rejectionReason = input.reason ?? null;
+    auditAction = AuditAction.REJECT;
+  } else if (input.action === "PRELIMINARY") {
+    if (!canPrelim) throw AppError.forbidden("لا تملك صلاحية الاعتماد المبدئي");
+    if (status !== EvaluationStatus.PENDING) {
+      throw new AppError("CONFLICT", "التقييم ليس بانتظار الاعتماد المبدئي");
+    }
+    data.status = EvaluationStatus.PRELIMINARY_APPROVED;
+    data.prelimReviewerId = user.id;
+    data.prelimReviewedAt = new Date();
+    data.rejectionReason = null;
+    auditAction = AuditAction.APPROVE;
+  } else {
+    // FINAL — normally after preliminary approval. الإدارة/IT hold both approval
+    // permissions, so they may finalize a PENDING evaluation directly (shortcut).
+    if (!canFinal) throw AppError.forbidden("لا تملك صلاحية الاعتماد النهائي");
+    const shortcut = canPrelim && canFinal;
+    const okStatus =
+      status === EvaluationStatus.PRELIMINARY_APPROVED ||
+      (shortcut && status === EvaluationStatus.PENDING);
+    if (!okStatus) throw new AppError("CONFLICT", "التقييم ليس بانتظار الاعتماد النهائي");
+    data.status = EvaluationStatus.APPROVED;
+    data.reviewerId = user.id;
+    data.reviewedAt = new Date();
+    data.rejectionReason = null;
+    auditAction = AuditAction.APPROVE;
   }
 
-  const approved = input.decision === "APPROVE";
-  const updated = await prisma.evaluation.update({
-    where: { id },
-    data: {
-      status: approved ? EvaluationStatus.APPROVED : EvaluationStatus.REJECTED,
-      reviewerId: user.id,
-      reviewedAt: new Date(),
-      rejectionReason: approved ? null : input.reason ?? null,
-    },
-    include: LIST_INCLUDE,
-  });
+  const updated = await prisma.evaluation.update({ where: { id }, data, include: LIST_INCLUDE });
 
-  await notify({
-    tenantId: user.tenantId,
-    userId: evaluation.evaluator.id,
-    type: approved ? NotificationType.APPROVAL : NotificationType.REJECTION,
-    title: approved ? "تم اعتماد التقييم" : "تم رفض التقييم",
-    body: approved
-      ? `تم اعتماد تقييمك للموظف ${evaluation.employee.name}.`
-      : `تم رفض تقييمك للموظف ${evaluation.employee.name}. السبب: ${input.reason}`,
-    data: { evaluationId: id },
-    i18n: {
-      titleKey: approved ? "notif.approvedTitle" : "notif.rejectedTitle",
-      bodyKey: approved ? "notif.approvedBody" : "notif.rejectedBody",
-      params: { name: evaluation.employee.name, reason: input.reason ?? "" },
-    },
-  });
+  // Tell the evaluator the outcome, and (on preliminary) alert the final reviewers.
+  if (input.action === "RETURN") {
+    await notify({
+      tenantId: user.tenantId,
+      userId: evaluation.evaluator.id,
+      type: NotificationType.REJECTION,
+      title: "أُعيد التقييم للتعديل",
+      body: `أُعيد تقييمك للموظف ${name} للتعديل. السبب: ${input.reason}`,
+      data: { evaluationId: id },
+      i18n: { titleKey: "notif.returnedTitle", bodyKey: "notif.returnedBody", params: { name, reason: input.reason ?? "" } },
+    });
+  } else if (input.action === "PRELIMINARY") {
+    await notify({
+      tenantId: user.tenantId,
+      userId: evaluation.evaluator.id,
+      type: NotificationType.APPROVAL,
+      title: "اعتماد مبدئي",
+      body: `اعتُمد تقييمك للموظف ${name} مبدئيًا، وهو بانتظار الاعتماد النهائي.`,
+      data: { evaluationId: id },
+      i18n: { titleKey: "notif.prelimTitle", bodyKey: "notif.prelimBody", params: { name } },
+    });
+    await notifyRoles({
+      tenantId: user.tenantId,
+      roles: FINAL_REVIEWER_ROLES,
+      excludeUserId: user.id,
+      title: "تقييم بانتظار الاعتماد النهائي",
+      body: `تقييم للموظف ${name} بانتظار الاعتماد النهائي.`,
+      evaluationId: id,
+      i18n: { titleKey: "notif.pendingFinalTitle", bodyKey: "notif.pendingFinalBody", params: { name } },
+    });
+  } else {
+    await notify({
+      tenantId: user.tenantId,
+      userId: evaluation.evaluator.id,
+      type: NotificationType.APPROVAL,
+      title: "اعتماد نهائي",
+      body: `تم الاعتماد النهائي لتقييمك للموظف ${name}.`,
+      data: { evaluationId: id },
+      i18n: { titleKey: "notif.finalTitle", bodyKey: "notif.finalBody", params: { name } },
+    });
+  }
 
   await writeAudit({
     tenantId: user.tenantId,
     actorId: user.id,
-    action: approved ? AuditAction.APPROVE : AuditAction.REJECT,
+    action: auditAction,
     entity: "Evaluation",
     entityId: id,
-    before: { status: EvaluationStatus.PENDING },
-    after: { status: updated.status, reason: input.reason },
+    before: { status },
+    after: { status: data.status, reason: input.reason },
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
 
-  // Once approved, send the employee their own result — best-effort, so a mail
-  // outage can never fail an approval, which is a committed database decision.
-  if (approved) {
+  // Only the FINAL approval reaches the employee — best-effort so a mail outage
+  // can't fail an approval, which is a committed database decision.
+  if (input.action === "FINAL") {
     void sendApprovedEvaluationToEmployee(id).catch((err) =>
       console.error(`[evaluations] result email for ${id} failed:`, err),
     );

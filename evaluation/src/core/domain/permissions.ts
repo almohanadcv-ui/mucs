@@ -32,7 +32,9 @@ export const Permission = {
   EVALUATION_VIEW_OWN: "evaluation:view_own",
   EVALUATION_VIEW_TEAM: "evaluation:view_team",
   EVALUATION_VIEW_ALL: "evaluation:view_all",
-  EVALUATION_REVIEW: "evaluation:review", // approve / reject
+  EVALUATION_APPROVE_PRELIMINARY: "evaluation:approve_prelim", // المراجع — اعتماد مبدئي
+  EVALUATION_APPROVE_FINAL: "evaluation:approve_final", // المراجع الأساسي — اعتماد نهائي
+  EVALUATION_RETURN: "evaluation:return", // إعادة للتعديل مع سبب
   EVALUATION_DELETE: "evaluation:delete", // IT + الإدارة only
 
   // Reports
@@ -45,23 +47,30 @@ export type Permission = (typeof Permission)[keyof typeof Permission];
 const ALL: Permission[] = Object.values(Permission);
 
 /**
- * الإدارة — oversight, not day-to-day work. Sees every employee and every
- * evaluation, may remove an evaluation, and creates evaluator/reviewer logins.
- * Deliberately without approve/reject: reviewing stays with the reviewer, and
- * without the admin surfaces (settings, backups, imports).
+ * الإدارة — every permission EXCEPT the activity log and user management. It can
+ * therefore approve at either stage (and short-circuit the two-stage flow),
+ * manage employees/templates, import, export and configure — but not read the
+ * audit trail or create/edit login accounts.
  */
-const MANAGEMENT: Permission[] = [
+const MANAGEMENT: Permission[] = ALL.filter(
+  (p) => p !== Permission.AUDIT_VIEW && p !== Permission.USER_MANAGE,
+);
+
+/**
+ * المراجع الأساسي — the final approver. Sees every evaluation, gives the final
+ * approval or returns one for edit, and reads reports.
+ */
+const PRIMARY_REVIEWER: Permission[] = [
   Permission.EMPLOYEE_VIEW,
-  Permission.MANAGER_CREATE,
   Permission.TEMPLATE_VIEW,
   Permission.EVALUATION_VIEW_ALL,
-  Permission.EVALUATION_DELETE,
-  Permission.AUDIT_VIEW,
+  Permission.EVALUATION_APPROVE_FINAL,
+  Permission.EVALUATION_RETURN,
   Permission.REPORT_VIEW,
   Permission.REPORT_EXPORT,
 ];
 
-/** المراجع — approves or rejects, and now sees the whole roster. */
+/** المراجع — preliminary approval / return for edit; sees the whole roster. */
 const SUPERVISOR: Permission[] = [
   Permission.EMPLOYEE_VIEW,
   Permission.EMPLOYEE_MANAGE,
@@ -69,7 +78,8 @@ const SUPERVISOR: Permission[] = [
   Permission.TEMPLATE_VIEW,
   Permission.TEMPLATE_MANAGE,
   Permission.EVALUATION_VIEW_ALL,
-  Permission.EVALUATION_REVIEW,
+  Permission.EVALUATION_APPROVE_PRELIMINARY,
+  Permission.EVALUATION_RETURN,
   Permission.REPORT_VIEW,
   Permission.REPORT_EXPORT,
 ];
@@ -85,17 +95,26 @@ const EVALUATOR: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.ADMIN]: ALL, // IT
   [Role.MANAGEMENT]: MANAGEMENT,
+  [Role.PRIMARY_REVIEWER]: PRIMARY_REVIEWER,
   [Role.SUPERVISOR]: SUPERVISOR,
   [Role.EVALUATOR]: EVALUATOR,
 };
+
+/** Any permission that lets a user act on the review queue. */
+export const REVIEW_PERMISSIONS: Permission[] = [
+  Permission.EVALUATION_APPROVE_PRELIMINARY,
+  Permission.EVALUATION_APPROVE_FINAL,
+  Permission.EVALUATION_RETURN,
+];
 
 /**
  * Which roles a given role may create accounts for. A role can never create one
  * at or above its own level — that is how privilege escalation happens.
  */
 export const CREATABLE_ROLES: Record<Role, Role[]> = {
-  [Role.ADMIN]: [Role.MANAGEMENT, Role.SUPERVISOR, Role.EVALUATOR],
-  [Role.MANAGEMENT]: [Role.SUPERVISOR, Role.EVALUATOR],
+  [Role.ADMIN]: [Role.MANAGEMENT, Role.PRIMARY_REVIEWER, Role.SUPERVISOR, Role.EVALUATOR],
+  [Role.MANAGEMENT]: [Role.PRIMARY_REVIEWER, Role.SUPERVISOR, Role.EVALUATOR],
+  [Role.PRIMARY_REVIEWER]: [],
   [Role.SUPERVISOR]: [Role.EVALUATOR],
   [Role.EVALUATOR]: [],
 };

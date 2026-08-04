@@ -8,7 +8,9 @@ export const Role = {
   ADMIN: "ADMIN",
   /** الإدارة — oversees evaluations org-wide. */
   MANAGEMENT: "MANAGEMENT",
-  /** المراجع — approves or rejects submitted evaluations. */
+  /** المراجع الأساسي — final approval, the last stage. */
+  PRIMARY_REVIEWER: "PRIMARY_REVIEWER",
+  /** المراجع — preliminary approval / return for edit. */
   SUPERVISOR: "SUPERVISOR",
   /** المقيّم — fills evaluations for their own team. */
   EVALUATOR: "EVALUATOR",
@@ -27,7 +29,13 @@ export type EmployeeStatus =
 
 export const EvaluationStatus = {
   DRAFT: "DRAFT",
+  /** Submitted, awaiting preliminary review. */
   PENDING: "PENDING",
+  /** Returned to the evaluator to fix, with a reason. */
+  NEEDS_EDIT: "NEEDS_EDIT",
+  /** Preliminary-approved, awaiting final review. */
+  PRELIMINARY_APPROVED: "PRELIMINARY_APPROVED",
+  /** Finally approved — the employee is notified/emailed here. */
   APPROVED: "APPROVED",
   REJECTED: "REJECTED",
 } as const;

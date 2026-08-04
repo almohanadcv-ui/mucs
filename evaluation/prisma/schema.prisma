@@ -23,7 +23,8 @@ datasource db {
 enum Role {
   ADMIN // IT — full control
   MANAGEMENT // الإدارة — oversees evaluations across the org
-  SUPERVISOR // المراجع — approves/rejects
+  PRIMARY_REVIEWER // المراجع الأساسي — final approval (last stage)
+  SUPERVISOR // المراجع — preliminary approval / return for edit
   EVALUATOR // المقيّم — fills evaluations
 }
 
@@ -36,8 +37,10 @@ enum EmployeeStatus {
 
 enum EvaluationStatus {
   DRAFT
-  PENDING
-  APPROVED
+  PENDING // submitted, awaiting preliminary review (SUPERVISOR)
+  NEEDS_EDIT // returned to the evaluator to fix, with a reason
+  PRELIMINARY_APPROVED // preliminary-approved, awaiting final review (PRIMARY_REVIEWER)
+  APPROVED // finally approved — the employee is notified/emailed here
   REJECTED
 }
 
@@ -143,6 +146,7 @@ model User {
   createdTemplates     EvaluationTemplate[] @relation("TemplateCreator")
   submittedEvaluations Evaluation[]         @relation("EvaluationSubmitter")
   reviewedEvaluations  Evaluation[]         @relation("EvaluationReviewer")
+  prelimReviewedEvaluations Evaluation[]    @relation("EvaluationPrelimReviewer")
   customEmployeesEvaluated CustomEmployee[] @relation("CustomEmployeeEvaluator")
   customEmployeesCreated   CustomEmployee[] @relation("CustomEmployeeCreatedBy")
 
@@ -409,7 +413,15 @@ model Evaluation {
   // Aggregate normalized score (0..100) computed on submit from weighted answers.
   score       Float?
   submittedAt DateTime?
+
+  // Preliminary review (SUPERVISOR / مراجع): first-stage sign-off.
+  prelimReviewerId String?   @db.Uuid
+  prelimReviewedAt DateTime?
+
+  // Final review (PRIMARY_REVIEWER / مراجع أساسي): last-stage sign-off. reviewedAt
+  // marks the final decision; reviewerId is the final reviewer.
   reviewedAt  DateTime?
+  // Reason attached when an evaluation is returned for edit or rejected.
   rejectionReason String?
 
   createdAt DateTime  @default(now())
@@ -421,12 +433,14 @@ model Evaluation {
   employee  Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   evaluator User               @relation("EvaluationSubmitter", fields: [evaluatorId], references: [id], onDelete: Restrict)
   reviewer  User?              @relation("EvaluationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  prelimReviewer User?         @relation("EvaluationPrelimReviewer", fields: [prelimReviewerId], references: [id], onDelete: SetNull)
   answers   Answer[]
 
   @@index([tenantId, status, deletedAt])
   @@index([employeeId])
   @@index([evaluatorId])
   @@index([reviewerId])
+  @@index([prelimReviewerId])
   @@index([templateId])
   @@index([submittedAt])
   @@map("evaluations")

@@ -25,8 +25,9 @@ import { useI18n } from "@/i18n/client";
 const FILTERS = [
   { value: "", label: "common.all" },
   { value: "PENDING", label: "evalStatus.PENDING" },
+  { value: "PRELIMINARY_APPROVED", label: "evalStatus.PRELIMINARY_APPROVED" },
+  { value: "NEEDS_EDIT", label: "evalStatus.NEEDS_EDIT" },
   { value: "APPROVED", label: "evalStatus.APPROVED" },
-  { value: "REJECTED", label: "evalStatus.REJECTED" },
   { value: "DRAFT", label: "evalStatus.DRAFT" },
 ];
 

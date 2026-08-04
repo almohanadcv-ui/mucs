@@ -136,7 +136,7 @@ export function UsersClient() {
                     <tr key={u.id} className="border-b last:border-0 hover:bg-muted/40">
                       <td className="px-3 py-3 font-medium">{u.name}</td>
                       <td className="px-3 py-3 text-muted-foreground" dir="ltr">{u.email}</td>
-                      <td className="px-3 py-3"><Badge>{t(`users.role${u.role === "ADMIN" ? "Admin" : u.role === "MANAGEMENT" ? "Management" : u.role === "SUPERVISOR" ? "Supervisor" : "Evaluator"}`)}</Badge></td>
+                      <td className="px-3 py-3"><Badge>{t(`users.role${u.role === "ADMIN" ? "Admin" : u.role === "MANAGEMENT" ? "Management" : u.role === "PRIMARY_REVIEWER" ? "PrimaryReviewer" : u.role === "SUPERVISOR" ? "Supervisor" : "Evaluator"}`)}</Badge></td>
                       <td className="px-3 py-3">
                         {u.twoFactorEnabled ? (
                           <ShieldCheck className="size-4 text-success" />
@@ -323,6 +323,7 @@ function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void 
               <SelectContent>
                 <SelectItem value="EVALUATOR">{t("users.roleEvaluator")}</SelectItem>
                 <SelectItem value="MANAGEMENT">{t("users.roleManagement")}</SelectItem>
+                <SelectItem value="PRIMARY_REVIEWER">{t("users.rolePrimaryReviewer")}</SelectItem>
                 <SelectItem value="SUPERVISOR">{t("users.roleSupervisor")}</SelectItem>
                 <SelectItem value="ADMIN">{t("users.roleAdmin")}</SelectItem>
               </SelectContent>

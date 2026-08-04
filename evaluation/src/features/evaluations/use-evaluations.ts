@@ -82,7 +82,7 @@ export function useDeleteEvaluation() {
 export function useReviewEvaluation(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { decision: "APPROVE" | "REJECT"; reason?: string }) =>
+    mutationFn: (body: { action: "PRELIMINARY" | "FINAL" | "RETURN"; reason?: string }) =>
       apiClient.post(`/api/evaluations/${id}/review`, body),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["evaluations"] });

@@ -23,16 +23,22 @@ export const updateEvaluationSchema = z.object({
   submit: z.boolean().default(false),
 });
 
+/**
+ * Review actions in the multi-stage flow:
+ *  - PRELIMINARY: المراجع gives the first-stage approval (PENDING → PRELIMINARY_APPROVED)
+ *  - FINAL: المراجع الأساسي gives the final approval (→ APPROVED; employee notified)
+ *  - RETURN: send back to the evaluator to fix, with a reason (→ NEEDS_EDIT)
+ */
 export const reviewEvaluationSchema = z
   .object({
-    decision: z.enum(["APPROVE", "REJECT"]),
+    action: z.enum(["PRELIMINARY", "FINAL", "RETURN"]),
     reason: z.string().trim().max(1000).optional(),
   })
   .superRefine((v, ctx) => {
-    if (v.decision === "REJECT" && (!v.reason || v.reason.length < 3)) {
+    if (v.action === "RETURN" && (!v.reason || v.reason.length < 3)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "سبب الرفض مطلوب",
+        message: "سبب الإعادة مطلوب",
         path: ["reason"],
       });
     }
@@ -43,6 +49,8 @@ export const listEvaluationsSchema = paginationSchema.extend({
     .enum([
       EvaluationStatus.DRAFT,
       EvaluationStatus.PENDING,
+      EvaluationStatus.NEEDS_EDIT,
+      EvaluationStatus.PRELIMINARY_APPROVED,
       EvaluationStatus.APPROVED,
       EvaluationStatus.REJECTED,
     ])

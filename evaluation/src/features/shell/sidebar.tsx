@@ -6,14 +6,16 @@ import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav";
 import { useT } from "@/i18n/client";
-import { can, type Permission } from "@/core/domain/permissions";
+import { can, canAny, type Permission } from "@/core/domain/permissions";
 import type { Role } from "@/core/domain/enums";
 
 export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
   const t = useT();
   const items = NAV_ITEMS.filter(
-    (i) => !i.permission || can(role, i.permission as Permission),
+    (i) =>
+      (!i.permission || can(role, i.permission as Permission)) &&
+      (!i.anyPermission || canAny(role, i.anyPermission)),
   );
 
   return (

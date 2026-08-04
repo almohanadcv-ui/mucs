@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Check, X, Star, Trash2 } from "lucide-react";
+import { Loader2, Check, CheckCheck, RotateCcw, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -72,11 +72,20 @@ function formatAnswer(
 
 export function EvaluationDetailView({
   id,
-  canReview,
+  canPreliminary,
+  canFinal,
+  canReturn,
   canDelete,
 }: {
   id: string;
-  canReview: boolean;
+  /** المراجع — اعتماد مبدئي */
+  canPreliminary?: boolean;
+  /** المراجع الأساسي — اعتماد نهائي */
+  canFinal?: boolean;
+  /** إعادة للتعديل مع سبب */
+  canReturn?: boolean;
+  /** kept for compatibility (any review capability) */
+  canReview?: boolean;
   /** IT / الإدارة may remove an evaluation entirely. */
   canDelete?: boolean;
 }) {
@@ -86,7 +95,7 @@ export function EvaluationDetailView({
   const review = useReviewEvaluation(id);
   const del = useDeleteEvaluation();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [rejectOpen, setRejectOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
   const [reason, setReason] = useState("");
 
   if (isLoading) {
@@ -97,26 +106,34 @@ export function EvaluationDetailView({
   }
 
   const answersByQ = new Map(data.answers.map((a) => [a.questionId, a]));
-  const isPending = data.status === "PENDING";
+  const status = data.status;
+  // الإدارة/IT hold both approval permissions → may finalize a PENDING directly.
+  const shortcut = Boolean(canPreliminary && canFinal);
+  const showPrelim = Boolean(canPreliminary) && status === "PENDING";
+  const showFinal =
+    (Boolean(canFinal) && status === "PRELIMINARY_APPROVED") || (shortcut && status === "PENDING");
+  const showReturn =
+    Boolean(canReturn) && (status === "PENDING" || status === "PRELIMINARY_APPROVED");
+  const showReviewBar = showPrelim || showFinal || showReturn;
 
-  async function approve() {
+  async function act(action: "PRELIMINARY" | "FINAL") {
     try {
-      await review.mutateAsync({ decision: "APPROVE" });
-      toast.success(t("evaluations.approved"));
+      await review.mutateAsync({ action });
+      toast.success(action === "FINAL" ? t("evaluations.finalApproved") : t("evaluations.prelimApproved"));
       router.refresh();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : t("evaluations.approveFailed"));
     }
   }
-  async function reject() {
-    if (reason.trim().length < 3) return toast.error(t("evaluations.rejectReasonRequired"));
+  async function returnForEdit() {
+    if (reason.trim().length < 3) return toast.error(t("evaluations.returnReasonRequired"));
     try {
-      await review.mutateAsync({ decision: "REJECT", reason: reason.trim() });
-      toast.success(t("evaluations.rejected"));
-      setRejectOpen(false);
+      await review.mutateAsync({ action: "RETURN", reason: reason.trim() });
+      toast.success(t("evaluations.returned"));
+      setReturnOpen(false);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : t("evaluations.rejectFailed"));
+      toast.error(e instanceof ApiError ? e.message : t("evaluations.returnFailed"));
     }
   }
 
@@ -139,9 +156,9 @@ export function EvaluationDetailView({
         </div>
       </div>
 
-      {data.status === "REJECTED" && data.rejectionReason && (
+      {(status === "NEEDS_EDIT" || status === "REJECTED") && data.rejectionReason && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {t("evaluations.rejectReasonPrefix")} {data.rejectionReason}
+          {t("evaluations.returnReasonPrefix")} {data.rejectionReason}
         </div>
       )}
 
@@ -169,15 +186,25 @@ export function EvaluationDetailView({
         </CardContent>
       </Card>
 
-      {canReview && isPending && (
-        <div className="flex justify-start gap-3">
-          <Button onClick={approve} disabled={review.isPending}>
-            {review.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-            {t("evaluations.approve")}
-          </Button>
-          <Button variant="destructive" onClick={() => setRejectOpen(true)} disabled={review.isPending}>
-            <X className="size-4" /> {t("evaluations.reject")}
-          </Button>
+      {showReviewBar && (
+        <div className="flex flex-wrap justify-start gap-3">
+          {showPrelim && (
+            <Button onClick={() => act("PRELIMINARY")} disabled={review.isPending}>
+              {review.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+              {t("evaluations.approvePrelim")}
+            </Button>
+          )}
+          {showFinal && (
+            <Button onClick={() => act("FINAL")} disabled={review.isPending} className="bg-success hover:bg-success/90">
+              {review.isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
+              {t("evaluations.approveFinal")}
+            </Button>
+          )}
+          {showReturn && (
+            <Button variant="outline" onClick={() => setReturnOpen(true)} disabled={review.isPending}>
+              <RotateCcw className="size-4" /> {t("evaluations.returnForEdit")}
+            </Button>
+          )}
         </div>
       )}
 
@@ -223,16 +250,16 @@ export function EvaluationDetailView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{t("evaluations.rejectReasonTitle")}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{t("evaluations.returnReasonTitle")}</DialogTitle></DialogHeader>
           <div className="space-y-2">
-            <Label>{t("evaluations.writeRejectReason")}</Label>
+            <Label>{t("evaluations.writeReturnReason")}</Label>
             <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
           </div>
           <DialogFooter>
-            <Button variant="destructive" onClick={reject} disabled={review.isPending}>
-              {review.isPending && <Loader2 className="size-4 animate-spin" />} {t("evaluations.confirmReject")}
+            <Button onClick={returnForEdit} disabled={review.isPending}>
+              {review.isPending && <Loader2 className="size-4 animate-spin" />} {t("evaluations.confirmReturn")}
             </Button>
           </DialogFooter>
         </DialogContent>

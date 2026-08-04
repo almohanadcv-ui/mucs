@@ -9,6 +9,8 @@ type Variant = "success" | "warning" | "destructive" | "muted";
 const EVAL_VARIANT: Record<string, Variant> = {
   [EvaluationStatus.DRAFT]: "muted",
   [EvaluationStatus.PENDING]: "warning",
+  [EvaluationStatus.NEEDS_EDIT]: "destructive",
+  [EvaluationStatus.PRELIMINARY_APPROVED]: "warning",
   [EvaluationStatus.APPROVED]: "success",
   [EvaluationStatus.REJECTED]: "destructive",
 };
