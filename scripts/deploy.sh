@@ -118,6 +118,21 @@ if [ -d "$REPO_DIR/evaluation" ]; then
   pnpm prisma generate >/dev/null 2>&1 \
     && ok "توليد Prisma Client (تقييم) تم" || warn "فشل توليد Prisma Client (تقييم)"
 
+  # اجلب خط PDF العربي (Amiri) مسبقًا إلى الكاش، حتى لا يعتمد أول تقييم مُعتمَد
+  # على وصول GitHub لحظتها. غياب الخط لا يكسر البريد — فقط يُلغي المرفق.
+  FONT_CACHE="$REPO_DIR/evaluation/.cache/amiri-regular.ttf"
+  if [ ! -s "$FONT_CACHE" ]; then
+    mkdir -p "$REPO_DIR/evaluation/.cache"
+    if curl -fsSL "https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Regular.ttf" -o "$FONT_CACHE" && [ "$(stat -c%s "$FONT_CACHE" 2>/dev/null || echo 0)" -gt 50000 ]; then
+      ok "خط PDF العربي جاهز (Amiri)"
+    else
+      rm -f "$FONT_CACHE"
+      warn "تعذّر جلب خط PDF — سيُحاول التطبيق جلبه لاحقًا، والبريد يعمل بلا مرفق حتى ذلك."
+    fi
+  else
+    ok "خط PDF العربي موجود مسبقًا"
+  fi
+
   if pnpm build; then
     ok "بناء نظام التقييم نجح"
     # لا بد من الترحيل هنا كما في ميكا: بدونه تُنشر ميزة تعتمد على عمود غير

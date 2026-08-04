@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cached PDF font (Amiri), fetched at runtime/deploy
+.cache/

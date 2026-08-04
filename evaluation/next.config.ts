@@ -57,7 +57,9 @@ const nextConfig: NextConfig = {
   // React 19. The app is runtime-correct; this only unblocks `next build`.
   typescript: { ignoreBuildErrors: true },
   turbopack: { root: path.resolve(__dirname) },
-  serverExternalPackages: ["argon2", "@prisma/client"],
+  // pdfkit reads its font-metric (.afm) data from disk at runtime; bundling it
+  // breaks those reads, so keep it external and loaded from node_modules.
+  serverExternalPackages: ["argon2", "@prisma/client", "pdfkit"],
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts", "date-fns"],
   },

@@ -21,6 +21,7 @@ import {
 } from "@/core/domain/answers";
 import { sendEmail } from "@/infrastructure/email/mailer";
 import { evaluationResultEmail } from "@/infrastructure/email/templates";
+import { buildEvaluationPdfBranded } from "@/infrastructure/pdf/evaluation-pdf";
 import { buildMeta, toSkipTake, type Paginated } from "@/lib/pagination";
 import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
@@ -511,7 +512,8 @@ async function sendApprovedEvaluationToEmployee(evaluationId: string): Promise<v
     select: {
       score: true,
       reviewedAt: true,
-      employee: { select: { name: true, email: true } },
+      employee: { select: { name: true, email: true, employeeNo: true } },
+      evaluator: { select: { name: true } },
       template: { select: { title: true } },
       answers: {
         select: {
@@ -548,12 +550,43 @@ async function sendApprovedEvaluationToEmployee(evaluationId: string): Promise<v
       };
     });
 
+  const reviewedAt = ev.reviewedAt ?? new Date();
   const mail = evaluationResultEmail({
     employeeName: ev.employee.name,
     templateTitle: ev.template.title,
     score: ev.score,
-    reviewedAt: ev.reviewedAt ?? new Date(),
+    reviewedAt,
     items,
   });
-  await sendEmail({ to: ev.employee.email, subject: mail.subject, html: mail.html, text: mail.text });
+
+  // Attach the evaluation as a PDF. Best-effort: if the font/render fails the
+  // email still goes with its inline summary, so the employee is never left
+  // with nothing because of the attachment.
+  let attachments: { filename: string; content: Buffer; contentType: string }[] | undefined;
+  try {
+    const pdf = await buildEvaluationPdfBranded({
+      employeeName: ev.employee.name,
+      employeeNo: ev.employee.employeeNo,
+      templateTitle: ev.template.title,
+      evaluatorName: ev.evaluator?.name,
+      score: ev.score,
+      reviewedAt,
+      items,
+    });
+    if (pdf) {
+      attachments = [
+        { filename: `تقييم-${ev.employee.name}.pdf`, content: pdf, contentType: "application/pdf" },
+      ];
+    }
+  } catch (err) {
+    console.error(`[evaluations] PDF render for ${evaluationId} failed:`, err);
+  }
+
+  await sendEmail({
+    to: ev.employee.email,
+    subject: mail.subject,
+    html: mail.html,
+    text: mail.text,
+    attachments,
+  });
 }

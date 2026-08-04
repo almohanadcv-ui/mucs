@@ -11,6 +11,8 @@ export interface Mail {
   html: string;
   /** Plain-text alternative; HTML-only mail scores worse with spam filters. */
   text?: string;
+  /** Documents to attach (beyond the inline logo), e.g. the evaluation PDF. */
+  attachments?: { filename: string; content: Buffer; contentType: string }[];
 }
 
 // Read the wordmark from disk once. `next start` serves the app from the
@@ -51,6 +53,9 @@ export async function sendEmail(mail: Mail): Promise<boolean> {
         cid: LOGO_CID,
       });
     }
+  }
+  for (const a of mail.attachments ?? []) {
+    attachments.push({ filename: a.filename, content: a.content, contentType: a.contentType });
   }
 
   await graphSend({
