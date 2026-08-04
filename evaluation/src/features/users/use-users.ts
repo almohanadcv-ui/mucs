@@ -14,6 +14,8 @@ export interface UserRow {
   createdAt: string;
   failedLoginAttempts: number;
   lockedUntil: string | null;
+  /** A protected account can't be deleted, deactivated or role-changed. */
+  isProtected?: boolean;
 }
 
 export function useUsers(params: { page?: number; role?: string; search?: string }) {

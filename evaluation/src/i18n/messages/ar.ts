@@ -72,6 +72,7 @@ export const ar = {
     lockedFor: "مقفول ({n} د)",
     unlock: "فك القفل",
     unlocked: "تم فك القفل",
+    protected: "حساب محمي — لا يمكن حذفه أو تعطيله",
     inviteMode: "دعوة عبر البريد",
     inviteModeHint: "يُنشأ الحساب بلا كلمة مرور، ويصل للشخص رابط ليضع كلمة مروره بنفسه.",
     sendInvite: "إنشاء وإرسال الدعوة",

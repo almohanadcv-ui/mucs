@@ -70,6 +70,7 @@ export const en: Messages = {
     lockedFor: "Locked ({n}m)",
     unlock: "Unlock",
     unlocked: "Account unlocked",
+    protected: "Protected account — cannot be deleted or deactivated",
     inviteMode: "Invite by email",
     inviteModeHint: "The account is created without a password; the user gets a link to set their own.",
     sendInvite: "Create & send invite",

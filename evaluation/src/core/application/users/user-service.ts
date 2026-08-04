@@ -17,6 +17,16 @@ import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
 import type { CreateUserInput, UpdateUserInput, ListUsersInput } from "./dto";
 
+/**
+ * Accounts that can never be deleted, deactivated or role-changed — by anyone,
+ * including other IT/ADMIN users. Hardcoded (not env/DB-driven) so the guard
+ * can't be lifted by editing configuration or the database.
+ */
+const PROTECTED_EMAILS = new Set<string>(["almuhannad.mahnashi@mabunited.com"]);
+function isProtectedEmail(email: string): boolean {
+  return PROTECTED_EMAILS.has(email.trim().toLowerCase());
+}
+
 const PUBLIC_SELECT = {
   id: true,
   name: true,
@@ -57,7 +67,9 @@ export async function listUsers(
     }),
     prisma.user.count({ where }),
   ]);
-  return { items, meta: buildMeta(input, total) };
+  // Flag protected accounts so the UI can hide destructive actions.
+  const rows = items.map((u) => ({ ...u, isProtected: isProtectedEmail(u.email) }));
+  return { items: rows, meta: buildMeta(input, total) };
 }
 
 export async function createUser(
@@ -133,12 +145,21 @@ export async function updateUser(
 ) {
   const target = await prisma.user.findFirst({
     where: { id, tenantId: user.tenantId, deletedAt: null },
-    select: { id: true, role: true, isActive: true },
+    select: { id: true, role: true, isActive: true, email: true },
   });
   if (!target) throw AppError.notFound("المستخدم غير موجود");
   // Prevent an admin from demoting/deactivating themselves.
   if (id === user.id && (input.role || input.isActive === false)) {
     throw AppError.validation("لا يمكنك تعديل دورك أو تعطيل حسابك");
+  }
+  // A protected account can't be deactivated, demoted, or have its email moved.
+  if (
+    isProtectedEmail(target.email) &&
+    (input.isActive === false ||
+      (input.role !== undefined && input.role !== target.role) ||
+      (input.email !== undefined && !isProtectedEmail(input.email)))
+  ) {
+    throw AppError.forbidden("هذا الحساب محمي ولا يمكن تعطيله أو تغيير دوره");
   }
 
   // A changed email must stay unique within the tenant (the login lookup key).
@@ -208,9 +229,12 @@ export async function deleteUser(
   if (id === user.id) throw AppError.validation("لا يمكنك حذف حسابك");
   const target = await prisma.user.findFirst({
     where: { id, tenantId: user.tenantId, deletedAt: null },
-    select: { id: true },
+    select: { id: true, email: true },
   });
   if (!target) throw AppError.notFound("المستخدم غير موجود");
+  if (isProtectedEmail(target.email)) {
+    throw AppError.forbidden("هذا الحساب محمي ولا يمكن حذفه");
+  }
 
   const deleted = await prisma.user.update({
     where: { id },

@@ -188,14 +188,20 @@ export function UsersClient() {
                           >
                             <Pencil className="size-4" />
                           </Button>
-                          <Button
-                            variant="ghost" size="icon"
-                            className="text-destructive"
-                            title={t("templates.confirm")}
-                            onClick={() => setToDelete(u)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
+                          {u.isProtected ? (
+                            <span title={t("users.protected")} className="flex size-9 items-center justify-center text-muted-foreground">
+                              <ShieldCheck className="size-4 text-success" />
+                            </span>
+                          ) : (
+                            <Button
+                              variant="ghost" size="icon"
+                              className="text-destructive"
+                              title={t("templates.confirm")}
+                              onClick={() => setToDelete(u)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
                         </div>
                       </td>
                     </tr>
