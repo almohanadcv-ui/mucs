@@ -10,8 +10,10 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const meta = requestMeta(req);
   try {
+    // Generous per-IP throttle: an office shares one public IP, so this must not
+    // lock out colleagues; a wrong code is already capped per-challenge (5 tries).
     const limit = await rateLimit(`login-verify:${meta.ip ?? "unknown"}`, {
-      limit: 10,
+      limit: 40,
       windowMs: 60_000,
     });
     if (!limit.success) {

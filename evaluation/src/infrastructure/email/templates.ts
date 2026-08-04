@@ -154,11 +154,12 @@ export function loginCodeEmail(code: string, name?: string): EmailContent {
       تحيّاتنا،<br /><strong>قسم تقنية المعلومات (IT)</strong>
     </p>`;
   return {
-    // The code sits first in the subject so Outlook/Windows offers a one-tap
-    // "copy code" on the notification.
-    subject: `${code} هو رمز تسجيل الدخول — ${brand()}`,
+    // English subject + preheader in the exact "X is your verification code"
+    // shape Outlook/Windows recognises, so the notification offers a one-tap
+    // "copy code" chip. The visible message stays Arabic.
+    subject: `${code} is your verification code — ${brand()}`,
     html: shell({
-      preheader: `رمز التحقق الخاص بك هو ${code} (صالح لـ10 دقائق).`,
+      preheader: `Your verification code is ${code}. It is valid for 10 minutes.`,
       eyebrow: "رمز التحقق",
       accent,
       title: "رمز تسجيل الدخول",

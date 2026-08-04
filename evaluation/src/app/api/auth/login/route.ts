@@ -8,9 +8,11 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const meta = requestMeta(req);
   try {
-    // Stricter limit on auth endpoints to blunt brute-force / credential stuffing.
+    // Per-IP throttle to blunt automated credential stuffing. Kept generous —
+    // a whole office shares one public IP (NAT), so a low cap would lock out
+    // legitimate colleagues; per-account lockout (5 fails) is the real defence.
     const limit = await rateLimit(`login:${meta.ip ?? "unknown"}`, {
-      limit: 10,
+      limit: 40,
       windowMs: 60_000,
     });
     if (!limit.success) {
