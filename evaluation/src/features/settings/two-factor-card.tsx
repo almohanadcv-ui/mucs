@@ -7,6 +7,7 @@ import { ShieldCheck, ShieldOff, Loader2, Copy } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { apiClient, ApiError } from "@/lib/api-client";
@@ -133,7 +134,7 @@ export function TwoFactorCard({ enabled: initialEnabled }: { enabled: boolean })
           <div className="flex items-end gap-2">
             <div className="space-y-1">
               <Label className="text-xs">{t("twofa.disablePassword")}</Label>
-              <Input type="password" dir="ltr" className="w-56"
+              <PasswordInput dir="ltr" className="w-56"
                 value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
             <Button variant="destructive" onClick={disable} disabled={busy || !password}>

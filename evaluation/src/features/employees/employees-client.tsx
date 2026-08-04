@@ -33,13 +33,29 @@ import { useT } from "@/i18n/client";
  * Remaining time until a contract/probation ends, with a color that escalates
  * as the deadline approaches: green (>90d) → amber (30–90d) → red (<30d/ended).
  */
+/** The probation end date, from the stored end date or start + months. */
+function probationEnd(e: EmployeeRow): string | null {
+  if (e.probationEndDate) return e.probationEndDate;
+  const start = e.probationStartDate ?? e.contractStartDate ?? e.joinedAt;
+  if (start && e.probationMonths) return addMonths(new Date(start), e.probationMonths).toISOString();
+  return null;
+}
+
+/** The contract end date, from the stored end date or start + months. */
+function contractEnd(e: EmployeeRow): string | null {
+  if (e.contractEndDate) return e.contractEndDate;
+  const start = e.contractStartDate ?? e.joinedAt;
+  if (start && e.contractMonths) return addMonths(new Date(start), e.contractMonths).toISOString();
+  return null;
+}
+
 function remaining(
-  startISO: string | null,
-  months: number | null,
+  endISO: string | null,
   t: (key: string, params?: Record<string, string | number>) => string,
 ) {
-  if (!startISO || !months) return null;
-  const end = addMonths(new Date(startISO), months);
+  if (!endISO) return null;
+  const end = new Date(endISO);
+  if (Number.isNaN(end.getTime())) return null;
   const days = differenceInCalendarDays(end, new Date());
   const color =
     days < 30
@@ -52,8 +68,8 @@ function remaining(
 
 function ContractCell({ e }: { e: EmployeeRow }) {
   const t = useT();
-  const prob = remaining(e.contractStartDate, e.probationMonths, t);
-  const contract = remaining(e.contractStartDate, e.contractMonths, t);
+  const prob = remaining(probationEnd(e), t);
+  const contract = remaining(contractEnd(e), t);
   if (!prob && !contract) return <span className="text-muted-foreground">—</span>;
   return (
     <div className="flex flex-col gap-1">
@@ -238,7 +254,7 @@ export function EmployeesClient({
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">{e.department?.name ?? "—"}</td>
                       <td className="px-3 py-3"><ContractCell e={e} /></td>
-                      <td className="px-3 py-3 text-muted-foreground">{e.supervisor?.name ?? "—"}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{e.supervisor?.name ?? e.directManager ?? "—"}</td>
                       <td className="px-3 py-3 text-muted-foreground">{e.evaluator?.name ?? "—"}</td>
                       <td className="px-3 py-3"><EmployeeStatusBadge status={e.status} /></td>
                       {canManage && (

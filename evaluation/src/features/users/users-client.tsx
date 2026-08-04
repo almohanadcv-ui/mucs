@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Plus, UserCog, Loader2, Trash2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -157,7 +158,7 @@ export function UsersClient() {
             </div>
             <div className="space-y-2">
               <Label>{t("users.passwordLabel")}</Label>
-              <Input type="password" dir="ltr" {...register("password", { required: true, minLength: 12 })} />
+              <PasswordInput dir="ltr" {...register("password", { required: true, minLength: 8 })} />
             </div>
             <div className="space-y-2">
               <Label>{t("users.roleLabel")}</Label>

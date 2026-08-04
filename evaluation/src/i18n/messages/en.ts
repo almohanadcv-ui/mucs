@@ -74,7 +74,7 @@ export const en: Messages = {
     roleManagement: "Management",
     roleSupervisor: "Reviewer",
     roleEvaluator: "Evaluator",
-    passwordLabel: "Password (at least 12 characters)",
+    passwordLabel: "Password (at least 8 characters)",
     roleLabel: "Role",
     create: "Create",
     deleteTitle: "Delete user",

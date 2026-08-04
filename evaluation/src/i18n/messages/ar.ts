@@ -76,7 +76,7 @@ export const ar = {
     roleManagement: "الإدارة",
     roleSupervisor: "مراجع",
     roleEvaluator: "مقيّم",
-    passwordLabel: "كلمة المرور (12 حرفاً على الأقل)",
+    passwordLabel: "كلمة المرور (8 أحرف على الأقل)",
     roleLabel: "الدور",
     create: "إنشاء",
     deleteTitle: "حذف المستخدم",

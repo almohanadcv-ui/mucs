@@ -15,8 +15,12 @@ export interface EmployeeRow {
   avatarUrl: string | null;
   joinedAt: string | null;
   contractStartDate: string | null;
+  contractEndDate: string | null;
   contractMonths: number | null;
+  probationStartDate: string | null;
+  probationEndDate: string | null;
   probationMonths: number | null;
+  directManager: string | null;
   branchId: string | null;
   departmentId: string | null;
   supervisorId: string | null;
