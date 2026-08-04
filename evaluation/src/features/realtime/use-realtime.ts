@@ -36,8 +36,13 @@ export function useRealtime(enabled: boolean) {
       switch (event.type) {
         case "session-revoked":
           // The account was deleted/deactivated while signed in — leave now.
+          // Clear the auth cookies FIRST (via logout): otherwise the still-valid
+          // access-token cookie makes the middleware bounce /login back to the
+          // dashboard, and the user never actually leaves.
           qc.clear();
-          window.location.href = "/login";
+          void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
+            window.location.href = "/login";
+          });
           break;
         case "notification":
           qc.invalidateQueries({ queryKey: ["notifications"] });
