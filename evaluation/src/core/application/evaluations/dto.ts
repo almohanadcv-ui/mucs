@@ -10,16 +10,21 @@ export const answerInputSchema = z.object({
   remarks: z.string().trim().max(2000).optional().nullable(),
 });
 
+/** Selected «التوصية» option keys; unknown keys are dropped in the service. */
+const recommendationSchema = z.array(z.string()).max(20).optional();
+
 export const createEvaluationSchema = z.object({
   templateId: z.string().uuid(),
   employeeId: z.string().uuid(),
   answers: z.array(answerInputSchema).default([]),
+  recommendation: recommendationSchema,
   // If true, submit immediately for review; otherwise save as DRAFT.
   submit: z.boolean().default(false),
 });
 
 export const updateEvaluationSchema = z.object({
   answers: z.array(answerInputSchema).min(1),
+  recommendation: recommendationSchema,
   submit: z.boolean().default(false),
 });
 

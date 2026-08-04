@@ -59,6 +59,22 @@ export const QuestionType = {
 export type QuestionType = (typeof QuestionType)[keyof typeof QuestionType];
 export const QUESTION_TYPES = Object.values(QuestionType);
 
+/**
+ * The fixed «التوصية / Recommendation» section shown at the end of every
+ * evaluation. Chosen by the evaluator, seen by reviewers and management — but
+ * NEVER shown to the employee (kept out of their result email and PDF).
+ */
+export const RECOMMENDATION_OPTIONS = [
+  { key: "increment", ar: "علاوة", en: "Increment" },
+  { key: "promotion", ar: "ترقية", en: "Promotion" },
+  { key: "dismissal", ar: "الاستغناء عنه", en: "Dismissal" },
+  { key: "bonus", ar: "مكافأة", en: "Bonus" },
+  { key: "no_increment", ar: "يحرم من العلاوة", en: "No Increment" },
+  { key: "transfer", ar: "نقله لمكان آخر", en: "Transfer" },
+] as const;
+export const RECOMMENDATION_KEYS = RECOMMENDATION_OPTIONS.map((o) => o.key);
+export type RecommendationKey = (typeof RECOMMENDATION_OPTIONS)[number]["key"];
+
 /** Star rating scale labels (Arabic), 1..5. */
 export const STAR_RATING_LABELS: Record<number, string> = {
   1: "ضعيف",

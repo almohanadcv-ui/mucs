@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
-import { QuestionType } from "@/core/domain/enums";
+import { QuestionType, RECOMMENDATION_OPTIONS } from "@/core/domain/enums";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import {
   useEvaluation,
@@ -185,6 +185,22 @@ export function EvaluationDetailView({
           ))}
         </CardContent>
       </Card>
+
+      {data.recommendation && data.recommendation.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">{t("evaluations.recommendation")}</CardTitle>
+            <p className="text-xs text-muted-foreground">{t("evaluations.recommendationConfidential")}</p>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {RECOMMENDATION_OPTIONS.filter((o) => data.recommendation.includes(o.key)).map((o) => (
+              <span key={o.key} className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-3 py-1 text-sm font-medium text-primary">
+                <Check className="size-3.5" /> {o.ar}
+              </span>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex flex-wrap justify-start gap-3">
         <Button variant="outline" asChild>

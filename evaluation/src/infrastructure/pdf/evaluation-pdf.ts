@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { loadArabicFont } from "./arabic-font";
+import { RECOMMENDATION_OPTIONS } from "@/core/domain/enums";
 import { getServerEnv } from "@/lib/env";
 
 /**
@@ -28,6 +29,8 @@ export interface EvaluationPdfInput {
   score: number | null;
   reviewedAt: Date;
   items: EvaluationPdfItem[];
+  /** Selected «التوصية» keys. Omitted for the employee's own copy. */
+  recommendation?: string[];
 }
 
 const NAVY = "#0f2b46";
@@ -221,6 +224,47 @@ export async function buildEvaluationPdf(input: EvaluationPdfInput): Promise<Buf
 
   if (input.items.length === 0) {
     draw("لا توجد بنود مفصّلة.", left, y + 6, fullWidth, { size: 11, color: MUTED });
+  }
+
+  // ── Recommendation (staff copy only) ────────────────────────────────────────────
+  if (input.recommendation) {
+    const selected = new Set(input.recommendation);
+    y += 22;
+    const secH = 26;
+    if (y + secH + RECOMMENDATION_OPTIONS.length * 22 > doc.page.height - doc.page.margins.bottom - 26) {
+      doc.addPage();
+      y = doc.page.margins.top;
+    }
+    doc.save().rect(left, y, fullWidth, secH).fill(NAVY).restore();
+    doc.fontSize(12).fillColor("#ffffff").text("التوصية", left, y + 6, { width: fullWidth - 12, align: "right" });
+    y += secH;
+    RECOMMENDATION_OPTIONS.forEach((opt, i) => {
+      const rowH = 22;
+      doc.save().rect(left, y, fullWidth, rowH).fill(i % 2 ? "#ffffff" : ZEBRA).restore();
+      doc.save().rect(left, y, fullWidth, rowH).lineWidth(0.5).stroke(LINE).restore();
+      const on = selected.has(opt.key);
+      // Checkbox at the inline-start (right) edge. A filled box + hand-drawn tick
+      // (not a glyph) so it never depends on the font having a checkmark.
+      const boxX = right - 22;
+      const boxY = y + 5;
+      if (on) {
+        doc.save().roundedRect(boxX, boxY, 12, 12, 2).fill(NAVY).restore();
+        doc
+          .save()
+          .lineWidth(1.4)
+          .strokeColor("#ffffff")
+          .moveTo(boxX + 3, boxY + 6.4)
+          .lineTo(boxX + 5, boxY + 8.8)
+          .lineTo(boxX + 9.4, boxY + 3.2)
+          .stroke()
+          .restore();
+      } else {
+        doc.save().roundedRect(boxX, boxY, 12, 12, 2).lineWidth(1).stroke("#9aa5b1").restore();
+      }
+      doc.fillColor(INK).fontSize(11).text(arabicWrap(doc, opt.ar, 200), boxX - 210, y + 5, { width: 200, align: "right" });
+      doc.fillColor(MUTED).fontSize(10).text(opt.en, left + 8, y + 6, { width: 200, align: "left" });
+      y += rowH;
+    });
   }
 
   // ── Footer on every page ───────────────────────────────────────────────────────

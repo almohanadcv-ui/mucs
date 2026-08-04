@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { RECOMMENDATION_OPTIONS } from "@/core/domain/enums";
 import {
   Select,
   SelectContent,
@@ -35,7 +37,11 @@ export function EvaluationFill() {
   const { data: template, isLoading: loadingTemplate } = useTemplate(templateId || undefined);
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
   const [remarks, setRemarks] = useState<Record<string, string>>({});
+  const [recommendation, setRecommendation] = useState<string[]>([]);
   const create = useCreateEvaluation();
+
+  const toggleRec = (key: string) =>
+    setRecommendation((r) => (r.includes(key) ? r.filter((k) => k !== key) : [...r, key]));
 
   const employeeId = employee?.id ?? "";
 
@@ -58,6 +64,7 @@ export function EvaluationFill() {
       templateId,
       employeeId,
       submit,
+      recommendation,
       answers: [...ids].map((questionId) => ({
         questionId,
         value: answers[questionId],
@@ -158,6 +165,32 @@ export function EvaluationFill() {
               </CardContent>
             </Card>
           ))}
+
+          {/* «التوصية» — fixed for every employee, seen by reviewers/management
+              only. Explicitly NOT shown to the employee in their copy. */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">{t("evaluations.recommendation")}</CardTitle>
+              <p className="text-xs text-muted-foreground">{t("evaluations.recommendationHint")}</p>
+            </CardHeader>
+            <CardContent className="grid gap-2 sm:grid-cols-2">
+              {RECOMMENDATION_OPTIONS.map((opt) => (
+                <label
+                  key={opt.key}
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 hover:bg-muted/40"
+                >
+                  <div className="text-sm">
+                    <span className="font-medium">{opt.ar}</span>
+                    <span className="ms-2 text-xs text-muted-foreground">{opt.en}</span>
+                  </div>
+                  <Switch
+                    checked={recommendation.includes(opt.key)}
+                    onCheckedChange={() => toggleRec(opt.key)}
+                  />
+                </label>
+              ))}
+            </CardContent>
+          </Card>
 
           <div className="flex justify-start gap-3">
             <Button onClick={() => save(true)} disabled={create.isPending}>

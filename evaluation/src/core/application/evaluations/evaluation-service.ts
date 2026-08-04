@@ -11,7 +11,15 @@ import {
   EvaluationStatus,
   NotificationType,
   Role,
+  RECOMMENDATION_KEYS,
 } from "@/core/domain/enums";
+
+/** Keep only known recommendation keys, de-duplicated, order preserved. */
+function sanitizeRecommendation(rec?: string[]): string[] {
+  if (!rec) return [];
+  const allowed = new Set<string>(RECOMMENDATION_KEYS);
+  return [...new Set(rec.filter((k) => allowed.has(k)))];
+}
 import {
   normalizeAnswer,
   computeScore,
@@ -291,6 +299,7 @@ export async function createEvaluation(
       evaluatorId: user.id,
       status,
       score,
+      recommendation: sanitizeRecommendation(input.recommendation),
       submittedAt: input.submit ? new Date() : null,
       answers: { create: answerCreateData(rows) },
     },
@@ -356,6 +365,7 @@ export async function updateEvaluation(
       data: {
         status,
         score,
+        recommendation: sanitizeRecommendation(input.recommendation),
         submittedAt: input.submit ? new Date() : null,
         // Re-submitting after a return clears the old reason.
         ...(input.submit ? { rejectionReason: null } : {}),
@@ -651,6 +661,7 @@ export async function getEvaluationPdf(
       score: true,
       reviewedAt: true,
       submittedAt: true,
+      recommendation: true,
       employee: { select: { name: true, employeeNo: true } },
       evaluator: { select: { name: true } },
       template: { select: { title: true } },
@@ -692,6 +703,9 @@ export async function getEvaluationPdf(
     score: ev.score,
     reviewedAt: ev.reviewedAt ?? ev.submittedAt ?? new Date(),
     items,
+    // Staff download includes «التوصية». The employee's own copy (built in
+    // sendApprovedEvaluationToEmployee) deliberately omits it.
+    recommendation: ev.recommendation,
   });
   if (!pdf) throw new AppError("INTERNAL", "تعذّر توليد ملف PDF");
 

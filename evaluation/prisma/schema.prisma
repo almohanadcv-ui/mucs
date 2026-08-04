@@ -414,6 +414,11 @@ model Evaluation {
   score       Float?
   submittedAt DateTime?
 
+  /// «التوصية» — fixed recommendation options the evaluator ticks (increment,
+  /// promotion, …). Seen by reviewers/management only; deliberately excluded
+  /// from anything the employee receives.
+  recommendation String[] @default([])
+
   // Preliminary review (SUPERVISOR / مراجع): first-stage sign-off.
   prelimReviewerId String?   @db.Uuid
   prelimReviewedAt DateTime?

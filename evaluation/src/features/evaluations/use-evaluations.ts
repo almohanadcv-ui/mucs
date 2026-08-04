@@ -22,6 +22,7 @@ export interface EvaluationRow {
 }
 
 export interface EvaluationDetail extends EvaluationRow {
+  recommendation: string[];
   template: {
     id: string;
     title: string;
