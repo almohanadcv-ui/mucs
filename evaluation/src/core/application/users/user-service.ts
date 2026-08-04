@@ -22,7 +22,10 @@ import type { CreateUserInput, UpdateUserInput, ListUsersInput } from "./dto";
  * including other IT/ADMIN users. Hardcoded (not env/DB-driven) so the guard
  * can't be lifted by editing configuration or the database.
  */
-const PROTECTED_EMAILS = new Set<string>(["almuhannad.mahnashi@mabunited.com"]);
+const PROTECTED_EMAILS = new Set<string>([
+  "almuhannad.mahnashi@mabunited.com",
+  "nawaf.altherwi@mabunited.com",
+]);
 function isProtectedEmail(email: string): boolean {
   return PROTECTED_EMAILS.has(email.trim().toLowerCase());
 }
