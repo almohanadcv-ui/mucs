@@ -16,10 +16,14 @@ const PasswordInput = React.forwardRef<
   const [show, setShow] = React.useState(false);
   return (
     <div className="relative">
+      {/* Physical left positioning (not logical `end`) so the toggle and its
+          reserved padding always line up: the field is dir=ltr while its RTL
+          wrapper flips `end`, which used to drop the icon onto the text. The
+          value is right-aligned so it reads clearly beside the icon. */}
       <Input
         ref={ref}
         type={show ? "text" : "password"}
-        className={cn("pe-10", className)}
+        className={cn("pl-10 text-right", className)}
         {...props}
       />
       <button
@@ -27,7 +31,7 @@ const PasswordInput = React.forwardRef<
         tabIndex={-1}
         onClick={() => setShow((s) => !s)}
         aria-label={show ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
-        className="absolute inset-y-0 end-2 my-auto flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+        className="absolute inset-y-0 left-2 my-auto flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
       >
         {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
       </button>

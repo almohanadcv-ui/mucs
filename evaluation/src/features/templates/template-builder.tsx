@@ -41,14 +41,14 @@ interface LocalQuestion extends TemplateQuestion {
   _key: string;
 }
 
-function blankQuestion(order: number): LocalQuestion {
+function blankQuestion(order: number, type = "STAR_RATING"): LocalQuestion {
   return {
     _key: nanoid(),
-    type: "STAR_RATING",
+    type,
     label: "",
     required: true,
     order,
-    config: { max: 5, weight: 1 },
+    config: defaultConfigFor(type),
   };
 }
 
@@ -66,6 +66,24 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
   const [questions, setQuestions] = useState<LocalQuestion[]>(
     initial?.questions.map((q) => ({ ...q, _key: nanoid() })) ?? [blankQuestion(0)],
   );
+  // Remembered so newly-added questions match the last bulk choice too.
+  const [bulkType, setBulkType] = useState<string>("");
+
+  /** Switch every existing question to one type at once, keeping weight/remarks. */
+  function setAllTypes(type: string) {
+    setBulkType(type);
+    setQuestions((qs) =>
+      qs.map((q) => ({
+        ...q,
+        type,
+        config: {
+          ...defaultConfigFor(type),
+          weight: q.config?.weight ?? 1,
+          allowRemarks: q.config?.allowRemarks ?? false,
+        },
+      })),
+    );
+  }
 
   /** Fill the builder from a parsed Word form, replacing what is on screen. */
   function applyDraft(draft: TemplateDraft) {
@@ -82,7 +100,7 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
     );
   }
   function addQuestion() {
-    setQuestions((qs) => [...qs, blankQuestion(qs.length)]);
+    setQuestions((qs) => [...qs, blankQuestion(qs.length, bulkType || "STAR_RATING")]);
   }
   function removeQuestion(key: string) {
     setQuestions((qs) => qs.filter((q) => q._key !== key));
@@ -174,6 +192,23 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
           </div>
         </CardContent>
       </Card>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/30 px-4 py-3">
+        <div>
+          <p className="text-sm font-medium">{t("templates.setAllType")}</p>
+          <p className="text-xs text-muted-foreground">{t("templates.setAllTypeHint")}</p>
+        </div>
+        <Select value={bulkType} onValueChange={setAllTypes}>
+          <SelectTrigger className="w-56">
+            <SelectValue placeholder={t("templates.setAllTypePlaceholder")} />
+          </SelectTrigger>
+          <SelectContent>
+            {QUESTION_TYPE_META.map((m) => (
+              <SelectItem key={m.type} value={m.type}>{t(m.label)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="space-y-4">
         {questions.map((q, i) => (
