@@ -197,6 +197,13 @@ export async function login(
     userAgent: meta.userAgent,
   });
 
+  // Testing aid: with LOG_LOGIN_CODES=true the code is printed to the server log
+  // so several test accounts can be exercised without watching four inboxes.
+  // Leave it OFF in normal operation — it weakens the second factor.
+  if (process.env.LOG_LOGIN_CODES === "true") {
+    console.warn(`[auth] login code for ${user.email}: ${code}`);
+  }
+
   const mail = loginCodeEmail(code, user.name);
   try {
     const sent = await sendEmail({ to: user.email, subject: mail.subject, html: mail.html, text: mail.text });
