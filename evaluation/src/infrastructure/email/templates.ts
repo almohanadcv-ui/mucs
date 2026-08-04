@@ -161,6 +161,34 @@ export function loginCodeEmail(code: string, name?: string): EmailContent {
   };
 }
 
+// ── Password reset link ──────────────────────────────────────────────────────
+export function passwordResetEmail(link: string, name?: string): EmailContent {
+  const accent = "#2563eb";
+  const content = `
+    ${greeting(name)}
+    ${para("وصلنا طلب لإعادة تعيين كلمة مرور حسابك. اضغط الزر التالي لتعيين كلمة مرور جديدة:")}
+    ${button(link, "إعادة تعيين كلمة المرور", accent)}
+    ${para(
+      `<span style="color:${MUTED};font-size:13px;">هذا الرابط صالح لمدة 30 دقيقة ويُستخدم مرة واحدة. إن لم تطلب ذلك، تجاهل هذه الرسالة وكلمة مرورك تبقى كما هي.</span>`,
+    )}
+    ${para(
+      `<span style="color:${MUTED};font-size:12px;">إن لم يعمل الزر، انسخ هذا الرابط والصقه في المتصفّح:<br /><span dir="ltr" style="word-break:break-all;color:${accent};">${escapeHtml(
+        link,
+      )}</span></span>`,
+    )}`;
+  return {
+    subject: `إعادة تعيين كلمة المرور — ${brand()}`,
+    html: shell({
+      preheader: "رابط إعادة تعيين كلمة مرور حسابك (صالح لـ30 دقيقة).",
+      eyebrow: "إعادة تعيين",
+      accent,
+      title: "إعادة تعيين كلمة المرور",
+      content,
+    }),
+    text: `مرحبًا${name ? " " + name : ""}،\nلإعادة تعيين كلمة مرورك افتح الرابط التالي (صالح 30 دقيقة):\n${link}\nإن لم تطلب ذلك فتجاهل هذه الرسالة.`,
+  };
+}
+
 // ── Probation reminder ───────────────────────────────────────────────────────
 export function probationReminderEmail(params: {
   evaluatorName?: string;

@@ -7,7 +7,7 @@ import { ACCESS_COOKIE } from "@/infrastructure/auth/cookies";
  * short-lived access token; when it's expired the client calls /api/auth/refresh.
  * Fine-grained permission checks happen in server components / API handlers.
  */
-const PUBLIC_PATHS = ["/", "/login"];
+const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

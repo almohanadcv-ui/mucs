@@ -2,12 +2,24 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, ClipboardList, Star, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Plus, ClipboardList, Star, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api-client";
+import { Permission } from "@/core/domain/permissions";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
-import { useEvaluations } from "./use-evaluations";
+import { useMe } from "@/features/auth/use-me";
+import { useEvaluations, useDeleteEvaluation, type EvaluationRow } from "./use-evaluations";
 import { useI18n } from "@/i18n/client";
 
 const FILTERS = [
@@ -29,6 +41,22 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
   const { data, isLoading } = useEvaluations({ status, page });
   const rows = data?.items ?? [];
   const meta = data?.meta;
+
+  const { data: me } = useMe();
+  const canDelete = me?.permissions?.includes(Permission.EVALUATION_DELETE) ?? false;
+  const del = useDeleteEvaluation();
+  const [toDelete, setToDelete] = useState<EvaluationRow | null>(null);
+
+  async function confirmDelete() {
+    if (!toDelete) return;
+    try {
+      await del.mutateAsync(toDelete.id);
+      toast.success(t("evaluations.deleted"));
+      setToDelete(null);
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : t("evaluations.saveFailed"));
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -101,9 +129,21 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
                       <td className="px-3 py-3 tabular-nums text-muted-foreground">{fmt(e.submittedAt, locale)}</td>
                       <td className="px-3 py-3"><EvaluationStatusBadge status={e.status} /></td>
                       <td className="px-3 py-3">
-                        <Button asChild variant="ghost" size="sm">
-                          <Link href={`/dashboard/evaluations/${e.id}`}>{t("common.view")}</Link>
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button asChild variant="ghost" size="sm">
+                            <Link href={`/dashboard/evaluations/${e.id}`}>{t("common.view")}</Link>
+                          </Button>
+                          {canDelete && (
+                            <Button
+                              variant="ghost" size="icon"
+                              className="text-destructive"
+                              title={t("evaluations.deleteTitle")}
+                              onClick={() => setToDelete(e)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -123,6 +163,21 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={!!toDelete} onOpenChange={(v) => !v && setToDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>{t("evaluations.deleteTitle")}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t("evaluations.deleteConfirm", { name: toDelete?.employee?.name ?? "" })}
+          </p>
+          <DialogFooter>
+            <Button variant="destructive" onClick={confirmDelete} disabled={del.isPending}>
+              {del.isPending && <Loader2 className="size-4 animate-spin" />} {t("templates.confirm")}
+            </Button>
+            <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

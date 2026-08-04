@@ -101,10 +101,20 @@ export async function updateUser(
     throw AppError.validation("لا يمكنك تعديل دورك أو تعطيل حسابك");
   }
 
+  // A changed email must stay unique within the tenant (the login lookup key).
+  if (input.email !== undefined) {
+    const clash = await prisma.user.findFirst({
+      where: { tenantId: user.tenantId, email: input.email, deletedAt: null, id: { not: id } },
+      select: { id: true },
+    });
+    if (clash) throw AppError.validation("البريد الإلكتروني مستخدم بحساب آخر");
+  }
+
   const updated = await prisma.user.update({
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.email !== undefined ? { email: input.email } : {}),
       ...(input.role !== undefined ? { role: input.role } : {}),
       ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),

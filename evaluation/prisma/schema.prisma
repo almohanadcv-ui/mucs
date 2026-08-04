@@ -133,6 +133,7 @@ model User {
 
   refreshTokens        RefreshToken[]
   loginChallenges      LoginChallenge[]
+  passwordResetTokens  PasswordResetToken[]
   auditLogs            AuditLog[]
   notifications        Notification[]
   // Domain links: a User (SUPERVISOR/EVALUATOR) maps to an Employee record via profile
@@ -191,6 +192,25 @@ model LoginChallenge {
   @@index([userId, consumedAt])
   @@index([expiresAt])
   @@map("login_challenges")
+}
+
+/// Self-service "forgot password" token delivered as a link. Only a hash of the
+/// opaque token is stored; the raw value lives solely in the emailed URL.
+model PasswordResetToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }
 
 // ───────────────────────────── Org structure ────────────────────────────────

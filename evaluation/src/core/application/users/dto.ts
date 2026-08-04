@@ -13,6 +13,7 @@ export const createUserSchema = z.object({
 
 export const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(150).optional(),
+  email: z.string().trim().toLowerCase().email("بريد إلكتروني غير صالح").optional(),
   role: roleEnum.optional(),
   isActive: z.boolean().optional(),
   password: z.string().min(8).max(200).optional(),

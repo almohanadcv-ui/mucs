@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Plus, UserCog, Loader2, Trash2, ShieldCheck } from "lucide-react";
+import { Plus, UserCog, Loader2, Trash2, ShieldCheck, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -29,6 +30,7 @@ import { ApiError } from "@/lib/api-client";
 import {
   useUsers,
   useCreateUser,
+  useUpdateUser,
   useDeleteUser,
   type UserRow,
 } from "./use-users";
@@ -44,6 +46,7 @@ interface CreateForm {
 export function UsersClient() {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<UserRow | null>(null);
   const [toDelete, setToDelete] = useState<UserRow | null>(null);
   const { data, isLoading } = useUsers({ page: 1 });
   const create = useCreateUser();
@@ -126,13 +129,23 @@ export function UsersClient() {
                         </Badge>
                       </td>
                       <td className="px-3 py-3">
-                        <Button
-                          variant="ghost" size="icon"
-                          className="text-destructive"
-                          onClick={() => setToDelete(u)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost" size="icon"
+                            title={t("users.edit")}
+                            onClick={() => setEditing(u)}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="text-destructive"
+                            title={t("templates.confirm")}
+                            onClick={() => setToDelete(u)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -181,6 +194,11 @@ export function UsersClient() {
         </DialogContent>
       </Dialog>
 
+      {/* Edit dialog — keyed so it re-initialises per user without an effect */}
+      {editing && (
+        <EditUserDialog key={editing.id} user={editing} onClose={() => setEditing(null)} />
+      )}
+
       {/* Delete confirm */}
       <Dialog open={!!toDelete} onOpenChange={(v) => !v && setToDelete(null)}>
         <DialogContent className="max-w-sm">
@@ -195,5 +213,73 @@ export function UsersClient() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * IT-only editor for an existing account: change email, role and active state,
+ * and set a new password (left blank keeps the current one). Its own component
+ * so the update mutation can bind to the selected user's id.
+ */
+function EditUserDialog({ user, onClose }: { user: UserRow; onClose: () => void }) {
+  const t = useT();
+  const update = useUpdateUser(user.id);
+  const [email, setEmail] = useState(user.email);
+  const [role, setRole] = useState(user.role);
+  const [isActive, setIsActive] = useState(user.isActive);
+  const [password, setPassword] = useState("");
+
+  async function save() {
+    try {
+      const body: Record<string, unknown> = { email, role, isActive };
+      if (password.trim()) body.password = password.trim();
+      await update.mutateAsync(body);
+      toast.success(t("users.updated"));
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : t("common.saveFailed"));
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("users.editTitle", { name: user.name })}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>{t("users.colEmail")}</Label>
+            <Input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("users.roleLabel")}</Label>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="EVALUATOR">{t("users.roleEvaluator")}</SelectItem>
+                <SelectItem value="MANAGEMENT">{t("users.roleManagement")}</SelectItem>
+                <SelectItem value="SUPERVISOR">{t("users.roleSupervisor")}</SelectItem>
+                <SelectItem value="ADMIN">{t("users.roleAdmin")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>{t("users.newPasswordOptional")}</Label>
+            <PasswordInput dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+          </div>
+          <div className="flex items-center justify-between rounded-md border px-3 py-2">
+            <Label>{t("users.activeAccount")}</Label>
+            <Switch checked={isActive} onCheckedChange={setIsActive} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={save} disabled={update.isPending}>
+            {update.isPending && <Loader2 className="size-4 animate-spin" />} {t("common.save")}
+          </Button>
+          <DialogClose asChild><Button variant="outline">{t("common.cancel")}</Button></DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

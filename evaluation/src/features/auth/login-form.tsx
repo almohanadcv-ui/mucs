@@ -258,6 +258,12 @@ export function LoginForm() {
         )}
         {isSubmitting ? t("login.submitting") : t("login.submit")}
       </Button>
+
+      <div className="text-center">
+        <a href="/forgot-password" className="text-sm text-primary hover:underline">
+          {t("login.forgot")}
+        </a>
+      </div>
     </form>
   );
 }

@@ -20,6 +20,18 @@ export const verifyChallengeSchema = z.object({
 
 export type VerifyChallengeInput = z.infer<typeof verifyChallengeSchema>;
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email("بريد إلكتروني غير صالح"),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20, "رابط غير صالح"),
+  password: z.string().min(8, "كلمة المرور 8 أحرف على الأقل").max(200),
+});
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export interface RequestMeta {
   ip?: string | null;
   userAgent?: string | null;
