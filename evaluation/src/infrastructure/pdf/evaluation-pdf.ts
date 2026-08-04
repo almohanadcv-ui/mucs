@@ -227,13 +227,19 @@ export async function buildEvaluationPdf(input: EvaluationPdfInput): Promise<Buf
   const range = doc.bufferedPageRange();
   for (let i = range.start; i < range.start + range.count; i++) {
     doc.switchToPage(i);
+    // Drawing in the bottom-margin zone makes pdfkit think the text overflowed
+    // and append a blank page (one per page → the doc doubled). Dropping the
+    // bottom margin for the write keeps the footer on the same page.
+    const savedBottom = doc.page.margins.bottom;
+    doc.page.margins.bottom = 0;
     doc.fontSize(8).fillColor(MUTED);
     doc.text(
       arabicWrap(doc, `وثيقة رسمية من ${input.brand} · ${new Date().toLocaleDateString("en-CA")}`, fullWidth),
       left,
-      doc.page.height - 34,
-      { width: fullWidth, align: "center" },
+      doc.page.height - 30,
+      { width: fullWidth, align: "center", lineBreak: false },
     );
+    doc.page.margins.bottom = savedBottom;
   }
 
   doc.end();
