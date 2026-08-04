@@ -1,9 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/infrastructure/db/prisma";
 import { hashPassword } from "@/infrastructure/security/password";
+import { randomToken } from "@/infrastructure/security/crypto";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
 import { AppError } from "@/core/application/errors";
 import { AuditAction } from "@/core/domain/enums";
+import {
+  issueSetPasswordUrl,
+  INVITE_TTL_MS,
+} from "@/core/application/auth/password-reset-service";
+import { sendEmail } from "@/infrastructure/email/mailer";
+import { accountInviteEmail } from "@/infrastructure/email/templates";
 import { buildMeta, toSkipTake, type Paginated } from "@/lib/pagination";
 import type { SessionUser } from "@/infrastructure/auth/session";
 import type { RequestMeta } from "@/core/application/auth/dto";
@@ -60,29 +67,48 @@ export async function createUser(
   });
   if (clash) throw new AppError("CONFLICT", "البريد الإلكتروني مستخدم بالفعل");
 
+  // No password → invite: store an unusable random hash the user never learns,
+  // then hand them a set-password link (emailed, and returned for the admin to
+  // pass on directly). With a password, set it straight away.
+  const invite = !input.password;
+  const passwordHash = await hashPassword(input.password ?? randomToken(24));
+
   const created = await prisma.user.create({
     data: {
       tenantId: user.tenantId,
       name: input.name,
       email: input.email,
-      passwordHash: await hashPassword(input.password),
+      passwordHash,
       role: input.role,
-      emailVerifiedAt: new Date(),
+      emailVerifiedAt: invite ? null : new Date(),
       isActive: true,
     },
     select: PUBLIC_SELECT,
   });
+
+  let setPasswordUrl: string | undefined;
+  if (invite) {
+    setPasswordUrl = await issueSetPasswordUrl(created.id, meta, INVITE_TTL_MS);
+    const mail = accountInviteEmail(setPasswordUrl, created.name);
+    try {
+      await sendEmail({ to: created.email, subject: mail.subject, html: mail.html, text: mail.text });
+    } catch (err) {
+      // Email is best-effort: the admin still gets the link in the response.
+      console.error("[users] invite email failed:", err);
+    }
+  }
+
   await writeAudit({
     tenantId: user.tenantId,
     actorId: user.id,
     action: AuditAction.CREATE,
     entity: "User",
     entityId: created.id,
-    after: { email: created.email, role: created.role },
+    after: { email: created.email, role: created.role, invited: invite },
     ip: meta.ip,
     userAgent: meta.userAgent,
   });
-  return created;
+  return { ...created, setPasswordUrl };
 }
 
 export async function updateUser(

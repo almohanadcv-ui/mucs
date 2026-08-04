@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Plus, UserCog, Loader2, Trash2, ShieldCheck, Pencil } from "lucide-react";
+import { Plus, UserCog, Loader2, Trash2, ShieldCheck, Pencil, MailCheck, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -48,6 +48,12 @@ export function UsersClient() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<UserRow | null>(null);
   const [toDelete, setToDelete] = useState<UserRow | null>(null);
+  // Invite mode (default): create without a password and hand the user a
+  // set-password link, mirroring MICA. After an invite the link is shown so the
+  // admin can pass it on directly if the email doesn't arrive.
+  const [invite, setInvite] = useState(true);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const { data, isLoading } = useUsers({ page: 1 });
   const create = useCreateUser();
   const del = useDeleteUser();
@@ -57,12 +63,27 @@ export function UsersClient() {
     defaultValues: { role: "EVALUATOR" },
   });
 
+  function closeCreate() {
+    setOpen(false);
+    setInviteLink(null);
+    setCopied(false);
+    reset({ role: "EVALUATOR" });
+  }
+
   async function onCreate(v: CreateForm) {
     try {
-      await create.mutateAsync(v);
-      toast.success(t("users.created"));
-      reset({ role: "EVALUATOR" });
-      setOpen(false);
+      const body = invite
+        ? { name: v.name, email: v.email, role: v.role }
+        : v;
+      const res = (await create.mutateAsync(body)) as UserRow & { setPasswordUrl?: string };
+      if (invite && res.setPasswordUrl) {
+        // Keep the dialog open to reveal the link; the account is already made.
+        setInviteLink(res.setPasswordUrl);
+        toast.success(t("users.inviteCreated"));
+      } else {
+        toast.success(t("users.created"));
+        closeCreate();
+      }
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : t("users.createFailed"));
     }
@@ -157,40 +178,83 @@ export function UsersClient() {
       </Card>
 
       {/* Create dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : closeCreate())}>
         <DialogContent>
           <DialogHeader><DialogTitle>{t("users.new")}</DialogTitle></DialogHeader>
-          <form onSubmit={handleSubmit(onCreate)} className="space-y-4">
-            <div className="space-y-2">
-              <Label>{t("common.name")}</Label>
-              <Input {...register("name", { required: true })} />
+
+          {inviteLink ? (
+            // Account made — reveal the set-password link for the admin to share.
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/10 px-3 py-3 text-sm text-primary">
+                <MailCheck className="mt-0.5 size-5 shrink-0" />
+                <p>{t("users.inviteSent")}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("users.inviteLinkLabel")}</Label>
+                <div className="flex gap-2">
+                  <Input readOnly dir="ltr" value={inviteLink} className="font-mono text-xs" onFocus={(e) => e.currentTarget.select()} />
+                  <Button
+                    type="button" variant="outline"
+                    onClick={async () => {
+                      try { await navigator.clipboard.writeText(inviteLink); setCopied(true); } catch { /* ignore */ }
+                    }}
+                  >
+                    {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+                    {copied ? t("users.copied") : t("users.copy")}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">{t("users.inviteLinkHint")}</p>
+              </div>
+              <DialogFooter>
+                <Button type="button" onClick={closeCreate}>{t("common.save")}</Button>
+              </DialogFooter>
             </div>
-            <div className="space-y-2">
-              <Label>{t("empForm.email")}</Label>
-              <Input type="email" dir="ltr" {...register("email", { required: true })} />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("users.passwordLabel")}</Label>
-              <PasswordInput dir="ltr" {...register("password", { required: true, minLength: 8 })} />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("users.roleLabel")}</Label>
-              <Select defaultValue="EVALUATOR" onValueChange={(v) => setValue("role", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="EVALUATOR">{t("users.roleEvaluator")}</SelectItem>
-                  <SelectItem value="MANAGEMENT">{t("users.roleManagement")}</SelectItem>
-                  <SelectItem value="SUPERVISOR">{t("users.roleSupervisor")}</SelectItem>
-                  <SelectItem value="ADMIN">{t("users.roleAdmin")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <DialogFooter>
-              <Button type="submit" disabled={create.isPending}>
-                {create.isPending && <Loader2 className="size-4 animate-spin" />} {t("users.create")}
-              </Button>
-            </DialogFooter>
-          </form>
+          ) : (
+            <form onSubmit={handleSubmit(onCreate)} className="space-y-4">
+              <div className="space-y-2">
+                <Label>{t("common.name")}</Label>
+                <Input {...register("name", { required: true })} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("empForm.email")}</Label>
+                <Input type="email" dir="ltr" {...register("email", { required: true })} />
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <div>
+                  <Label className="cursor-pointer">{t("users.inviteMode")}</Label>
+                  <p className="text-xs text-muted-foreground">{t("users.inviteModeHint")}</p>
+                </div>
+                <Switch checked={invite} onCheckedChange={setInvite} />
+              </div>
+
+              {!invite && (
+                <div className="space-y-2">
+                  <Label>{t("users.passwordLabel")}</Label>
+                  <PasswordInput dir="ltr" {...register("password", { required: !invite, minLength: 8 })} />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>{t("users.roleLabel")}</Label>
+                <Select defaultValue="EVALUATOR" onValueChange={(v) => setValue("role", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="EVALUATOR">{t("users.roleEvaluator")}</SelectItem>
+                    <SelectItem value="MANAGEMENT">{t("users.roleManagement")}</SelectItem>
+                    <SelectItem value="SUPERVISOR">{t("users.roleSupervisor")}</SelectItem>
+                    <SelectItem value="ADMIN">{t("users.roleAdmin")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={create.isPending}>
+                  {create.isPending && <Loader2 className="size-4 animate-spin" />}{" "}
+                  {invite ? t("users.sendInvite") : t("users.create")}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

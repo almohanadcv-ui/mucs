@@ -189,6 +189,34 @@ export function passwordResetEmail(link: string, name?: string): EmailContent {
   };
 }
 
+// ── Account invite ───────────────────────────────────────────────────────────
+export function accountInviteEmail(link: string, name?: string): EmailContent {
+  const accent = "#0f766e";
+  const content = `
+    ${greeting(name)}
+    ${para(`تم إنشاء حساب لك على ${escapeHtml(brand())}. لتفعيل حسابك، اضغط الزر التالي وعيّن كلمة مرورك:`)}
+    ${button(link, "تفعيل الحساب وتعيين كلمة المرور", accent)}
+    ${para(
+      `<span style="color:${MUTED};font-size:13px;">هذا الرابط صالح لمدة 7 أيام. بعد تعيين كلمة المرور تقدر تسجّل الدخول ببريدك الإلكتروني.</span>`,
+    )}
+    ${para(
+      `<span style="color:${MUTED};font-size:12px;">إن لم يعمل الزر، انسخ هذا الرابط والصقه في المتصفّح:<br /><span dir="ltr" style="word-break:break-all;color:${accent};">${escapeHtml(
+        link,
+      )}</span></span>`,
+    )}`;
+  return {
+    subject: `تفعيل حسابك — ${brand()}`,
+    html: shell({
+      preheader: "تم إنشاء حساب لك — فعّله وعيّن كلمة مرورك (الرابط صالح 7 أيام).",
+      eyebrow: "دعوة حساب",
+      accent,
+      title: "مرحبًا بك — فعّل حسابك",
+      content,
+    }),
+    text: `مرحبًا${name ? " " + name : ""}،\nتم إنشاء حساب لك على ${brand()}. فعّل حسابك وعيّن كلمة مرورك عبر الرابط (صالح 7 أيام):\n${link}`,
+  };
+}
+
 // ── Probation reminder ───────────────────────────────────────────────────────
 export function probationReminderEmail(params: {
   evaluatorName?: string;

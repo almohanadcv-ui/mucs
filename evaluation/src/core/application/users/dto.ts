@@ -7,7 +7,9 @@ const roleEnum = z.enum([Role.ADMIN, Role.SUPERVISOR, Role.EVALUATOR]);
 export const createUserSchema = z.object({
   name: z.string().trim().min(2, "الاسم مطلوب").max(150),
   email: z.string().trim().toLowerCase().email("بريد إلكتروني غير صالح"),
-  password: z.string().min(8, "كلمة المرور 8 أحرف على الأقل").max(200),
+  // Omit the password to invite the user instead: they receive a link and set
+  // their own password (mirrors MICA). When present it's set directly.
+  password: z.string().min(8, "كلمة المرور 8 أحرف على الأقل").max(200).optional(),
   role: roleEnum,
 });
 
