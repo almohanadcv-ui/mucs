@@ -635,3 +635,65 @@ async function sendApprovedEvaluationToEmployee(evaluationId: string): Promise<v
     attachments,
   });
 }
+
+/**
+ * Build the branded PDF for one evaluation, for download. Role-scoped: a user
+ * can only fetch an evaluation they are allowed to see. Works in any status, so
+ * a reviewer/evaluator can download a draft or a finished report alike.
+ */
+export async function getEvaluationPdf(
+  user: SessionUser,
+  id: string,
+): Promise<{ buffer: Buffer; filename: string }> {
+  const ev = await prisma.evaluation.findFirst({
+    where: { id, tenantId: user.tenantId, deletedAt: null, ...scopeForRole(user) },
+    select: {
+      score: true,
+      reviewedAt: true,
+      submittedAt: true,
+      employee: { select: { name: true, employeeNo: true } },
+      evaluator: { select: { name: true } },
+      template: { select: { title: true } },
+      answers: {
+        select: {
+          valueNumber: true,
+          valueText: true,
+          valueBool: true,
+          valueDate: true,
+          valueJson: true,
+          remarks: true,
+          question: { select: { id: true, label: true, type: true, required: true, config: true, order: true } },
+        },
+      },
+    },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+
+  const items = ev.answers
+    .slice()
+    .sort((a, b) => a.question.order - b.question.order)
+    .map((a) => ({
+      label: a.question.label,
+      value: formatAnswerDisplay(toQuestionLike(a.question), {
+        valueNumber: a.valueNumber,
+        valueText: a.valueText,
+        valueBool: a.valueBool,
+        valueDate: a.valueDate,
+        valueJson: a.valueJson,
+      }),
+      remarks: a.remarks,
+    }));
+
+  const pdf = await buildEvaluationPdfBranded({
+    employeeName: ev.employee.name,
+    employeeNo: ev.employee.employeeNo,
+    templateTitle: ev.template.title,
+    evaluatorName: ev.evaluator?.name,
+    score: ev.score,
+    reviewedAt: ev.reviewedAt ?? ev.submittedAt ?? new Date(),
+    items,
+  });
+  if (!pdf) throw new AppError("INTERNAL", "تعذّر توليد ملف PDF");
+
+  return { buffer: pdf, filename: `تقييم-${ev.employee.name}.pdf` };
+}

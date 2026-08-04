@@ -3,6 +3,7 @@ import { prisma } from "@/infrastructure/db/prisma";
 import { hashPassword } from "@/infrastructure/security/password";
 import { randomToken } from "@/infrastructure/security/crypto";
 import { writeAudit } from "@/infrastructure/audit/audit-log";
+import { publishToUser } from "@/infrastructure/realtime/bus";
 import { AppError } from "@/core/application/errors";
 import { AuditAction } from "@/core/domain/enums";
 import {
@@ -25,6 +26,9 @@ const PUBLIC_SELECT = {
   twoFactorEnabled: true,
   lastLoginAt: true,
   createdAt: true,
+  // Lockout state so IT can see and clear a locked account.
+  failedLoginAttempts: true,
+  lockedUntil: true,
 } satisfies Prisma.UserSelect;
 
 export async function listUsers(
@@ -61,11 +65,16 @@ export async function createUser(
   meta: RequestMeta,
   input: CreateUserInput,
 ) {
-  const clash = await prisma.user.findFirst({
-    where: { tenantId: user.tenantId, email: input.email, deletedAt: null },
-    select: { id: true },
+  // Look up ANY user with this email — including a soft-deleted one. The unique
+  // key is (tenantId, email) and covers deleted rows, so a fresh create would
+  // hit the constraint; instead we revive the deleted record with new details.
+  const existing = await prisma.user.findFirst({
+    where: { tenantId: user.tenantId, email: input.email },
+    select: { id: true, deletedAt: true },
   });
-  if (clash) throw new AppError("CONFLICT", "البريد الإلكتروني مستخدم بالفعل");
+  if (existing && !existing.deletedAt) {
+    throw new AppError("CONFLICT", "البريد الإلكتروني مستخدم بالفعل");
+  }
 
   // No password → invite: store an unusable random hash the user never learns,
   // then hand them a set-password link (emailed, and returned for the admin to
@@ -73,18 +82,23 @@ export async function createUser(
   const invite = !input.password;
   const passwordHash = await hashPassword(input.password ?? randomToken(24));
 
-  const created = await prisma.user.create({
-    data: {
-      tenantId: user.tenantId,
-      name: input.name,
-      email: input.email,
-      passwordHash,
-      role: input.role,
-      emailVerifiedAt: invite ? null : new Date(),
-      isActive: true,
-    },
-    select: PUBLIC_SELECT,
-  });
+  const data = {
+    name: input.name,
+    passwordHash,
+    role: input.role,
+    emailVerifiedAt: invite ? null : new Date(),
+    isActive: true,
+    deletedAt: null,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  };
+
+  const created = existing
+    ? await prisma.user.update({ where: { id: existing.id }, data, select: PUBLIC_SELECT })
+    : await prisma.user.create({
+        data: { tenantId: user.tenantId, email: input.email, ...data },
+        select: PUBLIC_SELECT,
+      });
 
   let setPasswordUrl: string | undefined;
   if (invite) {
@@ -160,6 +174,32 @@ export async function updateUser(
   return updated;
 }
 
+/** Clear a lockout so a user blocked by failed sign-ins can log in again. */
+export async function unlockUser(user: SessionUser, meta: RequestMeta, id: string) {
+  const target = await prisma.user.findFirst({
+    where: { id, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!target) throw AppError.notFound("المستخدم غير موجود");
+
+  const updated = await prisma.user.update({
+    where: { id },
+    data: { lockedUntil: null, failedLoginAttempts: 0 },
+    select: PUBLIC_SELECT,
+  });
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    action: AuditAction.UPDATE,
+    entity: "User",
+    entityId: id,
+    after: { unlocked: true },
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+  return updated;
+}
+
 export async function deleteUser(
   user: SessionUser,
   meta: RequestMeta,
@@ -177,6 +217,16 @@ export async function deleteUser(
     data: { deletedAt: new Date(), isActive: false },
     select: { id: true },
   });
+
+  // Kill their sessions so a signed-in user is locked out immediately: revoke
+  // every refresh token (no silent re-auth) and push a realtime event that the
+  // browser turns into a redirect to the login page.
+  await prisma.refreshToken.updateMany({
+    where: { userId: id, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  publishToUser(id, { type: "session-revoked" });
+
   await writeAudit({
     tenantId: user.tenantId,
     actorId: user.id,

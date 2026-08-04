@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface RealtimeEvent {
-  type: "notification" | "data-changed";
+  type: "notification" | "data-changed" | "session-revoked";
   entity?: "evaluation" | "employee";
 }
 
@@ -34,6 +34,11 @@ export function useRealtime(enabled: boolean) {
 
     const handle = (event: RealtimeEvent) => {
       switch (event.type) {
+        case "session-revoked":
+          // The account was deleted/deactivated while signed in — leave now.
+          qc.clear();
+          window.location.href = "/login";
+          break;
         case "notification":
           qc.invalidateQueries({ queryKey: ["notifications"] });
           break;

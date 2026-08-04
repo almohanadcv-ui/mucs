@@ -9,7 +9,9 @@ import { EventEmitter } from "node:events";
  */
 export type RealtimeEvent =
   | { type: "notification" }
-  | { type: "data-changed"; entity: "evaluation" | "employee" };
+  | { type: "data-changed"; entity: "evaluation" | "employee" }
+  /** The user's account was deleted/deactivated — the client must sign out. */
+  | { type: "session-revoked" };
 
 /**
  * In-process pub/sub backing the SSE stream.

@@ -63,6 +63,7 @@ const MANAGEMENT: Permission[] = ALL.filter(
 const PRIMARY_REVIEWER: Permission[] = [
   Permission.EMPLOYEE_VIEW,
   Permission.TEMPLATE_VIEW,
+  Permission.EVALUATION_CREATE, // reviewers may also fill evaluations
   Permission.EVALUATION_VIEW_ALL,
   Permission.EVALUATION_APPROVE_FINAL,
   Permission.EVALUATION_RETURN,
@@ -77,6 +78,7 @@ const SUPERVISOR: Permission[] = [
   Permission.MANAGER_CREATE,
   Permission.TEMPLATE_VIEW,
   Permission.TEMPLATE_MANAGE,
+  Permission.EVALUATION_CREATE, // reviewers may also fill evaluations
   Permission.EVALUATION_VIEW_ALL,
   Permission.EVALUATION_APPROVE_PRELIMINARY,
   Permission.EVALUATION_RETURN,

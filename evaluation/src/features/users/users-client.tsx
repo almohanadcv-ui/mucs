@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Plus, UserCog, Loader2, Trash2, ShieldCheck, Pencil, MailCheck, Copy, Check } from "lucide-react";
+import { Plus, UserCog, Loader2, Trash2, ShieldCheck, Pencil, MailCheck, Copy, Check, Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -32,9 +32,17 @@ import {
   useCreateUser,
   useUpdateUser,
   useDeleteUser,
+  useUnlockUser,
   type UserRow,
 } from "./use-users";
 import { useT } from "@/i18n/client";
+
+/** Minutes remaining on a lockout, or 0 if not locked. */
+function lockMinutes(lockedUntil: string | null): number {
+  if (!lockedUntil) return 0;
+  const ms = new Date(lockedUntil).getTime() - Date.now();
+  return ms > 0 ? Math.ceil(ms / 60000) : 0;
+}
 
 interface CreateForm {
   name: string;
@@ -57,6 +65,7 @@ export function UsersClient() {
   const { data, isLoading } = useUsers({ page: 1 });
   const create = useCreateUser();
   const del = useDeleteUser();
+  const unlock = useUnlockUser();
   const rows = data?.items ?? [];
 
   const { register, handleSubmit, setValue, reset } = useForm<CreateForm>({
@@ -145,12 +154,33 @@ export function UsersClient() {
                         )}
                       </td>
                       <td className="px-3 py-3">
-                        <Badge variant={u.isActive ? "success" : "muted"}>
-                          {u.isActive ? t("users.active") : t("users.disabled")}
-                        </Badge>
+                        {lockMinutes(u.lockedUntil) > 0 ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <Lock className="size-3" />
+                            {t("users.lockedFor", { n: lockMinutes(u.lockedUntil) })}
+                          </Badge>
+                        ) : (
+                          <Badge variant={u.isActive ? "success" : "muted"}>
+                            {u.isActive ? t("users.active") : t("users.disabled")}
+                          </Badge>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-1">
+                          {lockMinutes(u.lockedUntil) > 0 && (
+                            <Button
+                              variant="ghost" size="icon"
+                              className="text-success"
+                              title={t("users.unlock")}
+                              disabled={unlock.isPending}
+                              onClick={async () => {
+                                try { await unlock.mutateAsync(u.id); toast.success(t("users.unlocked")); }
+                                catch (e) { toast.error(e instanceof ApiError ? e.message : t("common.saveFailed")); }
+                              }}
+                            >
+                              <Unlock className="size-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost" size="icon"
                             title={t("users.edit")}

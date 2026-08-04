@@ -12,6 +12,8 @@ export interface UserRow {
   twoFactorEnabled: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
 }
 
 export function useUsers(params: { page?: number; role?: string; search?: string }) {
@@ -48,6 +50,14 @@ export function useDeleteUser() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => apiClient.del(`/api/users/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useUnlockUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiClient.post<UserRow>(`/api/users/${id}/unlock`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 }

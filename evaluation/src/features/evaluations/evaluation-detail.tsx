@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Check, CheckCheck, RotateCcw, Star, Trash2 } from "lucide-react";
+import { Loader2, Check, CheckCheck, RotateCcw, Star, Trash2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -185,6 +185,14 @@ export function EvaluationDetailView({
           ))}
         </CardContent>
       </Card>
+
+      <div className="flex flex-wrap justify-start gap-3">
+        <Button variant="outline" asChild>
+          <a href={`/api/evaluations/${id}/pdf`}>
+            <Download className="size-4" /> {t("evaluations.downloadPdf")}
+          </a>
+        </Button>
+      </div>
 
       {showReviewBar && (
         <div className="flex flex-wrap justify-start gap-3">

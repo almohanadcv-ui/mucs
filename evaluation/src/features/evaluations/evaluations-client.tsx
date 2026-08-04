@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { Plus, ClipboardList, Star, Loader2, Trash2 } from "lucide-react";
+import { Plus, ClipboardList, Star, Loader2, Trash2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -131,6 +131,9 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
                       <td className="px-3 py-3"><EvaluationStatusBadge status={e.status} /></td>
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          <Button asChild variant="ghost" size="icon" title={t("evaluations.downloadPdf")}>
+                            <a href={`/api/evaluations/${e.id}/pdf`}><Download className="size-4" /></a>
+                          </Button>
                           <Button asChild variant="ghost" size="sm">
                             <Link href={`/dashboard/evaluations/${e.id}`}>{t("common.view")}</Link>
                           </Button>
