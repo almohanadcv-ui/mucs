@@ -137,27 +137,38 @@ function greeting(name?: string): string {
 export function loginCodeEmail(code: string, name?: string): EmailContent {
   const accent = "#2563eb";
   const content = `
-    ${greeting(name)}
-    ${para("استخدم الرمز التالي لإكمال تسجيل الدخول إلى حسابك:")}
-    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px;width:100%;"><tr><td align="center">
-      <div style="display:inline-block;background:#f1f5fb;border:1px solid #dbe4f0;border-radius:12px;padding:16px 28px;font-family:'Segoe UI',Consolas,monospace;font-size:34px;font-weight:700;letter-spacing:12px;color:${NAVY};direction:ltr;">${code}</div>
+    <div style="text-align:center;margin:0 0 18px;">
+      <div style="font-size:24px;font-weight:800;color:${NAVY};line-height:1.3;">${escapeHtml(brand())}</div>
+      <div style="width:44px;height:3px;background:${accent};border-radius:2px;margin:10px auto 0;"></div>
+    </div>
+    ${para(name ? `مرحبًا ${iso(name)} 👋 كيف حالك؟` : "مرحبًا 👋 كيف حالك؟")}
+    ${para("هذا هو <strong>رمز التحقق</strong> الخاص بك لتسجيل الدخول:")}
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 18px;width:100%;"><tr><td align="center">
+      <div style="display:inline-block;background:#f1f5fb;border:1px solid #dbe4f0;border-radius:12px;padding:16px 30px;font-family:'Segoe UI',Consolas,monospace;font-size:36px;font-weight:700;letter-spacing:12px;color:${NAVY};direction:ltr;">${code}</div>
     </td></tr></table>
     ${para(
-      `<span style="color:${MUTED};font-size:13px;">هذا الرمز صالح لمدة 10 دقائق ويُستخدم مرة واحدة. لا تُشاركه مع أي شخص — لن يطلبه منك أحد من فريق العمل.</span>`,
+      `<span style="color:${MUTED};font-size:13px;">الرمز صالح لمدة <strong>10 دقائق</strong> ويُستخدم مرة واحدة. لا تُشاركه مع أحد — لن يطلبه منك أي أحد من فريق العمل. وإن لم تكن أنت من حاول الدخول، تجاهل هذه الرسالة بأمان.</span>`,
     )}
-    ${para(
-      `<span style="color:${MUTED};font-size:13px;">إن لم تكن أنت من حاول تسجيل الدخول، تجاهل هذه الرسالة بأمان.</span>`,
-    )}`;
+    ${para("نتمنى لك يومًا رائعًا ✨")}
+    <p style="margin:18px 0 0;font-size:14px;line-height:1.9;color:${INK};">
+      تحيّاتنا،<br /><strong>قسم تقنية المعلومات (IT)</strong>
+    </p>`;
   return {
-    subject: `رمز الدخول: ${code} — ${brand()}`,
+    // The code sits first in the subject so Outlook/Windows offers a one-tap
+    // "copy code" on the notification.
+    subject: `${code} هو رمز تسجيل الدخول — ${brand()}`,
     html: shell({
-      preheader: `رمز تسجيل الدخول الخاص بك هو ${code} (صالح لـ10 دقائق).`,
-      eyebrow: "رمز دخول",
+      preheader: `رمز التحقق الخاص بك هو ${code} (صالح لـ10 دقائق).`,
+      eyebrow: "رمز التحقق",
       accent,
       title: "رمز تسجيل الدخول",
       content,
     }),
-    text: `مرحبًا${name ? " " + name : ""}،\nرمز تسجيل الدخول: ${code}\nصالح لمدة 10 دقائق ويُستخدم مرة واحدة. لا تُشاركه مع أحد.`,
+    text:
+      `مرحبًا${name ? " " + name : ""} 👋 كيف حالك؟\n\n` +
+      `هذا هو رمز التحقق الخاص بك لتسجيل الدخول:\n${code}\n\n` +
+      `الرمز صالح لمدة 10 دقائق ويُستخدم مرة واحدة. لا تُشاركه مع أحد.\n\n` +
+      `نتمنى لك يومًا رائعًا ✨\n\nتحيّاتنا،\nقسم تقنية المعلومات (IT)`,
   };
 }
 
