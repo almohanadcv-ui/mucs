@@ -25,14 +25,17 @@ export interface EvaluationReportRow {
 
 function scope(user: SessionUser): Prisma.EvaluationWhereInput {
   switch (user.role) {
+    // Oversight/review roles hold EVALUATION_VIEW_ALL — they see everything.
     case Role.ADMIN:
-      return {};
+    case Role.MANAGEMENT:
+    case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
-      return { employee: { supervisorId: user.id } };
+      return {};
     case Role.EVALUATOR:
       return { evaluatorId: user.id };
     default:
-      return { id: "__none__" };
+      // Never match — `id: "__none__"` threw on the UUID column (a 500).
+      return { id: { in: [] } };
   }
 }
 

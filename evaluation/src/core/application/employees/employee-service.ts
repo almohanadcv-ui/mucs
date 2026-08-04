@@ -63,12 +63,14 @@ function scopeForRole(user: SessionUser): Prisma.EmployeeWhereInput {
     // not necessarily linked to them.
     case Role.ADMIN:
     case Role.MANAGEMENT:
+    case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
       return {};
     case Role.EVALUATOR:
       return evaluatorScope(user);
     default:
-      return { id: "__none__" };
+      // Never match — `id: "__none__"` threw on the UUID column (a 500).
+      return { id: { in: [] } };
   }
 }
 

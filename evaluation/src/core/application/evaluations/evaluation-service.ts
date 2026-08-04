@@ -139,7 +139,7 @@ function scopeForRole(user: SessionUser): Prisma.EvaluationWhereInput {
     case Role.EVALUATOR:
       return { evaluatorId: user.id };
     default:
-      return { id: "__none__" };
+      return { id: { in: [] } };
   }
 }
 

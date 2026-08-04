@@ -25,14 +25,16 @@ function startOfMonth(d = new Date()) {
 /** Evaluation visibility scope by role (mirrors evaluation-service). */
 function evalScope(user: SessionUser): Prisma.EvaluationWhereInput {
   switch (user.role) {
+    // Oversight/review roles hold EVALUATION_VIEW_ALL — they see everything.
     case Role.ADMIN:
-      return {};
+    case Role.MANAGEMENT:
+    case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
-      return { employee: { supervisorId: user.id } };
+      return {};
     case Role.EVALUATOR:
       return { evaluatorId: user.id };
     default:
-      return { id: "__none__" };
+      return { id: { in: [] } };
   }
 }
 
@@ -40,9 +42,10 @@ function evalScope(user: SessionUser): Prisma.EvaluationWhereInput {
 function employeeScope(user: SessionUser): Prisma.EmployeeWhereInput {
   switch (user.role) {
     case Role.ADMIN:
-      return {};
+    case Role.MANAGEMENT:
+    case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
-      return { supervisorId: user.id };
+      return {};
     case Role.EVALUATOR:
       // Mirrors employee-service: linked employees + those whose imported
       // «المدير المباشر» matches this evaluator's name.
@@ -53,7 +56,8 @@ function employeeScope(user: SessionUser): Prisma.EmployeeWhereInput {
         ],
       };
     default:
-      return { id: "__none__" };
+      // Never match — `id: "__none__"` threw on the UUID column (a 500).
+      return { id: { in: [] } };
   }
 }
 
