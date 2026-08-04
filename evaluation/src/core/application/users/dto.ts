@@ -2,7 +2,13 @@ import { z } from "zod";
 import { paginationSchema } from "@/lib/pagination";
 import { Role } from "@/core/domain/enums";
 
-const roleEnum = z.enum([Role.ADMIN, Role.SUPERVISOR, Role.EVALUATOR]);
+const roleEnum = z.enum([
+  Role.ADMIN,
+  Role.MANAGEMENT,
+  Role.PRIMARY_REVIEWER,
+  Role.SUPERVISOR,
+  Role.EVALUATOR,
+]);
 
 export const createUserSchema = z.object({
   name: z.string().trim().min(2, "الاسم مطلوب").max(150),
