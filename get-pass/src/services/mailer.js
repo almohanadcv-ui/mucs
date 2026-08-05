@@ -1,12 +1,19 @@
 /*
- * mailer.js — إرسال البريد عبر SMTP (Hostinger أو أي مزوّد) باستخدام nodemailer.
- * يُحمّل nodemailer ديناميكياً حتى لا يتعطّل الخادم إن لم تُثبّت المكتبة بعد.
+ * mailer.js — إرسال البريد. يُفضّل Microsoft Graph (نفس نظام التقييم/الميكا) إن
+ * ضُبطت بياناته، وإلا يسقط إلى SMTP عبر nodemailer (يُحمّل ديناميكياً).
  */
 import { config } from '../config.js';
+import { isGraphConfigured, graphSend } from './graph.js';
 
 let tx = null;
 export async function sendMail({ to, subject, html, text }) {
-  if (!config.smtp.host || !config.smtp.user) throw new Error('SMTP غير مضبوط في .env');
+  // المسار المفضّل: Microsoft Graph — نفس بيانات Azure المستخدمة في التقييم/الميكا.
+  if (isGraphConfigured()) return graphSend({ to, subject, html, text });
+
+  // بديل: SMTP (Hostinger أو أي مزوّد).
+  if (!config.smtp.host || !config.smtp.user) {
+    throw new Error('البريد غير مضبوط: عرّف بيانات Graph (MAIL_FROM + GRAPH_*) أو SMTP في .env');
+  }
   const nodemailer = (await import('nodemailer')).default;
   if (!tx) {
     tx = nodemailer.createTransport({

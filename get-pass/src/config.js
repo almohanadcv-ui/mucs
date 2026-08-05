@@ -18,8 +18,17 @@ export const config = {
   // رابط الموقع العام (لبناء روابط الدخول المباشر التي تُرسل عبر واتساب)، مثل: https://example.com أو http://IP
   publicBaseUrl: (process.env.BASE_URL || process.env.PUBLIC_URL || '').trim().replace(/\/$/, ''),
   magicLinkDays: Number(process.env.MAGIC_LINK_DAYS) || 14, // مدة صلاحية رابط الدخول المباشر
-  // التحقّق الثنائي عبر البريد (OTP) — مُطفأ ما لم يُضبط LOGIN_OTP_ENABLED=1 وبيانات SMTP
+  // التحقّق الثنائي عبر البريد (OTP) — مُطفأ ما لم يُضبط LOGIN_OTP_ENABLED=1 وبيانات بريد
   loginOtpEnabled: process.env.LOGIN_OTP_ENABLED === '1',
+  // مزوّد البريد: Microsoft Graph (نفس نظام التقييم/الميكا) إن ضُبطت بياناته، وإلا SMTP.
+  // يُعاد استخدام نفس بيانات Azure — فقط عرّف GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET و MAIL_FROM.
+  graph: {
+    tenantId: (process.env.GRAPH_TENANT_ID || '').trim(),
+    clientId: (process.env.GRAPH_CLIENT_ID || '').trim(),
+    clientSecret: process.env.GRAPH_CLIENT_SECRET || '',
+    from: (process.env.MAIL_FROM || '').trim(),                 // عنوان المُرسِل، مثل it@mabunited.com
+    fromName: (process.env.MAIL_FROM_NAME || 'نظام التصاريح — MAB').trim(),
+  },
   smtp: {
     host: (process.env.SMTP_HOST || '').trim(),       // مثال Hostinger: smtp.hostinger.com
     port: Number(process.env.SMTP_PORT) || 465,        // 465 (SSL) أو 587
