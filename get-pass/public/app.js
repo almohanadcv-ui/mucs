@@ -106,16 +106,38 @@ const App = (() => {
     };
     card.querySelector('#otp-back').onclick = () => location.reload();
   }
-  async function forgotPassword(e) {
+  function forgotPassword(e) {
     if (e) e.preventDefault();
+    const card = document.querySelector('#auth .auth-card');
+    if (!card) return false;
     const field = document.querySelector('#login-form [name="email"]');
-    let email = ((field && field.value) || '').trim();
-    if (!email) email = (prompt('أدخل بريدك الإلكتروني لإرسال رابط إعادة تعيين كلمة المرور:') || '').trim();
-    if (!email) return false;
-    try {
-      await api('/auth/forgot-password', { method: 'POST', body: { email } });
-      toast('إن كان البريد مسجّلاً لدينا، وصلك رابط إعادة التعيين. تحقّق من بريدك.', 'success');
-    } catch (err) { toast(err.message, 'error'); }
+    const prefill = ((field && field.value) || '').trim();
+    card.innerHTML = `<h1>إعادة تعيين كلمة المرور</h1>
+      <p style="color:#94a3b8;font-size:14px;margin:0 0 18px">أدخل بريدك الإلكتروني وسنرسل لك رابطاً لتعيين كلمة مرور جديدة إن كان مسجّلاً لدينا.</p>
+      <form id="forgot-form">
+        <div class="field">
+          <label>Email</label>
+          <div class="input-icon">
+            <input type="email" id="forgot-email" required autocomplete="username" placeholder="name@mabunited.com" dir="ltr" value="${esc(prefill)}" />
+          </div>
+        </div>
+        <button class="btn block neon" type="submit">إرسال رابط إعادة التعيين</button>
+      </form>
+      <div id="forgot-msg" style="margin-top:14px"></div>
+      <p style="margin-top:14px;text-align:center"><button id="forgot-back" style="background:none;border:none;color:#94a3b8;cursor:pointer;font-family:inherit;font-size:13.5px">← رجوع لتسجيل الدخول</button></p>`;
+    const emailInput = card.querySelector('#forgot-email'); emailInput.focus();
+    const msg = card.querySelector('#forgot-msg');
+    card.querySelector('#forgot-form').onsubmit = async (ev) => {
+      ev.preventDefault();
+      const email = emailInput.value.trim();
+      if (!email) return false;
+      const btn = ev.target.querySelector('button[type="submit"]'); btn.disabled = true;
+      try {
+        await api('/auth/forgot-password', { method: 'POST', body: { email } });
+        msg.innerHTML = '<div class="hint ok" style="padding:10px;border-radius:8px">إن كان البريد مسجّلاً لدينا، وصلك رابط إعادة التعيين ✅ تحقّق من بريدك.</div>';
+      } catch (err) { msg.innerHTML = '<div class="hint err" style="padding:10px;border-radius:8px">' + esc(err.message) + '</div>'; btn.disabled = false; }
+    };
+    card.querySelector('#forgot-back').onclick = () => location.reload();
     return false;
   }
   async function logout() { clearInterval(pollTimer); sessionStorage.removeItem('pams-tab'); await api('/auth/logout', { method: 'POST' }).catch(() => {}); location.reload(); }

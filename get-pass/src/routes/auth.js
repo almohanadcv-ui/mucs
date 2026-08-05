@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/index.js';
 import { signToken, verifyMagic, signPending, verifyPending, signReset, verifyReset } from '../utils/jwt.js';
-import { sendMail, otpEmail, passwordResetEmail } from '../services/mailer.js';
+import { sendMail, otpEmail, passwordResetEmail, isMailConfigured } from '../services/mailer.js';
 import { encryptPw } from '../utils/secret.js';
 import { getUndertaking, getRenewalWindowDays } from '../services/settings.js';
 import { asyncHandler, httpError } from '../middleware/error.js';
@@ -81,8 +81,8 @@ router.post('/login', asyncHandler(async (req, res) => {
     throw httpError(401, 'بيانات الدخول غير صحيحة.');
   }
 
-  // التحقّق الثنائي عبر البريد (إن كان مفعّلاً ومضبوطاً)
-  if (config.loginOtpEnabled && config.smtp.host) {
+  // التحقّق الثنائي عبر البريد (إن كان مفعّلاً والبريد مضبوطاً — Graph أو SMTP)
+  if (config.loginOtpEnabled && isMailConfigured()) {
     try { await sendOtp(user); }
     catch (e) { console.error('إرسال OTP:', e?.message || e); throw httpError(500, 'تعذّر إرسال رمز التحقق — تحقّق من إعدادات البريد.'); }
     audit({ req, actor: user, action: 'LOGIN_OTP_SENT', entityType: 'user', entityId: user.id });
@@ -124,7 +124,7 @@ router.post('/resend-otp', asyncHandler(async (req, res) => {
 // نسيت كلمة المرور — إرسال رابط إعادة تعيين للبريد (لا يكشف إن كان البريد مسجّلاً)
 router.post('/forgot-password', asyncHandler(async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  if (email && config.smtp.host) {
+  if (email && isMailConfigured()) {
     const user = db.prepare(`SELECT id, email, full_name, is_active FROM users WHERE email=?`).get(email);
     if (user && user.is_active) {
       const base = (config.publicBaseUrl || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');

@@ -5,6 +5,11 @@
 import { config } from '../config.js';
 import { isGraphConfigured, graphSend } from './graph.js';
 
+/** هل البريد مضبوط بأي مزوّد (Graph أو SMTP)؟ تُستخدم لتفعيل كود الدخول/إعادة التعيين. */
+export function isMailConfigured() {
+  return isGraphConfigured() || Boolean(config.smtp.host && config.smtp.user);
+}
+
 let tx = null;
 export async function sendMail({ to, subject, html, text }) {
   // المسار المفضّل: Microsoft Graph — نفس بيانات Azure المستخدمة في التقييم/الميكا.
