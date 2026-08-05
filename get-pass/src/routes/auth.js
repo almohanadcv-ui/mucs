@@ -2,8 +2,9 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { db } from '../db/index.js';
-import { signToken, verifyMagic, signPending, verifyPending } from '../utils/jwt.js';
-import { sendMail, otpEmail } from '../services/mailer.js';
+import { signToken, verifyMagic, signPending, verifyPending, signReset, verifyReset } from '../utils/jwt.js';
+import { sendMail, otpEmail, passwordResetEmail } from '../services/mailer.js';
+import { encryptPw } from '../utils/secret.js';
 import { getUndertaking, getRenewalWindowDays } from '../services/settings.js';
 import { asyncHandler, httpError } from '../middleware/error.js';
 import { authenticate } from '../middleware/auth.js';
@@ -65,7 +66,7 @@ async function sendOtp(user) {
   db.prepare(`DELETE FROM login_otps WHERE user_id=?`).run(user.id);
   db.prepare(`INSERT INTO login_otps(id, user_id, code_hash, expires_at) VALUES(?,?,?,?)`)
     .run(randomUUID(), user.id, bcrypt.hashSync(code, 8), new Date(Date.now() + 10 * 60000).toISOString());
-  await sendMail({ to: user.email, ...otpEmail(code) });
+  await sendMail({ to: user.email, ...otpEmail(code, user.full_name) });
 }
 
 // تسجيل الدخول — خطوة 1: تحقّق كلمة المرور (ثم رمز بريد إن كان التحقّق الثنائي مفعّلاً)
@@ -117,6 +118,37 @@ router.post('/resend-otp', asyncHandler(async (req, res) => {
   const user = db.prepare(`SELECT * FROM users WHERE id=?`).get(d.id);
   if (!user) throw httpError(404, 'المستخدم غير موجود.');
   try { await sendOtp(user); } catch (e) { throw httpError(500, 'تعذّر إرسال الرمز.'); }
+  res.json({ ok: true });
+}));
+
+// نسيت كلمة المرور — إرسال رابط إعادة تعيين للبريد (لا يكشف إن كان البريد مسجّلاً)
+router.post('/forgot-password', asyncHandler(async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (email && config.smtp.host) {
+    const user = db.prepare(`SELECT id, email, full_name, is_active FROM users WHERE email=?`).get(email);
+    if (user && user.is_active) {
+      const base = (config.publicBaseUrl || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+      const link = `${base}/reset.html?token=${signReset(user.id)}`;
+      try {
+        await sendMail({ to: user.email, ...passwordResetEmail(link, user.full_name) });
+        audit({ req, actor: user, action: 'PASSWORD_RESET_REQUESTED', entityType: 'user', entityId: user.id });
+      } catch (e) { console.error('إرسال رابط إعادة التعيين:', e?.message || e); }
+    }
+  }
+  // ردّ موحّد دائماً حتى لا يُكشف وجود البريد من عدمه
+  res.json({ ok: true });
+}));
+
+// إعادة تعيين كلمة المرور عبر توكن الرابط
+router.post('/reset-password', asyncHandler(async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!password || String(password).length < 6) throw httpError(400, 'كلمة المرور يجب ألا تقل عن 6 أحرف.');
+  let d; try { d = verifyReset(token); } catch { throw httpError(401, 'الرابط غير صالح أو منتهي الصلاحية.'); }
+  const user = db.prepare(`SELECT id, is_active FROM users WHERE id=?`).get(d.id);
+  if (!user || !user.is_active) throw httpError(401, 'الحساب غير صالح أو معطّل.');
+  db.prepare(`UPDATE users SET password_hash=?, pw_enc=?, session_id=NULL, updated_at=datetime('now') WHERE id=?`)
+    .run(bcrypt.hashSync(String(password), 10), encryptPw(String(password)), user.id);
+  audit({ req, actor: user, action: 'PASSWORD_RESET', entityType: 'user', entityId: user.id });
   res.json({ ok: true });
 }));
 

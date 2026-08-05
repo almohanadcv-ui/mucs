@@ -106,6 +106,18 @@ const App = (() => {
     };
     card.querySelector('#otp-back').onclick = () => location.reload();
   }
+  async function forgotPassword(e) {
+    if (e) e.preventDefault();
+    const field = document.querySelector('#login-form [name="email"]');
+    let email = ((field && field.value) || '').trim();
+    if (!email) email = (prompt('أدخل بريدك الإلكتروني لإرسال رابط إعادة تعيين كلمة المرور:') || '').trim();
+    if (!email) return false;
+    try {
+      await api('/auth/forgot-password', { method: 'POST', body: { email } });
+      toast('إن كان البريد مسجّلاً لدينا، وصلك رابط إعادة التعيين. تحقّق من بريدك.', 'success');
+    } catch (err) { toast(err.message, 'error'); }
+    return false;
+  }
   async function logout() { clearInterval(pollTimer); sessionStorage.removeItem('pams-tab'); await api('/auth/logout', { method: 'POST' }).catch(() => {}); location.reload(); }
 
   // ---------- القوائم ----------
@@ -1871,5 +1883,5 @@ const App = (() => {
   boot();
 
   function renewPermit(nid) { prefillNid = nid; route('new-request'); }
-  return { login, logout, route, refresh, toggleNav, fontSize, commandPalette, toggleTheme, act, approveIssue, cancelPermit, deletePermit, toggleUser, deleteUser, passwordModal, togglePw, revealPw, renewPermit, closeModal };
+  return { login, forgotPassword, logout, route, refresh, toggleNav, fontSize, commandPalette, toggleTheme, act, approveIssue, cancelPermit, deletePermit, toggleUser, deleteUser, passwordModal, togglePw, revealPw, renewPermit, closeModal };
 })();

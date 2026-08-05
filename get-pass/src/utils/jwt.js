@@ -29,3 +29,13 @@ export function verifyPending(token) {
   if (d.purpose !== 'otp') throw new Error('توكن غير صالح');
   return d;
 }
+
+// توكن إعادة تعيين كلمة المرور — قصير الأجل (30 دقيقة)، غرض محدّد، لا يمنح جلسة
+export function signReset(userId) {
+  return jwt.sign({ id: userId, purpose: 'reset' }, config.jwtSecret, { expiresIn: '30m' });
+}
+export function verifyReset(token) {
+  const d = jwt.verify(token, config.jwtSecret);
+  if (d.purpose !== 'reset') throw new Error('توكن غير صالح');
+  return d;
+}
