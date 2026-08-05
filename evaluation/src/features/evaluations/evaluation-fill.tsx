@@ -25,20 +25,57 @@ import {
 } from "@/features/employees/employee-search-combobox";
 import { useTemplate } from "@/features/templates/use-templates";
 import { QuestionField, type AnswerValue } from "./question-field";
-import { useCreateEvaluation } from "./use-evaluations";
+import { useCreateEvaluation, useUpdateEvaluation, type EvaluationDetail } from "./use-evaluations";
 import { useT } from "@/i18n/client";
 
-export function EvaluationFill() {
+/** Rebuild a form value from an evaluation's stored answer, per question type. */
+function toFormValue(type: string, a: EvaluationDetail["answers"][number]): AnswerValue {
+  switch (type) {
+    case "STAR_RATING":
+    case "NUMBER":
+      return a.valueNumber ?? undefined;
+    case "YES_NO":
+      return a.valueBool ?? undefined;
+    case "MULTIPLE_CHOICE":
+    case "FILE_UPLOAD":
+      return (a.valueJson as AnswerValue) ?? undefined;
+    case "DATE":
+      return a.valueDate ?? undefined;
+    default:
+      return a.valueText ?? undefined; // TEXT/TEXTAREA/TIME/SINGLE_CHOICE/DROPDOWN
+  }
+}
+
+export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
   const t = useT();
   const router = useRouter();
+  const isEdit = !!initial;
   const { data: lookups } = useLookups();
-  const [employee, setEmployee] = useState<PickerEmployee | null>(null);
-  const [templateId, setTemplateId] = useState("");
+  const [employee, setEmployee] = useState<PickerEmployee | null>(
+    initial?.employee ? ({ ...initial.employee } as PickerEmployee) : null,
+  );
+  const [templateId, setTemplateId] = useState(initial?.template.id ?? "");
   const { data: template, isLoading: loadingTemplate } = useTemplate(templateId || undefined);
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({});
-  const [remarks, setRemarks] = useState<Record<string, string>>({});
-  const [recommendation, setRecommendation] = useState<string[]>([]);
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(() => {
+    if (!initial) return {};
+    const typeById = new Map(initial.template.questions.map((q) => [q.id, q.type]));
+    const res: Record<string, AnswerValue> = {};
+    for (const a of initial.answers) {
+      const type = typeById.get(a.questionId);
+      if (type) res[a.questionId] = toFormValue(type, a);
+    }
+    return res;
+  });
+  const [remarks, setRemarks] = useState<Record<string, string>>(() => {
+    if (!initial) return {};
+    const res: Record<string, string> = {};
+    for (const a of initial.answers) if (a.remarks) res[a.questionId] = a.remarks;
+    return res;
+  });
+  const [recommendation, setRecommendation] = useState<string[]>(initial?.recommendation ?? []);
   const create = useCreateEvaluation();
+  const update = useUpdateEvaluation(initial?.id ?? "");
+  const pending = create.isPending || update.isPending;
 
   const toggleRec = (key: string) =>
     setRecommendation((r) => (r.includes(key) ? r.filter((k) => k !== key) : [...r, key]));
@@ -59,22 +96,20 @@ export function EvaluationFill() {
         .filter(([, v]) => v.trim().length > 0)
         .map(([id]) => id),
     ]);
+    const answersPayload = [...ids].map((questionId) => ({
+      questionId,
+      value: answers[questionId],
+      remarks: remarks[questionId]?.trim() || null,
+    }));
 
-    const payload = {
-      templateId,
-      employeeId,
-      submit,
-      recommendation,
-      answers: [...ids].map((questionId) => ({
-        questionId,
-        value: answers[questionId],
-        remarks: remarks[questionId]?.trim() || null,
-      })),
-    };
     try {
-      await create.mutateAsync(payload);
+      if (isEdit && initial) {
+        await update.mutateAsync({ answers: answersPayload, recommendation, submit });
+      } else {
+        await create.mutateAsync({ templateId, employeeId, submit, recommendation, answers: answersPayload });
+      }
       toast.success(submit ? t("evaluations.sentForApproval") : t("evaluations.draftSaved"));
-      router.push("/dashboard/evaluations");
+      router.push(isEdit && initial ? `/dashboard/evaluations/${initial.id}` : "/dashboard/evaluations");
       router.refresh();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : t("evaluations.saveFailed"));
@@ -83,25 +118,39 @@ export function EvaluationFill() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <h1 className="text-2xl font-bold">{t("evaluations.newTitle")}</h1>
+      <h1 className="text-2xl font-bold">
+        {isEdit ? t("evaluations.editTitle") : t("evaluations.newTitle")}
+      </h1>
 
       <Card>
         <CardHeader><CardTitle>{t("evaluations.basicData")}</CardTitle></CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2 sm:col-span-2">
             <Label>{t("evaluations.employeeLabel")}</Label>
-            <EmployeeSearchCombobox value={employee} onSelect={setEmployee} />
+            {isEdit ? (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-medium">
+                {employee?.name}
+              </div>
+            ) : (
+              <EmployeeSearchCombobox value={employee} onSelect={setEmployee} />
+            )}
           </div>
           <div className="space-y-2">
             <Label>{t("evaluations.templateLabel")}</Label>
-            <Select value={templateId} onValueChange={(v) => { setTemplateId(v); setAnswers({}); }}>
-              <SelectTrigger><SelectValue placeholder={t("evaluations.chooseTemplate")} /></SelectTrigger>
-              <SelectContent>
-                {lookups?.templates.map((tpl) => (
-                  <SelectItem key={tpl.id} value={tpl.id}>{tpl.title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {isEdit ? (
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm font-medium">
+                {initial?.template.title}
+              </div>
+            ) : (
+              <Select value={templateId} onValueChange={(v) => { setTemplateId(v); setAnswers({}); }}>
+                <SelectTrigger><SelectValue placeholder={t("evaluations.chooseTemplate")} /></SelectTrigger>
+                <SelectContent>
+                  {lookups?.templates.map((tpl) => (
+                    <SelectItem key={tpl.id} value={tpl.id}>{tpl.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -193,11 +242,11 @@ export function EvaluationFill() {
           </Card>
 
           <div className="flex justify-start gap-3">
-            <Button onClick={() => save(true)} disabled={create.isPending}>
-              {create.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            <Button onClick={() => save(true)} disabled={pending}>
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               {t("evaluations.submitForApproval")}
             </Button>
-            <Button variant="outline" onClick={() => save(false)} disabled={create.isPending}>
+            <Button variant="outline" onClick={() => save(false)} disabled={pending}>
               <Save className="size-4" /> {t("evaluations.saveDraft")}
             </Button>
           </div>

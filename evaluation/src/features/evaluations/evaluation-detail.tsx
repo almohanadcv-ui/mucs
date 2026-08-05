@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Loader2, Check, CheckCheck, RotateCcw, Star, Trash2, Download } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Check, CheckCheck, RotateCcw, Star, Trash2, Download, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
 import { QuestionType, RECOMMENDATION_OPTIONS } from "@/core/domain/enums";
+import { useMe } from "@/features/auth/use-me";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import {
   useEvaluation,
@@ -94,6 +96,7 @@ export function EvaluationDetailView({
   const { data, isLoading } = useEvaluation(id);
   const review = useReviewEvaluation(id);
   const del = useDeleteEvaluation();
+  const { data: me } = useMe();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [returnOpen, setReturnOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -107,6 +110,7 @@ export function EvaluationDetailView({
 
   const answersByQ = new Map(data.answers.map((a) => [a.questionId, a]));
   const status = data.status;
+  const isOwner = !!me && me.id === data.evaluator?.id;
   // الإدارة/IT hold both approval permissions → may finalize a PENDING directly.
   const shortcut = Boolean(canPreliminary && canFinal);
   const showPrelim = Boolean(canPreliminary) && status === "PENDING";
@@ -203,6 +207,13 @@ export function EvaluationDetailView({
       )}
 
       <div className="flex flex-wrap justify-start gap-3">
+        {isOwner && (status === "DRAFT" || status === "NEEDS_EDIT") && (
+          <Button asChild>
+            <Link href={`/dashboard/evaluations/${id}/edit`}>
+              <Pencil className="size-4" /> {t("evaluations.editAndResend")}
+            </Link>
+          </Button>
+        )}
         <Button variant="outline" asChild>
           <a href={`/api/evaluations/${id}/pdf`}>
             <Download className="size-4" /> {t("evaluations.downloadPdf")}
