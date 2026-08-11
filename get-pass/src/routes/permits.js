@@ -183,6 +183,19 @@ router.delete('/:id', authenticate, authorize('reviewer', 'support'), asyncHandl
     }
   }
   db.prepare(`DELETE FROM permits WHERE id=?`).run(permit.id);
+
+  // إن لم يتبقَّ للطلب أي تصريح وكان "معتمداً"، أغلقه (ملغى) حتى لا يظهر معتمداً بلا تصريح،
+  // ويُتاح تقديم طلب جديد بنفس رقم الهوية.
+  const remaining = db.prepare(`SELECT COUNT(*) c FROM permits WHERE request_id=?`).get(permit.request_id).c;
+  if (!remaining) {
+    const reqRow = db.prepare(`SELECT status FROM permit_requests WHERE id=?`).get(permit.request_id);
+    if (reqRow && reqRow.status === 'approved') {
+      db.prepare(`UPDATE permit_requests SET status='cancelled', updated_at=datetime('now') WHERE id=?`).run(permit.request_id);
+      db.prepare(`INSERT INTO status_history(request_id, from_status, to_status, reason, changed_by)
+                  VALUES(?, 'approved', 'cancelled', 'حُذف التصريح — أُغلق الطلب', ?)`).run(permit.request_id, req.user.id);
+    }
+  }
+
   audit({ req, action: 'DELETE', entityType: 'permit', entityId: permit.id,
     oldValue: { permit_number: permit.permit_number, national_id: permit.national_id, status: permit.status } });
   res.json({ ok: true });

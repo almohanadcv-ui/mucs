@@ -52,7 +52,7 @@ function publicUser(user) {
     role: fresh.role,
     national_id: fresh.national_id,
     permissions: getEffectivePermissions(fresh.id),
-    needs_undertaking: fresh.role === 'applicant' && !fresh.undertaking_accepted_at,
+    needs_undertaking: config.undertakingEnabled && fresh.role === 'applicant' && !fresh.undertaking_accepted_at,
     undertaking_accepted_at: fresh.undertaking_accepted_at,
     tour_completed_at: fresh.tour_completed_at,
     needs_tour: ['applicant', 'reviewer', 'supervisor', 'general_management'].includes(fresh.role) && !fresh.tour_completed_at,

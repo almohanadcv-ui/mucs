@@ -620,4 +620,40 @@ router.post('/:id/respond', upload.fields([{ name: 'documents', maxCount: 5 }]),
     } catch (err) { cleanup(); throw err; }
   }));
 
+// ---------------------------------------------------------------
+// حذف طلب نهائياً (الدعم) — يشمل تصاريحه ومرفقاته وملفاته وسجلّه،
+// لتحرير رقم الهوية بالكامل وإتاحة تقديم طلب جديد به.
+// ---------------------------------------------------------------
+router.delete('/:id', authorize('support'), asyncHandler(async (req, res) => {
+  const request = db.prepare(`SELECT * FROM permit_requests WHERE id=?`).get(req.params.id);
+  if (!request) throw httpError(404, 'الطلب غير موجود.');
+
+  // اجمع مفاتيح تخزين المرفقات لحذف الملفات من القرص بعد نجاح المعاملة
+  const atts = db.prepare(`SELECT storage_key FROM attachments WHERE request_id=?`).all(request.id);
+
+  const tx = db.transaction(() => {
+    // التصاريح لا تملك ON DELETE CASCADE — تُحذف أولاً قبل الطلب
+    db.prepare(`DELETE FROM permits WHERE request_id=?`).run(request.id);
+    // جداول تشير للطلب بدون مفتاح أجنبي — تُنظّف يدوياً
+    db.prepare(`DELETE FROM notifications WHERE req_id=?`).run(request.id);
+    db.prepare(`DELETE FROM wa_distributions WHERE request_id=?`).run(request.id);
+    db.prepare(`UPDATE wa_packages SET request_id=NULL WHERE request_id=?`).run(request.id);
+    // الطلب — المرفقات وسجل الحالة يُحذفان تلقائياً (ON DELETE CASCADE)
+    db.prepare(`DELETE FROM permit_requests WHERE id=?`).run(request.id);
+  });
+  tx();
+
+  // احذف ملفات المرفقات من القرص ما لم تكن مشتركة مع طلب آخر (التجديد يعيد استخدام نفس الملف)
+  for (const a of atts) {
+    try {
+      const stillUsed = db.prepare(`SELECT 1 FROM attachments WHERE storage_key=? LIMIT 1`).get(a.storage_key);
+      if (!stillUsed) { const fp = path.join(config.paths.uploads, a.storage_key); if (fs.existsSync(fp)) fs.rmSync(fp); }
+    } catch { /* تجاهل */ }
+  }
+
+  audit({ req, action: 'DELETE', entityType: 'request', entityId: request.id,
+    oldValue: { request_number: request.request_number, national_id: request.national_id, status: request.status } });
+  res.json({ ok: true, deleted: true });
+}));
+
 export default router;

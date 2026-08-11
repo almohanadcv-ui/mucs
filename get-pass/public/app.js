@@ -1170,6 +1170,9 @@ const App = (() => {
       if (['under_review', 'info_required'].includes(r.status))
         actions += `<button class="btn ghost" onclick="App.act('${id}','release')">ترك</button>`;
     }
+    // الدعم (الأدمن) يحذف أي طلب نهائياً بأي حالة
+    if (user.role === 'support')
+      actions += `<button class="btn danger" onclick="App.deleteRequest('${id}','${esc(r.request_number)}')">🗑 حذف الطلب نهائياً</button>`;
 
     let respondHtml = '';
     if (isOwner && r.status === 'info_required') {
@@ -1319,6 +1322,19 @@ const App = (() => {
       } catch (err) { toast(err.message, 'error'); sb.disabled = false; sb.textContent = 'اعتماد وإصدار'; }
     };
   }
+  async function deleteRequest(id, number) {
+    const ok = await confirmModal('حذف الطلب نهائياً',
+      `سيُحذف الطلب «${number}» نهائياً مع تصريحه ومرفقاته وسجلّه، ولا يمكن التراجع. بعد الحذف يمكنك تقديم طلب جديد بنفس رقم الهوية.`,
+      { danger: true });
+    if (!ok) return;
+    try {
+      await api(`/requests/${id}`, { method: 'DELETE' });
+      toast('تم حذف الطلب نهائياً.', 'success');
+      closeModal();
+      refreshCurrent();
+    } catch (err) { toast(err.message, 'error'); }
+  }
+
   async function cancelPermit(permitId, requestId) {
     const reason = await promptModal('إلغاء التصريح', { label: 'سبب الإلغاء', textarea: true });
     if (!reason) { if (requestId) openRequest(requestId); return; }
@@ -1720,8 +1736,8 @@ const App = (() => {
   async function deleteUser(id, name) {
     const ok = await confirmModal('حذف مستخدم', `هل تريد حذف المستخدم «${name}» نهائياً؟`, { danger: true });
     if (!ok) return;
-    try { const r = await api(`/users/${id}`, { method: 'DELETE' });
-      toast(r.deactivated ? 'له طلبات سابقة — تم تعطيله بدل الحذف (للحفاظ على السجل).' : 'تم حذف المستخدم.', 'success');
+    try { await api(`/users/${id}`, { method: 'DELETE' });
+      toast('تم حذف المستخدم نهائياً.', 'success');
       viewUsers(); }
     catch (err) { toast(err.message, 'error'); }
   }
@@ -1905,5 +1921,5 @@ const App = (() => {
   boot();
 
   function renewPermit(nid) { prefillNid = nid; route('new-request'); }
-  return { login, forgotPassword, logout, route, refresh, toggleNav, fontSize, commandPalette, toggleTheme, act, approveIssue, cancelPermit, deletePermit, toggleUser, deleteUser, passwordModal, togglePw, revealPw, renewPermit, closeModal };
+  return { login, forgotPassword, logout, route, refresh, toggleNav, fontSize, commandPalette, toggleTheme, act, approveIssue, cancelPermit, deletePermit, deleteRequest, toggleUser, deleteUser, passwordModal, togglePw, revealPw, renewPermit, closeModal };
 })();

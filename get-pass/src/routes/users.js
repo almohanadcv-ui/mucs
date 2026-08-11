@@ -132,14 +132,24 @@ router.delete('/:id', authorize('support'), asyncHandler(async (req, res) => {
     const supportCount = db.prepare(`SELECT COUNT(*) c FROM users u JOIN roles r ON r.id=u.role_id WHERE r.code='support' AND u.is_active=1`).get().c;
     if (supportCount <= 1) throw httpError(400, 'لا يمكن حذف آخر حساب دعم في النظام.');
   }
-  // لا نحذف المستخدم الذي أنشأ طلبات (للحفاظ على سجل التدقيق) — نكتفي بتعطيله
-  const hasReqs = db.prepare(`SELECT 1 FROM permit_requests WHERE created_by=? LIMIT 1`).get(user.id);
-  if (hasReqs) {
-    db.prepare(`UPDATE users SET is_active=0, session_id=NULL WHERE id=?`).run(user.id);
-    audit({ req, action: 'DEACTIVATE_USER_KEEP', entityType: 'user', entityId: user.id });
-    return res.json({ ok: true, deactivated: true });
-  }
-  db.prepare(`DELETE FROM users WHERE id=?`).run(user.id);
+  // حذف كامل مع تنظيف كل الإشارات إليه (المفاتيح الأجنبية مفعّلة، فبدون هذا يفشل الحذف)
+  const tx = db.transaction(() => {
+    // التصاريح: issued_by حقل إلزامي — نُحيلها لمن ينفّذ الحذف حفاظاً على السجل
+    db.prepare(`UPDATE permits SET issued_by=? WHERE issued_by=?`).run(req.user.id, user.id);
+    // الطلبات وسجل الحالة: الحقول تقبل NULL — تبقى الطلبات، فقط يُزال ربط المستخدم
+    db.prepare(`UPDATE permit_requests SET created_by=NULL WHERE created_by=?`).run(user.id);
+    db.prepare(`UPDATE permit_requests SET assigned_to=NULL WHERE assigned_to=?`).run(user.id);
+    db.prepare(`UPDATE status_history SET changed_by=NULL WHERE changed_by=?`).run(user.id);
+    // الإشعارات وجداول واتساب
+    db.prepare(`DELETE FROM notifications WHERE user_id=?`).run(user.id);
+    db.prepare(`UPDATE wa_links SET user_id=NULL WHERE user_id=?`).run(user.id);
+    db.prepare(`UPDATE wa_documents SET user_id=NULL WHERE user_id=?`).run(user.id);
+    db.prepare(`UPDATE wa_packages SET user_id=NULL WHERE user_id=?`).run(user.id);
+    db.prepare(`UPDATE wa_distributions SET engineer_user_id=NULL WHERE engineer_user_id=?`).run(user.id);
+    // user_permissions يُحذف تلقائياً (ON DELETE CASCADE)
+    db.prepare(`DELETE FROM users WHERE id=?`).run(user.id);
+  });
+  tx();
   audit({ req, action: 'DELETE_USER', entityType: 'user', entityId: user.id, oldValue: { email: user.email, role: user.role } });
   res.json({ ok: true, deleted: true });
 }));

@@ -36,6 +36,8 @@ export const config = {
     pass: process.env.SMTP_PASS || '',                 // كلمة مرور البريد
     from: (process.env.SMTP_FROM || process.env.SMTP_USER || '').trim(),
   },
+  // التعهّد (عهدة الكمبيوتر) — مُخفى افتراضياً؛ فعّله بـ UNDERTAKING_ENABLED=1 عند الحاجة
+  undertakingEnabled: process.env.UNDERTAKING_ENABLED === '1',
   defaultPermitDays: Number(process.env.DEFAULT_PERMIT_DAYS) || 365,
   renewalWindowDays: Number(process.env.RENEWAL_WINDOW_DAYS) || 5,
   maxUploadBytes: Number(process.env.MAX_UPLOAD_BYTES) || 10 * 1024 * 1024,
