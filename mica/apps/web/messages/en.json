@@ -84,7 +84,17 @@
     "twoFactorSent": "We emailed you a 6-digit code. Enter it to finish signing in.",
     "twoFactorCode": "Verification code",
     "twoFactorVerify": "Verify code",
-    "twoFactorBack": "Back to sign in"
+    "twoFactorBack": "Back to sign in",
+    "secureAccess": "Secure access",
+    "heroEyebrow": "MAB United — Fleet",
+    "heroTitle": "Manage your fleet and maintenance from one control room.",
+    "heroCopy": "Track vehicles, reports, periodic maintenance, and reporting — all in one secure place.",
+    "heroMetric1Value": "Live",
+    "heroMetric1Label": "Fleet tracking",
+    "heroMetric2Value": "PDF",
+    "heroMetric2Label": "Reports",
+    "heroMetric3Value": "QR",
+    "heroMetric3Label": "Verification"
   },
   "dashboard": {
     "welcomeBack": "Welcome back, {name}",

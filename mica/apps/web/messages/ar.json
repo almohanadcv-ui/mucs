@@ -84,7 +84,17 @@
     "twoFactorSent": "أرسلنا رمزًا من ٦ أرقام إلى بريدك. اكتبه لإكمال الدخول.",
     "twoFactorCode": "رمز التحقق",
     "twoFactorVerify": "تأكيد الرمز",
-    "twoFactorBack": "الرجوع لتسجيل الدخول"
+    "twoFactorBack": "الرجوع لتسجيل الدخول",
+    "secureAccess": "دخول آمن",
+    "heroEyebrow": "MAB United — نظام إدارة المركبات",
+    "heroTitle": "أدر مركباتك وصيانتها من لوحة تحكم واحدة.",
+    "heroCopy": "متابعة المركبات والبلاغات والصيانة الدورية والتقارير — في مكان واحد آمن.",
+    "heroMetric1Value": "مباشر",
+    "heroMetric1Label": "متابعة الأسطول",
+    "heroMetric2Value": "PDF",
+    "heroMetric2Label": "تقارير",
+    "heroMetric3Value": "QR",
+    "heroMetric3Label": "تحقّق فوري"
   },
   "dashboard": {
     "welcomeBack": "مرحباً بعودتك، {name}",
