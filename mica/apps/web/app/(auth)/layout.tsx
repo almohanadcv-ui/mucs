@@ -1,6 +1,10 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { useTheme } from "next-themes";
+import { Languages, Moon, Sun } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useLocale } from "@/lib/i18n/locale-context";
 
 function MabWordmark({ className = "" }: { className?: string }) {
   return (
@@ -12,6 +16,8 @@ function MabWordmark({ className = "" }: { className?: string }) {
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const t = useTranslations("auth");
+  const { resolvedTheme, setTheme } = useTheme();
+  const { locale, setLocale } = useLocale();
   const metrics: [string, string][] = [
     [t("heroMetric1Value"), t("heroMetric1Label")],
     [t("heroMetric2Value"), t("heroMetric2Label")],
@@ -20,6 +26,35 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="relative min-h-screen flex-1 overflow-hidden bg-[radial-gradient(circle_at_20%_18%,rgba(17,120,184,0.22),transparent_28%),radial-gradient(circle_at_84%_72%,rgba(7,93,150,0.18),transparent_30%),linear-gradient(135deg,#ffffff_0%,#e8f6ff_45%,#f8fcff_100%)] p-6 dark:bg-[radial-gradient(circle_at_20%_18%,rgba(56,163,230,0.18),transparent_28%),radial-gradient(circle_at_84%_72%,rgba(121,200,245,0.12),transparent_30%),linear-gradient(135deg,#071521_0%,#0a2030_48%,#091824_100%)] md:p-8">
+      {/* أدوات اللغة والوضع */}
+      <div className="absolute end-6 top-6 z-20 flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setLocale(locale === "en" ? "ar" : "en")}
+          className="gap-2 bg-white/70 dark:bg-slate-900/50"
+        >
+          <Languages className="size-4" />
+          {locale === "en" ? "العربية" : "English"}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+          aria-label={locale === "en" ? "Toggle theme" : "تبديل الوضع"}
+          className="gap-2 bg-white/70 dark:bg-slate-900/50"
+        >
+          <span className="flex items-center gap-2 dark:hidden">
+            <Moon className="size-4" />
+            {locale === "en" ? "Dark" : "داكن"}
+          </span>
+          <span className="hidden items-center gap-2 dark:flex">
+            <Sun className="size-4" />
+            {locale === "en" ? "Light" : "فاتح"}
+          </span>
+        </Button>
+      </div>
+
       <div className="relative mx-auto grid min-h-[calc(100vh-3rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.05fr_minmax(360px,440px)]">
         {/* شعار دائري خلفي */}
         <div
