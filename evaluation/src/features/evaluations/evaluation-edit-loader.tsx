@@ -6,9 +6,9 @@ import { EvaluationFill } from "./evaluation-fill";
 import { useT } from "@/i18n/client";
 
 /**
- * Loads an existing evaluation and opens it in the fill form for editing. Only
- * DRAFT and NEEDS_EDIT (returned-for-edit) evaluations are editable; the server
- * enforces ownership and status, this just avoids showing a dead form.
+ * Loads an existing evaluation and opens it in the fill form for editing. The
+ * manager may edit while it is a draft or still in the employee dialogue; once
+ * approved (locked) it is read-only. The server enforces ownership and status.
  */
 export function EvaluationEditLoader({ id }: { id: string }) {
   const t = useT();
@@ -24,7 +24,7 @@ export function EvaluationEditLoader({ id }: { id: string }) {
   if (!data) {
     return <p className="py-20 text-center text-sm text-destructive">{t("evaluations.loadFailed")}</p>;
   }
-  if (data.status !== "DRAFT" && data.status !== "NEEDS_EDIT") {
+  if (data.status === "APPROVED") {
     return <p className="py-20 text-center text-sm text-muted-foreground">{t("evaluations.notEditable")}</p>;
   }
   return <EvaluationFill initial={data} />;

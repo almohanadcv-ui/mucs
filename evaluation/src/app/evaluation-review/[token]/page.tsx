@@ -33,7 +33,7 @@ export default function EvaluationReviewPage({
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<null | "ACKNOWLEDGE" | "OBJECT">(null);
+  const [sentMsg, setSentMsg] = useState<string | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -79,7 +79,11 @@ export default function EvaluationReviewPage({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error?.message || "تعذّر إرسال ردّك.");
-      setDone(decision);
+      setSentMsg(
+        decision === "ACKNOWLEDGE"
+          ? "تم تسجيل موافقتك. يمكنك إضافة المزيد في أي وقت."
+          : "تم إرسال ملاحظتك للمدير. يمكنك المتابعة معه هنا.",
+      );
       setComment("");
       await load();
     } catch (e) {
@@ -179,44 +183,43 @@ export default function EvaluationReviewPage({
 
             {!data.locked && (
               <section className="rounded-xl border border-[#d6e8f5] bg-white/85 p-6 shadow-sm">
-                {done ? (
-                  <div className="rounded-lg bg-emerald-50 p-4 text-center font-semibold text-emerald-800">
-                    {done === "ACKNOWLEDGE"
-                      ? "تم تسجيل موافقتك. شكرًا لك."
-                      : "تم إرسال ملاحظتك للمدير. سيراجعها ويردّ عليك."}
+                <h2 className="mb-2 font-bold">ملاحظاتك</h2>
+                <p className="mb-3 text-sm text-[#42647d]">
+                  اكتب ملاحظتك واضغط «إرسال ملاحظة» — يمكنك تبادل الرسائل مع المدير بلا حد.
+                  وإن كنت موافقًا اضغط «أوافق على التقييم».
+                </p>
+                {sentMsg && (
+                  <div className="mb-3 rounded-lg bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+                    {sentMsg}
                   </div>
-                ) : (
-                  <>
-                    <h2 className="mb-2 font-bold">ملاحظاتك</h2>
-                    <p className="mb-3 text-sm text-[#42647d]">
-                      إن كانت لديك ملاحظات اكتبها هنا ثم اضغط «إرسال ملاحظة»، أو اضغط «أوافق على التقييم».
-                    </p>
-                    <textarea
-                      value={comment}
-                      onChange={(e) => setComment(e.target.value)}
-                      rows={4}
-                      placeholder="اكتب ملاحظتك هنا (اختياري عند الموافقة، مطلوب عند الاعتراض)…"
-                      className="w-full rounded-lg border border-[#d6e8f5] bg-white p-3 text-[#12304a] focus:outline-none focus:ring-2 focus:ring-[#1178b8]/30"
-                    />
-                    {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <button
-                        onClick={() => respond("ACKNOWLEDGE")}
-                        disabled={busy}
-                        className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-                      >
-                        أوافق على التقييم
-                      </button>
-                      <button
-                        onClick={() => respond("OBJECT")}
-                        disabled={busy}
-                        className="rounded-lg bg-[#1178b8] px-5 py-2.5 font-semibold text-white hover:bg-[#075d96] disabled:opacity-50"
-                      >
-                        إرسال ملاحظة
-                      </button>
-                    </div>
-                  </>
                 )}
+                <textarea
+                  value={comment}
+                  onChange={(e) => {
+                    setComment(e.target.value);
+                    if (sentMsg) setSentMsg(null);
+                  }}
+                  rows={4}
+                  placeholder="اكتب رسالتك للمدير هنا…"
+                  className="w-full rounded-lg border border-[#d6e8f5] bg-white p-3 text-[#12304a] focus:outline-none focus:ring-2 focus:ring-[#1178b8]/30"
+                />
+                {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    onClick={() => respond("ACKNOWLEDGE")}
+                    disabled={busy}
+                    className="rounded-lg bg-emerald-600 px-5 py-2.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    أوافق على التقييم
+                  </button>
+                  <button
+                    onClick={() => respond("OBJECT")}
+                    disabled={busy}
+                    className="rounded-lg bg-[#1178b8] px-5 py-2.5 font-semibold text-white hover:bg-[#075d96] disabled:opacity-50"
+                  >
+                    إرسال ملاحظة
+                  </button>
+                </div>
               </section>
             )}
           </>
