@@ -4,14 +4,13 @@ import {
   UserCog,
   ClipboardList,
   FileText,
-  CheckCircle2,
   BarChart3,
   Settings,
   History,
   Building2,
   type LucideIcon,
 } from "lucide-react";
-import { Permission, REVIEW_PERMISSIONS } from "@/core/domain/permissions";
+import { Permission } from "@/core/domain/permissions";
 
 export interface NavItem {
   /** i18n key resolved in the sidebar (see messages `nav.*`). */
@@ -30,7 +29,6 @@ export const NAV_ITEMS: NavItem[] = [
   { labelKey: "nav.organization", href: "/dashboard/organization", icon: Building2, permission: Permission.DEPARTMENT_MANAGE, ready: true },
   { labelKey: "nav.evaluations", href: "/dashboard/evaluations", icon: ClipboardList, anyPermission: [Permission.EVALUATION_VIEW_OWN, Permission.EVALUATION_VIEW_ALL], ready: true },
   { labelKey: "nav.templates", href: "/dashboard/templates", icon: FileText, permission: Permission.TEMPLATE_MANAGE, ready: true },
-  { labelKey: "nav.approvals", href: "/dashboard/approvals", icon: CheckCircle2, anyPermission: REVIEW_PERMISSIONS, ready: true },
   { labelKey: "nav.users", href: "/dashboard/evaluators", icon: UserCog, permission: Permission.USER_MANAGE, ready: true },
   { labelKey: "nav.reports", href: "/dashboard/reports", icon: BarChart3, permission: Permission.REPORT_VIEW, ready: true },
   { labelKey: "nav.audit", href: "/dashboard/audit", icon: History, permission: Permission.AUDIT_VIEW, ready: true },

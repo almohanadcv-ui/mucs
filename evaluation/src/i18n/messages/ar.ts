@@ -92,6 +92,7 @@ export const ar = {
     disabled: "معطّل",
     roleAdmin: "IT",
     roleManagement: "الإدارة",
+    roleHr: "الموارد البشرية (HR)",
     rolePrimaryReviewer: "المراجع الأساسي",
     roleSupervisor: "مراجع",
     roleEvaluator: "مقيّم",

@@ -23,6 +23,7 @@ export interface EvaluationRow {
 
 export interface EvaluationDetail extends EvaluationRow {
   recommendation: string[];
+  overallNote: string | null;
   template: {
     id: string;
     title: string;
@@ -44,13 +45,14 @@ export function useEvaluations(params: {
   page?: number;
   status?: string;
   search?: string;
+  kind?: "REGULAR" | "PROBATION";
 }) {
   return useQuery({
     queryKey: ["evaluations", params],
     queryFn: () =>
       apiClient.get<PaginatedResponse<EvaluationRow>>(
         "/api/evaluations" +
-          qs({ page: params.page ?? 1, status: params.status, search: params.search }),
+          qs({ page: params.page ?? 1, status: params.status, search: params.search, kind: params.kind }),
       ),
     placeholderData: (p) => p,
   });
@@ -61,6 +63,8 @@ export function useEvaluation(id: string | undefined) {
     queryKey: ["evaluation", id],
     queryFn: () => apiClient.get<EvaluationDetail>(`/api/evaluations/${id}`),
     enabled: !!id,
+    // Live: reflect the employee's response/agreement without a manual refresh.
+    refetchInterval: 8000,
   });
 }
 
@@ -131,6 +135,8 @@ export function useEvaluationComments(id: string | undefined) {
     queryKey: ["evaluation-comments", id],
     queryFn: () => apiClient.get<EvaluationComment[]>(`/api/evaluations/${id}/comments`),
     enabled: !!id,
+    // Live: show the employee's reply as soon as it arrives.
+    refetchInterval: 8000,
   });
 }
 

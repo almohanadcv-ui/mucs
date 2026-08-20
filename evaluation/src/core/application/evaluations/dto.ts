@@ -18,6 +18,7 @@ export const createEvaluationSchema = z.object({
   employeeId: z.string().uuid(),
   answers: z.array(answerInputSchema).default([]),
   recommendation: recommendationSchema,
+  overallNote: z.string().trim().max(4000).optional().nullable(),
   // If true, submit immediately for review; otherwise save as DRAFT.
   submit: z.boolean().default(false),
 });
@@ -25,6 +26,7 @@ export const createEvaluationSchema = z.object({
 export const updateEvaluationSchema = z.object({
   answers: z.array(answerInputSchema).min(1),
   recommendation: recommendationSchema,
+  overallNote: z.string().trim().max(4000).optional().nullable(),
   submit: z.boolean().default(false),
 });
 
@@ -66,6 +68,8 @@ export const listEvaluationsSchema = paginationSchema.extend({
     .optional(),
   employeeId: z.string().uuid().optional(),
   templateId: z.string().uuid().optional(),
+  // Filter by the template kind (regular vs probation) — powers the two tabs.
+  kind: z.enum(["REGULAR", "PROBATION"]).optional(),
 });
 
 /** A manager reply, or an internal HR note, on an evaluation. */

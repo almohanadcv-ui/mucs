@@ -38,8 +38,9 @@ function fmt(d: string | null, locale: string) {
 export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
   const { t, locale } = useI18n();
   const [status, setStatus] = useState("");
+  const [kind, setKind] = useState<"REGULAR" | "PROBATION">("REGULAR");
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useEvaluations({ status, page });
+  const { data, isLoading } = useEvaluations({ status, page, kind });
   const rows = data?.items ?? [];
   const meta = data?.meta;
 
@@ -75,6 +76,27 @@ export function EvaluationsClient({ canCreate }: { canCreate: boolean }) {
             </Link>
           </Button>
         )}
+      </div>
+
+      {/* Regular vs probation — the two top tabs. */}
+      <div className="flex gap-2 border-b">
+        {([
+          ["REGULAR", "التقييمات"],
+          ["PROBATION", "فترة التجربة"],
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => { setKind(value); setPage(1); }}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors",
+              kind === value
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="flex flex-wrap gap-2">

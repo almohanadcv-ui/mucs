@@ -11,6 +11,7 @@ type Review = {
   score: number | null;
   status: string;
   locked: boolean;
+  overallNote: string | null;
   items: Item[];
   comments: Comment[];
 };
@@ -34,24 +35,34 @@ export default function EvaluationReviewPage({
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<null | "ACKNOWLEDGE" | "OBJECT">(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/evaluation-review/${token}`);
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error?.message || "تعذّر فتح التقييم.");
-      setData(body.data as Review);
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "حدث خطأ.");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const res = await fetch(`/api/evaluation-review/${token}`);
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error?.message || "تعذّر فتح التقييم.");
+        setData(body.data as Review);
+        if (!silent) setError(null);
+      } catch (e) {
+        if (!silent) setError(e instanceof Error ? e.message : "حدث خطأ.");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [token],
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live: poll so the manager's reply appears without a manual refresh.
+  useEffect(() => {
+    if (data?.locked) return;
+    const iv = setInterval(() => void load(true), 8000);
+    return () => clearInterval(iv);
+  }, [data?.locked, load]);
 
   async function respond(decision: "ACKNOWLEDGE" | "OBJECT") {
     if (decision === "OBJECT" && comment.trim().length < 3) {
@@ -135,6 +146,13 @@ export default function EvaluationReviewPage({
                 )}
               </div>
             </section>
+
+            {data.overallNote && (
+              <section className="overflow-hidden rounded-xl border border-[#d6e8f5] bg-white/85 shadow-sm">
+                <h2 className="border-b border-[#d6e8f5] bg-[#f5faff] px-5 py-3 font-bold">ملاحظة</h2>
+                <p className="whitespace-pre-wrap px-5 py-4 text-[#12304a]">{data.overallNote}</p>
+              </section>
+            )}
 
             {data.comments.length > 0 && (
               <section className="overflow-hidden rounded-xl border border-[#d6e8f5] bg-white/85 shadow-sm">

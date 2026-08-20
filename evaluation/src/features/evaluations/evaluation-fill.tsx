@@ -73,6 +73,7 @@ export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
     return res;
   });
   const [recommendation, setRecommendation] = useState<string[]>(initial?.recommendation ?? []);
+  const [overallNote, setOverallNote] = useState<string>(initial?.overallNote ?? "");
   const create = useCreateEvaluation();
   const update = useUpdateEvaluation(initial?.id ?? "");
   const pending = create.isPending || update.isPending;
@@ -104,9 +105,9 @@ export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
 
     try {
       if (isEdit && initial) {
-        await update.mutateAsync({ answers: answersPayload, recommendation, submit });
+        await update.mutateAsync({ answers: answersPayload, recommendation, overallNote: overallNote.trim() || null, submit });
       } else {
-        await create.mutateAsync({ templateId, employeeId, submit, recommendation, answers: answersPayload });
+        await create.mutateAsync({ templateId, employeeId, submit, recommendation, overallNote: overallNote.trim() || null, answers: answersPayload });
       }
       toast.success(submit ? t("evaluations.sentForApproval") : t("evaluations.draftSaved"));
       router.push(isEdit && initial ? `/dashboard/evaluations/${initial.id}` : "/dashboard/evaluations");
@@ -241,6 +242,23 @@ export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
                   />
                 </label>
               ))}
+            </CardContent>
+          </Card>
+
+          {/* Overall free-text note at the end of the evaluation. */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">ملاحظة</CardTitle>
+              <p className="text-xs text-muted-foreground">ملاحظة عامة تظهر أسفل التقييم (يراها الموظف).</p>
+            </CardHeader>
+            <CardContent>
+              <textarea
+                value={overallNote}
+                onChange={(e) => setOverallNote(e.target.value)}
+                rows={3}
+                placeholder="اكتب ملاحظة عامة على التقييم (اختياري)…"
+                className="w-full rounded-md border bg-transparent p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
             </CardContent>
           </Card>
 

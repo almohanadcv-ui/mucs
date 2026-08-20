@@ -439,6 +439,10 @@ model Evaluation {
   /// from anything the employee receives.
   recommendation String[] @default([])
 
+  /// Free-text overall note the evaluator writes at the end of the evaluation
+  /// («ملاحظة» box under the questions). Part of the evaluation the employee sees.
+  overallNote String?
+
   // Preliminary review (SUPERVISOR / مراجع): first-stage sign-off.
   prelimReviewerId String?   @db.Uuid
   prelimReviewedAt DateTime?

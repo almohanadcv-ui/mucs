@@ -12,6 +12,8 @@ import {
   NotificationType,
   Role,
   CommentAuthor,
+  QuestionType,
+  STAR_RATING_LABELS,
   RECOMMENDATION_KEYS,
 } from "@/core/domain/enums";
 import { sha256, randomToken } from "@/infrastructure/security/crypto";
@@ -167,6 +169,7 @@ export async function listEvaluations(
     ...(input.status ? { status: input.status } : {}),
     ...(input.employeeId ? { employeeId: input.employeeId } : {}),
     ...(input.templateId ? { templateId: input.templateId } : {}),
+    ...(input.kind ? { template: { kind: input.kind } } : {}),
     ...(input.search
       ? { employee: { name: { contains: input.search, mode: "insensitive" } } }
       : {}),
@@ -307,6 +310,7 @@ export async function createEvaluation(
       status,
       score,
       recommendation: sanitizeRecommendation(input.recommendation),
+      overallNote: input.overallNote?.trim() || null,
       submittedAt: input.submit ? new Date() : null,
       sentToEmployeeAt: input.submit ? new Date() : null,
       answers: { create: answerCreateData(rows) },
@@ -375,6 +379,7 @@ export async function updateEvaluation(
         status,
         score,
         recommendation: sanitizeRecommendation(input.recommendation),
+        overallNote: input.overallNote?.trim() || null,
         ...(resend
           ? { submittedAt: new Date(), sentToEmployeeAt: new Date(), rejectionReason: null }
           : {}),
@@ -994,6 +999,7 @@ export async function getEvaluationForEmployee(rawToken: string) {
       status: true,
       score: true,
       lockedAt: true,
+      overallNote: true,
       employee: { select: { name: true } },
       evaluator: { select: { name: true } },
       template: { select: { title: true } },
@@ -1010,14 +1016,20 @@ export async function getEvaluationForEmployee(rawToken: string) {
   const items = ev.answers
     .slice()
     .sort((a, b) => a.question.order - b.question.order)
-    .map((a) => ({
-      label: a.question.label,
-      value: formatAnswerDisplay(toQuestionLike(a.question), {
+    .map((a) => {
+      const q = toQuestionLike(a.question);
+      let value = formatAnswerDisplay(q, {
         valueNumber: a.valueNumber, valueText: a.valueText, valueBool: a.valueBool,
         valueDate: a.valueDate, valueJson: a.valueJson,
-      }),
-      remarks: a.remarks,
-    }));
+      });
+      // Show the word (ممتاز/جيد جداً…) beside a 5-star rating, like the app.
+      if (a.question.type === QuestionType.STAR_RATING && a.valueNumber != null) {
+        const max = (a.question.config as { max?: number } | null)?.max ?? 5;
+        const label = max === 5 ? STAR_RATING_LABELS[a.valueNumber] : undefined;
+        if (label) value = `${value} — ${label}`;
+      }
+      return { label: a.question.label, value, remarks: a.remarks };
+    });
 
   const comments = await prisma.evaluationComment.findMany({
     where: { evaluationId: rec.evaluationId, visibleToEmployee: true },
@@ -1032,6 +1044,7 @@ export async function getEvaluationForEmployee(rawToken: string) {
     score: ev.score,
     status: ev.status,
     locked: Boolean(ev.lockedAt),
+    overallNote: ev.overallNote,
     items,
     comments,
   };

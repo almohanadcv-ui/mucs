@@ -90,6 +90,7 @@ export const en: Messages = {
     disabled: "Disabled",
     roleAdmin: "IT",
     roleManagement: "Management",
+    roleHr: "HR",
     rolePrimaryReviewer: "Primary reviewer",
     roleSupervisor: "Reviewer",
     roleEvaluator: "Evaluator",
