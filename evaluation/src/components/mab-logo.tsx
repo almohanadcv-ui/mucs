@@ -7,6 +7,6 @@ import { cn } from "@/lib/utils";
 export function MabLogo({ className }: { className?: string }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src="/mab-logo.jpg" alt="MAB United" className={cn("h-8 w-auto", className)} />
+    <img src="/mab-logo.jpg" alt="MAB United" className={cn("h-auto w-40 object-contain", className)} />
   );
 }

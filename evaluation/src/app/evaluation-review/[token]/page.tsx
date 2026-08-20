@@ -104,7 +104,7 @@ export default function EvaluationReviewPage({
           <img
             src="/mab-logo.jpg"
             alt="MAB United"
-            className="mx-auto mb-3 h-16 w-auto rounded-xl bg-white p-2 shadow-sm"
+            className="mx-auto mb-4 w-64 rounded-xl bg-white px-5 py-3 shadow-sm"
           />
           <h1 className="text-2xl font-bold text-[#082b45]">تقييم الأداء الوظيفي</h1>
           <p className="mt-1 text-sm text-[#42647d]">مراجعة تقييمك وإبداء ملاحظاتك</p>

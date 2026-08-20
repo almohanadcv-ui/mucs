@@ -24,7 +24,7 @@ export default async function ForgotPasswordPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <MabLogo className="h-7 w-auto" />
+            <MabLogo className="w-32" />
             <span className="text-lg font-bold">EMS</span>
           </div>
           <div className="flex items-center gap-1">

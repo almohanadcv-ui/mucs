@@ -36,8 +36,8 @@ export default async function LoginPage() {
 
         {/* بطاقة الهيرو */}
         <section className="hidden p-2 lg:block">
-          <div className="mb-7 inline-flex h-28 w-48 items-center justify-center rounded-xl border border-[#1178b8]/20 bg-white/80 shadow-[0_30px_80px_rgba(17,120,184,0.16)] dark:bg-slate-900/60">
-            <MabLogo className="h-16 w-auto" />
+          <div className="mb-7 inline-flex items-center justify-center rounded-xl border border-[#1178b8]/20 bg-white/80 px-7 py-5 shadow-[0_30px_80px_rgba(17,120,184,0.16)] dark:bg-slate-900/60">
+            <MabLogo className="w-52" />
           </div>
           <p className="mb-3 text-sm font-black uppercase tracking-wide text-[#075d96] dark:text-sky-300">
             {t("login.heroEyebrow")}
@@ -64,8 +64,8 @@ export default async function LoginPage() {
         {/* بطاقة الدخول */}
         <section className="relative z-[1] w-full rounded-xl border border-[#d6e8f5]/90 bg-white/85 p-7 shadow-[0_34px_90px_rgba(17,120,184,0.2)] backdrop-blur-sm dark:border-white/10 dark:bg-slate-900/80">
           <div className="mb-5 flex items-center gap-3">
-            <span className="flex h-14 w-20 items-center justify-center rounded-lg border border-[#d6e8f5] bg-white p-1 dark:border-white/10 dark:bg-slate-800">
-              <MabLogo className="h-9 w-auto" />
+            <span className="flex items-center justify-center rounded-lg border border-[#d6e8f5] bg-white px-3 py-2 dark:border-white/10 dark:bg-slate-800">
+              <MabLogo className="w-28" />
             </span>
             <div>
               <p className="m-0 font-extrabold text-[#5f7d94] dark:text-slate-400">{t("login.secureAccess")}</p>

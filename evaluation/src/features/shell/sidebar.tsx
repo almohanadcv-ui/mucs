@@ -22,8 +22,8 @@ export function Sidebar({ role }: { role: Role }) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex print:hidden">
       <div className="flex items-center gap-2 px-6 py-5">
-        <div className="rounded-lg bg-white p-1.5">
-          <MabLogo className="h-8 w-auto" />
+        <div className="rounded-lg bg-white px-3 py-2">
+          <MabLogo className="w-40" />
         </div>
       </div>
 
