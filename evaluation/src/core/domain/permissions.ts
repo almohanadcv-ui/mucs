@@ -32,10 +32,12 @@ export const Permission = {
   EVALUATION_VIEW_OWN: "evaluation:view_own",
   EVALUATION_VIEW_TEAM: "evaluation:view_team",
   EVALUATION_VIEW_ALL: "evaluation:view_all",
-  EVALUATION_APPROVE_PRELIMINARY: "evaluation:approve_prelim", // المراجع — اعتماد مبدئي
-  EVALUATION_APPROVE_FINAL: "evaluation:approve_final", // المراجع الأساسي — اعتماد نهائي
-  EVALUATION_RETURN: "evaluation:return", // إعادة للتعديل مع سبب
+  EVALUATION_APPROVE_PRELIMINARY: "evaluation:approve_prelim", // (legacy) المراجع — اعتماد مبدئي
+  EVALUATION_APPROVE_FINAL: "evaluation:approve_final", // (legacy) المراجع الأساسي — اعتماد نهائي
+  EVALUATION_RETURN: "evaluation:return", // (legacy) إعادة للتعديل مع سبب
   EVALUATION_DELETE: "evaluation:delete", // IT + الإدارة only
+  EVALUATION_COMMENT_HR: "evaluation:comment_hr", // HR — ملاحظات داخلية على المدير
+  EVALUATION_VIEW_THREAD: "evaluation:view_thread", // HR/IT/الإدارة — أرشيف الحوار الكامل
 
   // Reports
   REPORT_VIEW: "report:view",
@@ -55,6 +57,22 @@ const ALL: Permission[] = Object.values(Permission);
 const MANAGEMENT: Permission[] = ALL.filter(
   (p) => p !== Permission.AUDIT_VIEW && p !== Permission.USER_MANAGE,
 );
+
+/**
+ * الموارد البشرية (HR) — the former reviewers. They see every evaluation and the
+ * full conversation thread, and leave internal feedback notes on the manager's
+ * evaluation (which the manager can read, the employee never can). They do NOT
+ * approve — approval is the manager's alone.
+ */
+const HR: Permission[] = [
+  Permission.EMPLOYEE_VIEW,
+  Permission.TEMPLATE_VIEW,
+  Permission.EVALUATION_VIEW_ALL,
+  Permission.EVALUATION_VIEW_THREAD,
+  Permission.EVALUATION_COMMENT_HR,
+  Permission.REPORT_VIEW,
+  Permission.REPORT_EXPORT,
+];
 
 /**
  * المراجع الأساسي — the final approver. Sees every evaluation, gives the final
@@ -97,8 +115,9 @@ const EVALUATOR: Permission[] = [
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.ADMIN]: ALL, // IT
   [Role.MANAGEMENT]: MANAGEMENT,
-  [Role.PRIMARY_REVIEWER]: PRIMARY_REVIEWER,
-  [Role.SUPERVISOR]: SUPERVISOR,
+  [Role.HR]: HR,
+  [Role.PRIMARY_REVIEWER]: PRIMARY_REVIEWER, // legacy
+  [Role.SUPERVISOR]: SUPERVISOR, // legacy
   [Role.EVALUATOR]: EVALUATOR,
 };
 
@@ -114,10 +133,11 @@ export const REVIEW_PERMISSIONS: Permission[] = [
  * at or above its own level — that is how privilege escalation happens.
  */
 export const CREATABLE_ROLES: Record<Role, Role[]> = {
-  [Role.ADMIN]: [Role.MANAGEMENT, Role.PRIMARY_REVIEWER, Role.SUPERVISOR, Role.EVALUATOR],
-  [Role.MANAGEMENT]: [Role.PRIMARY_REVIEWER, Role.SUPERVISOR, Role.EVALUATOR],
-  [Role.PRIMARY_REVIEWER]: [],
-  [Role.SUPERVISOR]: [Role.EVALUATOR],
+  [Role.ADMIN]: [Role.MANAGEMENT, Role.HR, Role.EVALUATOR],
+  [Role.MANAGEMENT]: [Role.HR, Role.EVALUATOR],
+  [Role.HR]: [],
+  [Role.PRIMARY_REVIEWER]: [], // legacy
+  [Role.SUPERVISOR]: [Role.EVALUATOR], // legacy
   [Role.EVALUATOR]: [],
 };
 

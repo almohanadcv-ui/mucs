@@ -8,11 +8,13 @@ export const Role = {
   ADMIN: "ADMIN",
   /** الإدارة — oversees evaluations org-wide. */
   MANAGEMENT: "MANAGEMENT",
-  /** المراجع الأساسي — final approval, the last stage. */
+  /** الموارد البشرية — feedback notes on managers' evaluations; no approval. */
+  HR: "HR",
+  /** (legacy) المراجع الأساسي — retained for existing accounts. */
   PRIMARY_REVIEWER: "PRIMARY_REVIEWER",
-  /** المراجع — preliminary approval / return for edit. */
+  /** (legacy) المراجع — retained for existing accounts. */
   SUPERVISOR: "SUPERVISOR",
-  /** المقيّم — fills evaluations for their own team. */
+  /** المقيّم / المدير — fills AND approves evaluations for their own team. */
   EVALUATOR: "EVALUATOR",
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
@@ -29,18 +31,35 @@ export type EmployeeStatus =
 
 export const EvaluationStatus = {
   DRAFT: "DRAFT",
-  /** Submitted, awaiting preliminary review. */
-  PENDING: "PENDING",
-  /** Returned to the evaluator to fix, with a reason. */
-  NEEDS_EDIT: "NEEDS_EDIT",
-  /** Preliminary-approved, awaiting final review. */
-  PRELIMINARY_APPROVED: "PRELIMINARY_APPROVED",
-  /** Finally approved — the employee is notified/emailed here. */
+  /** Submitted; magic-link emailed to the employee; awaiting them. */
+  SENT_TO_EMPLOYEE: "SENT_TO_EMPLOYEE",
+  /** Employee replied/objected; back with the manager. */
+  EMPLOYEE_RESPONDED: "EMPLOYEE_RESPONDED",
+  /** Employee agreed; the manager may approve. */
+  EMPLOYEE_ACKNOWLEDGED: "EMPLOYEE_ACKNOWLEDGED",
+  /** Finally approved by the manager — locks + emails the employee. */
   APPROVED: "APPROVED",
+  // ── Legacy (kept so existing rows stay valid; no longer produced) ──
+  PENDING: "PENDING",
+  NEEDS_EDIT: "NEEDS_EDIT",
+  PRELIMINARY_APPROVED: "PRELIMINARY_APPROVED",
   REJECTED: "REJECTED",
 } as const;
 export type EvaluationStatus =
   (typeof EvaluationStatus)[keyof typeof EvaluationStatus];
+
+export const TemplateKind = {
+  REGULAR: "REGULAR",
+  PROBATION: "PROBATION",
+} as const;
+export type TemplateKind = (typeof TemplateKind)[keyof typeof TemplateKind];
+
+export const CommentAuthor = {
+  MANAGER: "MANAGER",
+  EMPLOYEE: "EMPLOYEE",
+  HR: "HR",
+} as const;
+export type CommentAuthor = (typeof CommentAuthor)[keyof typeof CommentAuthor];
 
 /** The 11 supported question types. */
 export const QuestionType = {

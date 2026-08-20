@@ -23,9 +23,10 @@ datasource db {
 enum Role {
   ADMIN // IT — full control
   MANAGEMENT // الإدارة — oversees evaluations across the org
-  PRIMARY_REVIEWER // المراجع الأساسي — final approval (last stage)
-  SUPERVISOR // المراجع — preliminary approval / return for edit
-  EVALUATOR // المقيّم — fills evaluations
+  HR // الموارد البشرية — leaves feedback notes on managers' evaluations (no approval)
+  PRIMARY_REVIEWER // (legacy) المراجع الأساسي — retained for existing accounts
+  SUPERVISOR // (legacy) المراجع — retained for existing accounts
+  EVALUATOR // المقيّم / المدير — fills AND approves evaluations
 }
 
 enum EmployeeStatus {
@@ -37,11 +38,27 @@ enum EmployeeStatus {
 
 enum EvaluationStatus {
   DRAFT
-  PENDING // submitted, awaiting preliminary review (SUPERVISOR)
-  NEEDS_EDIT // returned to the evaluator to fix, with a reason
-  PRELIMINARY_APPROVED // preliminary-approved, awaiting final review (PRIMARY_REVIEWER)
-  APPROVED // finally approved — the employee is notified/emailed here
+  // ── New manager↔employee flow ──
+  SENT_TO_EMPLOYEE // submitted; magic-link emailed to the employee; awaiting them
+  EMPLOYEE_RESPONDED // employee replied/objected; back with the manager
+  EMPLOYEE_ACKNOWLEDGED // employee agreed; manager may approve
+  // ── Legacy (kept so existing rows stay valid; no longer produced) ──
+  PENDING
+  NEEDS_EDIT
+  PRELIMINARY_APPROVED
+  APPROVED // finally approved by the manager — locks + emails the employee
   REJECTED
+}
+
+enum TemplateKind {
+  REGULAR // التقييم الاعتيادي
+  PROBATION // تقييم فترة التجربة
+}
+
+enum CommentAuthor {
+  MANAGER // المقيّم / المدير
+  EMPLOYEE // الموظف (عبر الرابط السحري)
+  HR // الموارد البشرية — ملاحظات داخلية على المدير
 }
 
 enum QuestionType {
@@ -90,15 +107,15 @@ model Tenant {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  users       User[]
-  branches    Branch[]
-  departments Department[]
-  employees   Employee[]
+  users           User[]
+  branches        Branch[]
+  departments     Department[]
+  employees       Employee[]
   customEmployees CustomEmployee[]
-  templates   EvaluationTemplate[]
-  evaluations Evaluation[]
-  auditLogs   AuditLog[]
-  notifications Notification[]
+  templates       EvaluationTemplate[]
+  evaluations     Evaluation[]
+  auditLogs       AuditLog[]
+  notifications   Notification[]
 
   @@index([deletedAt])
   @@map("tenants")
@@ -107,14 +124,14 @@ model Tenant {
 // ───────────────────────────── Auth / Users ─────────────────────────────────
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  tenantId     String    @db.Uuid
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @db.Uuid
   email        String
   passwordHash String
   name         String
   role         Role
   avatarUrl    String?
-  isActive     Boolean   @default(true)
+  isActive     Boolean @default(true)
 
   emailVerifiedAt DateTime?
 
@@ -134,21 +151,21 @@ model User {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  refreshTokens        RefreshToken[]
-  loginChallenges      LoginChallenge[]
-  passwordResetTokens  PasswordResetToken[]
-  auditLogs            AuditLog[]
-  notifications        Notification[]
+  refreshTokens             RefreshToken[]
+  loginChallenges           LoginChallenge[]
+  passwordResetTokens       PasswordResetToken[]
+  auditLogs                 AuditLog[]
+  notifications             Notification[]
   // Domain links: a User (SUPERVISOR/EVALUATOR) maps to an Employee record via profile
-  supervisedEmployees  Employee[] @relation("SupervisorOf")
-  evaluatedEmployees   Employee[] @relation("EvaluatorOf")
-  employeeProfile      Employee?  @relation("UserProfile")
-  createdTemplates     EvaluationTemplate[] @relation("TemplateCreator")
-  submittedEvaluations Evaluation[]         @relation("EvaluationSubmitter")
-  reviewedEvaluations  Evaluation[]         @relation("EvaluationReviewer")
-  prelimReviewedEvaluations Evaluation[]    @relation("EvaluationPrelimReviewer")
-  customEmployeesEvaluated CustomEmployee[] @relation("CustomEmployeeEvaluator")
-  customEmployeesCreated   CustomEmployee[] @relation("CustomEmployeeCreatedBy")
+  supervisedEmployees       Employee[]           @relation("SupervisorOf")
+  evaluatedEmployees        Employee[]           @relation("EvaluatorOf")
+  employeeProfile           Employee?            @relation("UserProfile")
+  createdTemplates          EvaluationTemplate[] @relation("TemplateCreator")
+  submittedEvaluations      Evaluation[]         @relation("EvaluationSubmitter")
+  reviewedEvaluations       Evaluation[]         @relation("EvaluationReviewer")
+  prelimReviewedEvaluations Evaluation[]         @relation("EvaluationPrelimReviewer")
+  customEmployeesEvaluated  CustomEmployee[]     @relation("CustomEmployeeEvaluator")
+  customEmployeesCreated    CustomEmployee[]     @relation("CustomEmployeeCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
@@ -157,14 +174,14 @@ model User {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
   // Only a hash of the token is stored; raw token lives in the httpOnly cookie.
-  tokenHash String   @unique
-  family    String   @db.Uuid // rotation family for reuse-detection
+  tokenHash String    @unique
+  family    String    @db.Uuid // rotation family for reuse-detection
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   ip        String?
   userAgent String?
 
@@ -261,13 +278,13 @@ model Department {
 // ───────────────────────────── Employees ────────────────────────────────────
 
 model Employee {
-  id           String         @id @default(uuid()) @db.Uuid
-  tenantId     String         @db.Uuid
-  employeeNo   String
-  name         String
-  avatarUrl    String?
-  status       EmployeeStatus @default(ACTIVE)
-  joinedAt     DateTime?
+  id         String         @id @default(uuid()) @db.Uuid
+  tenantId   String         @db.Uuid
+  employeeNo String
+  name       String
+  avatarUrl  String?
+  status     EmployeeStatus @default(ACTIVE)
+  joinedAt   DateTime?
 
   // Contract & probation tracking (all optional — additive, no data loss)
   contractStartDate DateTime?
@@ -292,10 +309,10 @@ model Employee {
   /// day inside the 90-day window.
   probationReminderSentAt DateTime?
 
-  branchId     String?  @db.Uuid
-  departmentId String?  @db.Uuid
-  supervisorId String?  @db.Uuid
-  evaluatorId  String?  @db.Uuid
+  branchId     String? @db.Uuid
+  departmentId String? @db.Uuid
+  supervisorId String? @db.Uuid
+  evaluatorId  String? @db.Uuid
 
   // Optional link to a login account (when the employee is also a system user)
   userId String? @unique @db.Uuid
@@ -304,12 +321,12 @@ model Employee {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  branch      Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  department  Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  supervisor  User?       @relation("SupervisorOf", fields: [supervisorId], references: [id], onDelete: SetNull)
-  evaluator   User?       @relation("EvaluatorOf", fields: [evaluatorId], references: [id], onDelete: SetNull)
-  user        User?       @relation("UserProfile", fields: [userId], references: [id], onDelete: SetNull)
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  branch     Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  supervisor User?       @relation("SupervisorOf", fields: [supervisorId], references: [id], onDelete: SetNull)
+  evaluator  User?       @relation("EvaluatorOf", fields: [evaluatorId], references: [id], onDelete: SetNull)
+  user       User?       @relation("UserProfile", fields: [userId], references: [id], onDelete: SetNull)
 
   evaluations Evaluation[]
 
@@ -354,12 +371,15 @@ model CustomEmployee {
 // ───────────────────────────── Templates & Questions ────────────────────────
 
 model EvaluationTemplate {
-  id          String    @id @default(uuid()) @db.Uuid
-  tenantId    String    @db.Uuid
+  id          String       @id @default(uuid()) @db.Uuid
+  tenantId    String       @db.Uuid
   title       String
   description String?
-  isActive    Boolean   @default(true)
-  createdById String    @db.Uuid
+  /// REGULAR vs PROBATION — probation employees are evaluated with PROBATION
+  /// templates, everyone else with REGULAR. Separated in lists and reports.
+  kind        TemplateKind @default(REGULAR)
+  isActive    Boolean      @default(true)
+  createdById String       @db.Uuid
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -402,12 +422,12 @@ model Question {
 // ───────────────────────────── Evaluations & Answers ────────────────────────
 
 model Evaluation {
-  id         String           @id @default(uuid()) @db.Uuid
-  tenantId   String           @db.Uuid
-  templateId String           @db.Uuid
-  employeeId String           @db.Uuid
-  evaluatorId String          @db.Uuid // User who performs the evaluation
-  reviewerId  String?         @db.Uuid // Supervisor who approves/rejects
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @db.Uuid
+  templateId  String  @db.Uuid
+  employeeId  String  @db.Uuid
+  evaluatorId String  @db.Uuid // User who performs the evaluation
+  reviewerId  String? @db.Uuid // Supervisor who approves/rejects
 
   status      EvaluationStatus @default(DRAFT)
   // Aggregate normalized score (0..100) computed on submit from weighted answers.
@@ -425,21 +445,33 @@ model Evaluation {
 
   // Final review (PRIMARY_REVIEWER / مراجع أساسي): last-stage sign-off. reviewedAt
   // marks the final decision; reviewerId is the final reviewer.
-  reviewedAt  DateTime?
+  reviewedAt      DateTime?
   // Reason attached when an evaluation is returned for edit or rejected.
   rejectionReason String?
+
+  // ── Manager↔employee flow ──
+  /// When the evaluation was first sent to the employee (magic-link issued).
+  sentToEmployeeAt   DateTime?
+  /// When the employee last acted (agreed or objected) via the magic-link.
+  employeeDecisionAt DateTime?
+  /// Set when the manager finally approves — the evaluation is read-only after
+  /// this and the employee's magic-link is revoked.
+  lockedAt           DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  template  EvaluationTemplate  @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  employee  Employee            @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  evaluator User               @relation("EvaluationSubmitter", fields: [evaluatorId], references: [id], onDelete: Restrict)
-  reviewer  User?              @relation("EvaluationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
-  prelimReviewer User?         @relation("EvaluationPrelimReviewer", fields: [prelimReviewerId], references: [id], onDelete: SetNull)
-  answers   Answer[]
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template       EvaluationTemplate      @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  employee       Employee                @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  evaluator      User                    @relation("EvaluationSubmitter", fields: [evaluatorId], references: [id], onDelete: Restrict)
+  reviewer       User?                   @relation("EvaluationReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  prelimReviewer User?                   @relation("EvaluationPrelimReviewer", fields: [prelimReviewerId], references: [id], onDelete: SetNull)
+  answers        Answer[]
+  comments       EvaluationComment[]
+  tokens         EvaluationAccessToken[]
+  revisions      EvaluationRevision[]
 
   @@index([tenantId, status, deletedAt])
   @@index([employeeId])
@@ -449,6 +481,68 @@ model Evaluation {
   @@index([templateId])
   @@index([submittedAt])
   @@map("evaluations")
+}
+
+/// The manager↔employee (and internal HR) conversation on an evaluation.
+/// MANAGER/EMPLOYEE messages are the dialogue (visibleToEmployee=true); HR
+/// notes are internal feedback on the manager (visibleToEmployee=false). The
+/// full thread is retained for HR/IT/Management oversight.
+model EvaluationComment {
+  id                String        @id @default(uuid()) @db.Uuid
+  evaluationId      String        @db.Uuid
+  authorType        CommentAuthor
+  /// The User who wrote it (MANAGER/HR). Null for EMPLOYEE (no account).
+  authorUserId      String?       @db.Uuid
+  authorName        String? // denormalized display name (employee has no user row)
+  body              String
+  /// Whether the employee can see this comment. HR notes are always false.
+  visibleToEmployee Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId, createdAt])
+  @@map("evaluation_comments")
+}
+
+/// Magic-link token that lets the employee view and respond to their evaluation
+/// without an account. Hashed like the password-reset token. Valid 30 days or
+/// until the evaluation is approved (whichever first).
+model EvaluationAccessToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  evaluationId String    @db.Uuid
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  consumedAt   DateTime? // last time the employee acted (informational)
+  revokedAt    DateTime? // set on approval or when a newer link supersedes it
+  createdAt    DateTime  @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@index([evaluationId])
+  @@map("evaluation_access_tokens")
+}
+
+/// Immutable snapshot of the answers + score each time the manager re-sends an
+/// edited evaluation, so HR/IT/Management can see the full history of changes.
+model EvaluationRevision {
+  id           String   @id @default(uuid()) @db.Uuid
+  evaluationId String   @db.Uuid
+  /// Sequential version number (1 = first send).
+  version      Int
+  score        Float?
+  /// Snapshot of answers as JSON at this version.
+  answers      Json
+  /// Who triggered this revision (manager user id) and an optional note.
+  createdById  String?  @db.Uuid
+  note         String?
+  createdAt    DateTime @default(now())
+
+  evaluation Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  @@unique([evaluationId, version])
+  @@index([evaluationId])
+  @@map("evaluation_revisions")
 }
 
 model Answer {
@@ -482,15 +576,15 @@ model Answer {
 // ───────────────────────────── Notifications ────────────────────────────────
 
 model Notification {
-  id       String           @id @default(uuid()) @db.Uuid
-  tenantId String           @db.Uuid
-  userId   String           @db.Uuid
-  type     NotificationType
-  title    String
-  body     String?
-  data     Json?
-  readAt   DateTime?
-  createdAt DateTime        @default(now())
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType
+  title     String
+  body      String?
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -503,17 +597,17 @@ model Notification {
 // ───────────────────────────── Audit log ────────────────────────────────────
 
 model AuditLog {
-  id         String      @id @default(uuid()) @db.Uuid
-  tenantId   String?     @db.Uuid
-  actorId    String?     @db.Uuid
-  action     AuditAction
-  entity     String // e.g. "Employee", "Evaluation"
-  entityId   String?
-  before     Json?
-  after      Json?
-  ip         String?
-  userAgent  String?
-  createdAt  DateTime    @default(now())
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String?     @db.Uuid
+  actorId   String?     @db.Uuid
+  action    AuditAction
+  entity    String // e.g. "Employee", "Evaluation"
+  entityId  String?
+  before    Json?
+  after     Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime    @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
   actor  User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
