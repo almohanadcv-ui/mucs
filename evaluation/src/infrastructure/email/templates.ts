@@ -357,3 +357,39 @@ export function evaluationResultEmail(params: {
         .join("\n"),
   };
 }
+
+// ── Evaluation sent to the employee (magic-link) ─────────────────────────────
+/**
+ * The manager finished an evaluation and sent it to the employee for review.
+ * The link opens a lightweight page (no login) where the employee can read it
+ * and either agree or reply with remarks. Valid for 30 days or until approved.
+ */
+export function evaluationToEmployeeEmail(params: {
+  link: string;
+  employeeName: string;
+  evaluatorName?: string | null;
+  templateTitle: string;
+}): EmailContent {
+  const { link, employeeName, evaluatorName, templateTitle } = params;
+  const accent = "#2563eb";
+  const by = evaluatorName ? ` من قِبل ${iso(evaluatorName)}` : "";
+  const content = `
+    ${greeting(employeeName)}
+    ${para(`تم إعداد تقييم أدائك «${escapeHtml(templateTitle)}»${by}. يمكنك الاطّلاع عليه وإبداء ملاحظاتك أو الموافقة عليه عبر الرابط التالي:`)}
+    ${button(link, "عرض التقييم وإبداء الملاحظات", accent)}
+    ${para(`<span style="color:${MUTED};font-size:13px;">هذا الرابط خاص بك، صالح لمدة <strong>٣٠ يومًا</strong> أو حتى اعتماد التقييم. إن كانت لديك ملاحظات فاكتبها في الصفحة وسيراجعها المدير.</span>`)}
+    ${para(`<span style="color:${MUTED};font-size:12px;">إن لم يعمل الزر، انسخ هذا الرابط في المتصفّح:<br /><span dir="ltr" style="word-break:break-all;color:${accent};">${escapeHtml(link)}</span></span>`)}`;
+  return {
+    subject: `وصلك تقييم أدائك «${templateTitle}» — للاطّلاع والملاحظات`,
+    html: shell({
+      preheader: `تقييم أدائك «${templateTitle}» جاهز للاطّلاع وإبداء الملاحظات.`,
+      eyebrow: "تقييم للمراجعة",
+      accent,
+      title: "تقييم أدائك جاهز للاطّلاع",
+      content,
+    }),
+    text:
+      `مرحبًا ${employeeName}،\nتم إعداد تقييم أدائك «${templateTitle}»${evaluatorName ? ` من قِبل ${evaluatorName}` : ""}.\n` +
+      `للاطّلاع وإبداء ملاحظاتك افتح الرابط (صالح ٣٠ يومًا أو حتى الاعتماد):\n${link}`,
+  };
+}

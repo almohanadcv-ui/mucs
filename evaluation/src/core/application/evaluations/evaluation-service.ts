@@ -11,8 +11,12 @@ import {
   EvaluationStatus,
   NotificationType,
   Role,
+  CommentAuthor,
   RECOMMENDATION_KEYS,
 } from "@/core/domain/enums";
+import { sha256, randomToken } from "@/infrastructure/security/crypto";
+import { getServerEnv } from "@/lib/env";
+import { evaluationToEmployeeEmail } from "@/infrastructure/email/templates";
 
 /** Keep only known recommendation keys, de-duplicated, order preserved. */
 function sanitizeRecommendation(rec?: string[]): string[] {
@@ -141,6 +145,7 @@ function scopeForRole(user: SessionUser): Prisma.EvaluationWhereInput {
     // on is enforced per-status in reviewEvaluation; for listing they see all.
     case Role.ADMIN:
     case Role.MANAGEMENT:
+    case Role.HR:
     case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
       return {};
@@ -289,7 +294,9 @@ export async function createEvaluation(
   const questions = template.questions.map(toQuestionLike);
   const { rows, score } = buildAnswers(questions, input.answers, input.submit);
 
-  const status = input.submit ? EvaluationStatus.PENDING : EvaluationStatus.DRAFT;
+  // On submit the evaluation goes straight to the employee (magic-link), not to
+  // a reviewer queue — the manager owns the whole flow now.
+  const status = input.submit ? EvaluationStatus.SENT_TO_EMPLOYEE : EvaluationStatus.DRAFT;
 
   const evaluation = await prisma.evaluation.create({
     data: {
@@ -301,6 +308,7 @@ export async function createEvaluation(
       score,
       recommendation: sanitizeRecommendation(input.recommendation),
       submittedAt: input.submit ? new Date() : null,
+      sentToEmployeeAt: input.submit ? new Date() : null,
       answers: { create: answerCreateData(rows) },
     },
     include: LIST_INCLUDE,
@@ -318,7 +326,7 @@ export async function createEvaluation(
   });
 
   if (input.submit) {
-    await notifySubmitted(user, employee.name, evaluation.id);
+    await dispatchEvaluationToEmployee(evaluation.id, user.id);
   }
 
   publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
@@ -344,11 +352,10 @@ export async function updateEvaluation(
     },
   });
   if (!existing) throw AppError.notFound("التقييم غير موجود");
-  if (
-    existing.status !== EvaluationStatus.DRAFT &&
-    existing.status !== EvaluationStatus.NEEDS_EDIT
-  ) {
-    throw new AppError("CONFLICT", "لا يمكن تعديل تقييم تم إرساله");
+  // The manager may edit while the evaluation is a draft or still in the
+  // employee dialogue; once approved (locked) it is read-only.
+  if (existing.status === EvaluationStatus.APPROVED || existing.lockedAt) {
+    throw new AppError("CONFLICT", "لا يمكن تعديل تقييم معتمد");
   }
   if (!existing.template) {
     throw new AppError("CONFLICT", "التقييم غير مرتبط بنموذج");
@@ -356,7 +363,9 @@ export async function updateEvaluation(
 
   const questions = existing.template.questions.map(toQuestionLike);
   const { rows, score } = buildAnswers(questions, input.answers, input.submit);
-  const status = input.submit ? EvaluationStatus.PENDING : EvaluationStatus.DRAFT;
+  // Submitting (re)sends to the employee; a plain save keeps the current state.
+  const resend = input.submit;
+  const status = resend ? EvaluationStatus.SENT_TO_EMPLOYEE : existing.status;
 
   const evaluation = await prisma.$transaction(async (tx) => {
     await tx.answer.deleteMany({ where: { evaluationId: id } });
@@ -366,17 +375,17 @@ export async function updateEvaluation(
         status,
         score,
         recommendation: sanitizeRecommendation(input.recommendation),
-        submittedAt: input.submit ? new Date() : null,
-        // Re-submitting after a return clears the old reason.
-        ...(input.submit ? { rejectionReason: null } : {}),
+        ...(resend
+          ? { submittedAt: new Date(), sentToEmployeeAt: new Date(), rejectionReason: null }
+          : {}),
         answers: { create: answerCreateData(rows) },
       },
       include: LIST_INCLUDE,
     });
   });
 
-  if (input.submit) {
-    await notifySubmitted(user, existing.employee.name, id);
+  if (resend) {
+    await dispatchEvaluationToEmployee(id, user.id);
   }
 
   await writeAudit({
@@ -561,7 +570,7 @@ export async function reviewEvaluation(
  * A no-op when the employee has no email on file. Answers are rendered to human
  * text (choice questions show their option label) and ordered as on the form.
  */
-async function sendApprovedEvaluationToEmployee(evaluationId: string): Promise<void> {
+export async function sendApprovedEvaluationToEmployee(evaluationId: string): Promise<void> {
   const ev = await prisma.evaluation.findUnique({
     where: { id: evaluationId },
     select: {
@@ -710,4 +719,380 @@ export async function getEvaluationPdf(
   if (!pdf) throw new AppError("INTERNAL", "تعذّر توليد ملف PDF");
 
   return { buffer: pdf, filename: `تقييم-${ev.employee.name}.pdf` };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Manager↔employee flow: magic-link, dialogue, revisions, manager approval.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Employee magic-link lifetime: 30 days or until approval, whichever first. */
+const EMPLOYEE_LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Retire any live link for the evaluation and mint a fresh one; return its URL. */
+async function issueEmployeeLink(evaluationId: string): Promise<string> {
+  await prisma.evaluationAccessToken.updateMany({
+    where: { evaluationId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  const raw = randomToken(32);
+  await prisma.evaluationAccessToken.create({
+    data: {
+      evaluationId,
+      tokenHash: sha256(raw),
+      expiresAt: new Date(Date.now() + EMPLOYEE_LINK_TTL_MS),
+    },
+  });
+  return `${getServerEnv().APP_URL.replace(/\/$/, "")}/evaluation-review/${raw}`;
+}
+
+/** Immutable snapshot of the current answers + score, for the change history. */
+async function snapshotRevision(
+  evaluationId: string,
+  createdById: string | null,
+  note?: string,
+): Promise<void> {
+  const [last, ev] = await Promise.all([
+    prisma.evaluationRevision.findFirst({
+      where: { evaluationId },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    }),
+    prisma.evaluation.findUnique({
+      where: { id: evaluationId },
+      select: {
+        score: true,
+        answers: {
+          select: {
+            questionId: true,
+            valueNumber: true,
+            valueText: true,
+            valueBool: true,
+            valueDate: true,
+            valueJson: true,
+            remarks: true,
+          },
+        },
+      },
+    }),
+  ]);
+  if (!ev) return;
+  await prisma.evaluationRevision.create({
+    data: {
+      evaluationId,
+      version: (last?.version ?? 0) + 1,
+      score: ev.score,
+      answers: ev.answers as unknown as Prisma.InputJsonValue,
+      createdById,
+      note: note ?? null,
+    },
+  });
+}
+
+/**
+ * Snapshot the current state, mint a fresh magic-link, and email it to the
+ * employee. Best-effort throughout: a mail or link failure must never fail the
+ * manager submit (the evaluation is already SENT_TO_EMPLOYEE) — they can
+ * re-send from the evaluation screen.
+ */
+export async function dispatchEvaluationToEmployee(
+  evaluationId: string,
+  actorUserId: string,
+): Promise<void> {
+  try {
+    await snapshotRevision(evaluationId, actorUserId);
+    const link = await issueEmployeeLink(evaluationId);
+    const ev = await prisma.evaluation.findUnique({
+      where: { id: evaluationId },
+      select: {
+        employee: { select: { name: true, email: true } },
+        evaluator: { select: { name: true } },
+        template: { select: { title: true } },
+      },
+    });
+    if (!ev || !ev.employee.email) return;
+    const mail = evaluationToEmployeeEmail({
+      link,
+      employeeName: ev.employee.name,
+      evaluatorName: ev.evaluator?.name,
+      templateTitle: ev.template.title,
+    });
+    await sendEmail({ to: ev.employee.email, subject: mail.subject, html: mail.html, text: mail.text });
+  } catch (err) {
+    console.error(`[evaluations] dispatch to employee for ${evaluationId} failed:`, err);
+  }
+}
+
+/**
+ * The manager gives the final approval — the manager alone approves. Locks the
+ * evaluation (read-only), revokes the employee magic-link, snapshots the final
+ * version, and emails the employee the approved result.
+ */
+export async function managerApproveEvaluation(
+  user: SessionUser,
+  meta: RequestMeta,
+  id: string,
+) {
+  const ev = await prisma.evaluation.findFirst({
+    where: { id, tenantId: user.tenantId, deletedAt: null },
+    include: { employee: { select: { name: true } } },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+  // Approval is the owning manager alone (IT may act as a safety override).
+  if (ev.evaluatorId !== user.id && user.role !== Role.ADMIN) {
+    throw AppError.forbidden("الاعتماد من صلاحية المدير صاحب التقييم فقط");
+  }
+  const approvable: string[] = [
+    EvaluationStatus.SENT_TO_EMPLOYEE,
+    EvaluationStatus.EMPLOYEE_RESPONDED,
+    EvaluationStatus.EMPLOYEE_ACKNOWLEDGED,
+  ];
+  if (!approvable.includes(ev.status)) {
+    throw new AppError("CONFLICT", "لا يمكن اعتماد التقييم في حالته الحالية");
+  }
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.evaluation.update({
+      where: { id },
+      data: { status: EvaluationStatus.APPROVED, reviewerId: user.id, reviewedAt: now, lockedAt: now },
+    });
+    await tx.evaluationAccessToken.updateMany({
+      where: { evaluationId: id, revokedAt: null },
+      data: { revokedAt: now },
+    });
+  });
+  await snapshotRevision(id, user.id, "الاعتماد النهائي");
+
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    action: AuditAction.APPROVE,
+    entity: "Evaluation",
+    entityId: id,
+    before: { status: ev.status },
+    after: { status: EvaluationStatus.APPROVED },
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+
+  // Best-effort: a mail outage can't fail a committed approval.
+  void sendApprovedEvaluationToEmployee(id).catch((err) =>
+    console.error(`[evaluations] result email for ${id} failed:`, err),
+  );
+
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
+}
+
+/**
+ * Add a comment to the thread. The owning manager posts a reply the employee
+ * can see; an HR user posts an internal feedback note on the manager that the
+ * employee never sees. HR does not approve — only comments.
+ */
+export async function addEvaluationComment(
+  user: SessionUser,
+  meta: RequestMeta,
+  id: string,
+  body: string,
+) {
+  const ev = await prisma.evaluation.findFirst({
+    where: { id, tenantId: user.tenantId, deletedAt: null },
+    select: { id: true, evaluatorId: true, lockedAt: true, employee: { select: { name: true } } },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+
+  const isOwner = ev.evaluatorId === user.id;
+  const isHr = can(user.role, Permission.EVALUATION_COMMENT_HR);
+  if (!isOwner && !isHr) throw AppError.forbidden("لا تملك صلاحية التعليق على هذا التقييم");
+  if (ev.lockedAt) throw new AppError("CONFLICT", "التقييم معتمد — لا يمكن إضافة تعليقات");
+
+  // A manager who is also HR is acting as the manager on their own evaluation.
+  const asManager = isOwner;
+  const comment = await prisma.evaluationComment.create({
+    data: {
+      evaluationId: id,
+      authorType: asManager ? CommentAuthor.MANAGER : CommentAuthor.HR,
+      authorUserId: user.id,
+      authorName: user.name,
+      body: body.trim(),
+      visibleToEmployee: asManager, // HR notes are internal
+    },
+  });
+
+  // Tell the manager when HR leaves feedback on their evaluation.
+  if (!asManager && ev.evaluatorId !== user.id) {
+    await notify({
+      tenantId: user.tenantId,
+      userId: ev.evaluatorId,
+      type: NotificationType.SYSTEM,
+      title: "ملاحظة من الموارد البشرية",
+      body: `أضافت الموارد البشرية ملاحظة على تقييمك للموظف ${ev.employee.name}.`,
+      data: { evaluationId: id },
+    });
+  }
+
+  await writeAudit({
+    tenantId: user.tenantId,
+    actorId: user.id,
+    action: AuditAction.CREATE,
+    entity: "EvaluationComment",
+    entityId: comment.id,
+    after: { evaluationId: id, authorType: comment.authorType },
+    ip: meta.ip,
+    userAgent: meta.userAgent,
+  });
+
+  publishToTenant(user.tenantId, { type: "data-changed", entity: "evaluation" });
+  return comment;
+}
+
+/**
+ * The conversation for one evaluation. HR/IT/Management (EVALUATION_VIEW_THREAD)
+ * see everything, always. The owning manager sees the thread only while the
+ * evaluation is still open — once approved, the archive is hidden from them.
+ */
+export async function listEvaluationComments(user: SessionUser, id: string) {
+  const ev = await prisma.evaluation.findFirst({
+    where: { id, tenantId: user.tenantId, deletedAt: null, ...scopeForRole(user) },
+    select: { id: true, evaluatorId: true, lockedAt: true },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+
+  const fullAccess = can(user.role, Permission.EVALUATION_VIEW_THREAD);
+  if (!fullAccess) {
+    const isOwner = ev.evaluatorId === user.id;
+    if (!isOwner || ev.lockedAt) return [];
+  }
+  return prisma.evaluationComment.findMany({
+    where: { evaluationId: id },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, authorType: true, authorName: true, body: true, visibleToEmployee: true, createdAt: true },
+  });
+}
+
+// ── Employee side (magic-link, no account) ───────────────────────────────────
+
+async function loadEmployeeToken(rawToken: string) {
+  const rec = await prisma.evaluationAccessToken.findUnique({
+    where: { tokenHash: sha256(rawToken) },
+    select: { id: true, evaluationId: true, expiresAt: true, revokedAt: true },
+  });
+  if (!rec) throw AppError.notFound("الرابط غير صالح");
+  if (rec.revokedAt) throw new AppError("CONFLICT", "انتهت صلاحية الرابط أو تم اعتماد التقييم");
+  if (rec.expiresAt < new Date()) throw new AppError("CONFLICT", "انتهت صلاحية الرابط");
+  return rec;
+}
+
+/**
+ * The employee read view of their evaluation via the magic-link. Excludes the
+ * recommendation, HR notes, and internal history — only what they may see.
+ */
+export async function getEvaluationForEmployee(rawToken: string) {
+  const rec = await loadEmployeeToken(rawToken);
+  const ev = await prisma.evaluation.findFirst({
+    where: { id: rec.evaluationId, deletedAt: null },
+    select: {
+      status: true,
+      score: true,
+      lockedAt: true,
+      employee: { select: { name: true } },
+      evaluator: { select: { name: true } },
+      template: { select: { title: true } },
+      answers: {
+        select: {
+          valueNumber: true, valueText: true, valueBool: true, valueDate: true, valueJson: true, remarks: true,
+          question: { select: { id: true, label: true, type: true, required: true, config: true, order: true } },
+        },
+      },
+    },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+
+  const items = ev.answers
+    .slice()
+    .sort((a, b) => a.question.order - b.question.order)
+    .map((a) => ({
+      label: a.question.label,
+      value: formatAnswerDisplay(toQuestionLike(a.question), {
+        valueNumber: a.valueNumber, valueText: a.valueText, valueBool: a.valueBool,
+        valueDate: a.valueDate, valueJson: a.valueJson,
+      }),
+      remarks: a.remarks,
+    }));
+
+  const comments = await prisma.evaluationComment.findMany({
+    where: { evaluationId: rec.evaluationId, visibleToEmployee: true },
+    orderBy: { createdAt: "asc" },
+    select: { authorType: true, authorName: true, body: true, createdAt: true },
+  });
+
+  return {
+    employeeName: ev.employee.name,
+    evaluatorName: ev.evaluator?.name ?? null,
+    templateTitle: ev.template.title,
+    score: ev.score,
+    status: ev.status,
+    locked: Boolean(ev.lockedAt),
+    items,
+    comments,
+  };
+}
+
+/**
+ * The employee agrees to, or objects to, their evaluation via the magic-link.
+ * OBJECT requires a comment. Notifies the manager either way.
+ */
+export async function employeeRespondToEvaluation(
+  rawToken: string,
+  decision: "ACKNOWLEDGE" | "OBJECT",
+  comment?: string,
+) {
+  const rec = await loadEmployeeToken(rawToken);
+  const ev = await prisma.evaluation.findFirst({
+    where: { id: rec.evaluationId, deletedAt: null },
+    select: { id: true, tenantId: true, lockedAt: true, evaluatorId: true, employee: { select: { name: true } } },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+  if (ev.lockedAt) throw new AppError("CONFLICT", "تم اعتماد التقييم");
+
+  const trimmed = comment?.trim() ?? "";
+  if (decision === "OBJECT" && trimmed.length < 3) {
+    throw AppError.validation("الرجاء كتابة ملاحظتك");
+  }
+
+  const now = new Date();
+  const status =
+    decision === "OBJECT"
+      ? EvaluationStatus.EMPLOYEE_RESPONDED
+      : EvaluationStatus.EMPLOYEE_ACKNOWLEDGED;
+
+  await prisma.$transaction(async (tx) => {
+    if (trimmed) {
+      await tx.evaluationComment.create({
+        data: {
+          evaluationId: ev.id,
+          authorType: CommentAuthor.EMPLOYEE,
+          authorName: ev.employee.name,
+          body: trimmed,
+          visibleToEmployee: true,
+        },
+      });
+    }
+    await tx.evaluation.update({ where: { id: ev.id }, data: { status, employeeDecisionAt: now } });
+    await tx.evaluationAccessToken.update({ where: { id: rec.id }, data: { consumedAt: now } });
+  });
+
+  await notify({
+    tenantId: ev.tenantId,
+    userId: ev.evaluatorId,
+    type: decision === "OBJECT" ? NotificationType.REJECTION : NotificationType.APPROVAL,
+    title: decision === "OBJECT" ? "ردّ الموظف على التقييم" : "وافق الموظف على التقييم",
+    body:
+      decision === "OBJECT"
+        ? `أبدى الموظف ${ev.employee.name} ملاحظات على تقييمه.`
+        : `وافق الموظف ${ev.employee.name} على تقييمه.`,
+    data: { evaluationId: ev.id },
+  });
+
+  publishToTenant(ev.tenantId, { type: "data-changed", entity: "evaluation" });
+  return { status };
 }
