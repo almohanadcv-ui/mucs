@@ -39,6 +39,7 @@ interface FormValues {
   contractMonths: string; // "12" | "24" | "36" | "48" | NONE
   probationSel: string; // "3" | "6" | "12" | "custom" | NONE
   probationCustom: string; // months as text when probationSel === "custom"
+  probationEndDate: string; // yyyy-mm-dd — direct probation end date (from Excel or edited)
   branchId: string;
   departmentId: string;
   supervisorId: string;
@@ -113,6 +114,7 @@ export function EmployeeFormDialog({
           employee?.probationMonths && !PRESET_PROBATION.includes(String(employee.probationMonths))
             ? String(employee.probationMonths)
             : "",
+        probationEndDate: ex.probationEndDate ? String(ex.probationEndDate).slice(0, 10) : "",
         branchId: employee?.branchId ?? NONE,
         departmentId: employee?.departmentId ?? NONE,
         supervisorId: employee?.supervisorId ?? NONE,
@@ -151,6 +153,7 @@ export function EmployeeFormDialog({
           : v.probationSel && v.probationSel !== NONE
             ? Number(v.probationSel)
             : null,
+      probationEndDate: v.probationEndDate ? new Date(v.probationEndDate).toISOString() : null,
       branchId: clean(v.branchId),
       departmentId: clean(v.departmentId),
       supervisorId: clean(v.supervisorId),
@@ -272,6 +275,14 @@ export function EmployeeFormDialog({
               />
             </div>
           )}
+
+          <div className="space-y-2">
+            <Label>تاريخ انتهاء فترة التجربة</Label>
+            <Input type="date" dir="ltr" {...register("probationEndDate")} />
+            <p className="text-xs text-muted-foreground">
+              يأتي تلقائيًا من ملف الإكسل، ويمكنك تعديله. الموظف الذي لم تنتهِ فترة تجربته يُقيَّم بنموذج «فترة التجربة».
+            </p>
+          </div>
 
           <div className="space-y-2">
             <Label>{t("empForm.branch")}</Label>

@@ -8,10 +8,14 @@ type Variant = "success" | "warning" | "destructive" | "muted";
 
 const EVAL_VARIANT: Record<string, Variant> = {
   [EvaluationStatus.DRAFT]: "muted",
+  [EvaluationStatus.SENT_TO_EMPLOYEE]: "warning",
+  [EvaluationStatus.EMPLOYEE_RESPONDED]: "warning",
+  [EvaluationStatus.EMPLOYEE_ACKNOWLEDGED]: "success",
+  [EvaluationStatus.APPROVED]: "success",
+  // legacy
   [EvaluationStatus.PENDING]: "warning",
   [EvaluationStatus.NEEDS_EDIT]: "destructive",
   [EvaluationStatus.PRELIMINARY_APPROVED]: "warning",
-  [EvaluationStatus.APPROVED]: "success",
   [EvaluationStatus.REJECTED]: "destructive",
 };
 

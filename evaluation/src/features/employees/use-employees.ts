@@ -36,7 +36,7 @@ export interface Lookups {
   departments: { id: string; name: string; branchId: string | null }[];
   supervisors: { id: string; name: string }[];
   evaluators: { id: string; name: string }[];
-  templates: { id: string; title: string }[];
+  templates: { id: string; title: string; kind: "REGULAR" | "PROBATION" }[];
 }
 
 export interface EmployeeListParams {

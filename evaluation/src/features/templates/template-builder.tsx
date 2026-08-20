@@ -62,6 +62,7 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+  const [kind, setKind] = useState<"REGULAR" | "PROBATION">(initial?.kind ?? "REGULAR");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [questions, setQuestions] = useState<LocalQuestion[]>(
     initial?.questions.map((q) => ({ ...q, _key: nanoid() })) ?? [blankQuestion(0)],
@@ -130,6 +131,7 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
     const payload = {
       title: title.trim(),
       description: description.trim() || null,
+      kind,
       isActive,
       questions: questions.map((q, i) => ({
         type: q.type,
@@ -185,6 +187,31 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
           <div className="space-y-2">
             <Label>{t("templates.descOptional")}</Label>
             <Textarea value={description ?? ""} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>نوع التقييم</Label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["REGULAR", "تقييم اعتيادي"],
+                ["PROBATION", "تقييم فترة التجربة"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setKind(value)}
+                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
+                    kind === value
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-muted"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              نماذج «فترة التجربة» تُستخدم للموظفين تحت التجربة، وتُفصل عن التقييم الاعتيادي.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Switch checked={isActive} onCheckedChange={setIsActive} id="active" />

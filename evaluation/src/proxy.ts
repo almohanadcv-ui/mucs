@@ -8,11 +8,14 @@ import { ACCESS_COOKIE } from "@/infrastructure/auth/cookies";
  * Fine-grained permission checks happen in server components / API handlers.
  */
 const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password"];
+/** Public path prefixes (dynamic segments) — e.g. the employee magic-link page. */
+const PUBLIC_PREFIXES = ["/evaluation-review/"];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  const isPublic = PUBLIC_PATHS.includes(pathname);
+  const isPublic =
+    PUBLIC_PATHS.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
   const token = req.cookies.get(ACCESS_COOKIE)?.value;
 
   let authenticated = false;

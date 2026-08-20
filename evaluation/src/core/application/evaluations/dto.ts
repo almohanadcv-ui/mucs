@@ -53,10 +53,14 @@ export const listEvaluationsSchema = paginationSchema.extend({
   status: z
     .enum([
       EvaluationStatus.DRAFT,
+      EvaluationStatus.SENT_TO_EMPLOYEE,
+      EvaluationStatus.EMPLOYEE_RESPONDED,
+      EvaluationStatus.EMPLOYEE_ACKNOWLEDGED,
+      EvaluationStatus.APPROVED,
+      // legacy
       EvaluationStatus.PENDING,
       EvaluationStatus.NEEDS_EDIT,
       EvaluationStatus.PRELIMINARY_APPROVED,
-      EvaluationStatus.APPROVED,
       EvaluationStatus.REJECTED,
     ])
     .optional(),
@@ -64,7 +68,26 @@ export const listEvaluationsSchema = paginationSchema.extend({
   templateId: z.string().uuid().optional(),
 });
 
+/** A manager reply, or an internal HR note, on an evaluation. */
+export const evaluationCommentSchema = z.object({
+  body: z.string().trim().min(1, "التعليق مطلوب").max(4000),
+});
+
+/** The employee's decision via the magic-link. OBJECT requires a comment. */
+export const employeeRespondSchema = z
+  .object({
+    decision: z.enum(["ACKNOWLEDGE", "OBJECT"]),
+    comment: z.string().trim().max(4000).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.decision === "OBJECT" && (!v.comment || v.comment.length < 3)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "الرجاء كتابة ملاحظتك", path: ["comment"] });
+    }
+  });
+
 export type CreateEvaluationInput = z.infer<typeof createEvaluationSchema>;
 export type UpdateEvaluationInput = z.infer<typeof updateEvaluationSchema>;
 export type ReviewEvaluationInput = z.infer<typeof reviewEvaluationSchema>;
 export type ListEvaluationsInput = z.infer<typeof listEvaluationsSchema>;
+export type EvaluationCommentInput = z.infer<typeof evaluationCommentSchema>;
+export type EmployeeRespondInput = z.infer<typeof employeeRespondSchema>;

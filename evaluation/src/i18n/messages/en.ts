@@ -482,10 +482,13 @@ export const en: Messages = {
   },
   evalStatus: {
     DRAFT: "Draft",
+    SENT_TO_EMPLOYEE: "Sent to employee",
+    EMPLOYEE_RESPONDED: "Employee responded",
+    EMPLOYEE_ACKNOWLEDGED: "Employee agreed",
+    APPROVED: "Finally approved",
     PENDING: "Awaiting preliminary approval",
     NEEDS_EDIT: "Returned for edit",
     PRELIMINARY_APPROVED: "Awaiting final approval",
-    APPROVED: "Finally approved",
     REJECTED: "Rejected",
   },
   empStatus: {

@@ -37,7 +37,7 @@ export const GET = withAuth(
         }),
         prisma.evaluationTemplate.findMany({
           where: { tenantId, deletedAt: null, isActive: true },
-          select: { id: true, title: true },
+          select: { id: true, title: true, kind: true },
           orderBy: { title: "asc" },
         }),
       ]);

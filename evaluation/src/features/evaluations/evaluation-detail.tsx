@@ -4,11 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Loader2, Check, CheckCheck, RotateCcw, Star, Trash2, Download, Pencil } from "lucide-react";
+import { Loader2, Check, CheckCheck, Star, Trash2, Download, Pencil, Send, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -22,13 +21,25 @@ import { useMe } from "@/features/auth/use-me";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import {
   useEvaluation,
-  useReviewEvaluation,
+  useApproveEvaluation,
   useDeleteEvaluation,
+  useEvaluationComments,
+  useAddEvaluationComment,
   type EvaluationDetail,
 } from "./use-evaluations";
 import { useI18n } from "@/i18n/client";
 
 type TFn = (key: string, params?: Record<string, string | number>) => string;
+
+/** States where the evaluation is still in the manager↔employee dialogue. */
+const OPEN_STATES = ["SENT_TO_EMPLOYEE", "EMPLOYEE_RESPONDED", "EMPLOYEE_ACKNOWLEDGED"];
+const EDITABLE_STATES = ["DRAFT", "NEEDS_EDIT", ...OPEN_STATES];
+
+const AUTHOR_LABEL: Record<string, string> = {
+  MANAGER: "المدير",
+  EMPLOYEE: "الموظف",
+  HR: "الموارد البشرية",
+};
 
 function formatAnswer(
   question: EvaluationDetail["template"]["questions"][number],
@@ -74,32 +85,34 @@ function formatAnswer(
 
 export function EvaluationDetailView({
   id,
-  canPreliminary,
-  canFinal,
-  canReturn,
   canDelete,
+  canHrNote,
+  canViewThread,
 }: {
   id: string;
-  /** المراجع — اعتماد مبدئي */
-  canPreliminary?: boolean;
-  /** المراجع الأساسي — اعتماد نهائي */
-  canFinal?: boolean;
-  /** إعادة للتعديل مع سبب */
-  canReturn?: boolean;
   /** kept for compatibility (any review capability) */
   canReview?: boolean;
   /** IT / الإدارة may remove an evaluation entirely. */
   canDelete?: boolean;
+  /** HR may leave an internal feedback note on the manager. */
+  canHrNote?: boolean;
+  /** HR / IT / الإدارة see the full conversation archive. */
+  canViewThread?: boolean;
 }) {
   const router = useRouter();
   const { t, locale } = useI18n();
   const { data, isLoading } = useEvaluation(id);
-  const review = useReviewEvaluation(id);
+  const approve = useApproveEvaluation(id);
   const del = useDeleteEvaluation();
+  const addComment = useAddEvaluationComment(id);
   const { data: me } = useMe();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [returnOpen, setReturnOpen] = useState(false);
-  const [reason, setReason] = useState("");
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  const [reply, setReply] = useState("");
+
+  const isOwner = !!me && !!data && me.id === data.evaluator?.id;
+  const showThread = Boolean(canViewThread) || isOwner;
+  const { data: comments } = useEvaluationComments(showThread ? id : undefined);
 
   if (isLoading) {
     return <div className="flex justify-center py-20"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>;
@@ -110,34 +123,31 @@ export function EvaluationDetailView({
 
   const answersByQ = new Map(data.answers.map((a) => [a.questionId, a]));
   const status = data.status;
-  const isOwner = !!me && me.id === data.evaluator?.id;
-  // الإدارة/IT hold both approval permissions → may finalize a PENDING directly.
-  const shortcut = Boolean(canPreliminary && canFinal);
-  const showPrelim = Boolean(canPreliminary) && status === "PENDING";
-  const showFinal =
-    (Boolean(canFinal) && status === "PRELIMINARY_APPROVED") || (shortcut && status === "PENDING");
-  const showReturn =
-    Boolean(canReturn) && (status === "PENDING" || status === "PRELIMINARY_APPROVED");
-  const showReviewBar = showPrelim || showFinal || showReturn;
+  const locked = status === "APPROVED";
+  const canApprove = isOwner && OPEN_STATES.includes(status);
+  const canEdit = isOwner && EDITABLE_STATES.includes(status);
+  const canReply = isOwner && !locked; // manager reply (visible to employee)
+  const canAddHrNote = Boolean(canHrNote) && !isOwner && !locked; // internal HR note
 
-  async function act(action: "PRELIMINARY" | "FINAL") {
+  async function doApprove() {
     try {
-      await review.mutateAsync({ action });
-      toast.success(action === "FINAL" ? t("evaluations.finalApproved") : t("evaluations.prelimApproved"));
+      await approve.mutateAsync();
+      toast.success("تم اعتماد التقييم نهائيًا وإرساله للموظف.");
+      setConfirmApprove(false);
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : t("evaluations.approveFailed"));
+      toast.error(e instanceof ApiError ? e.message : "تعذّر الاعتماد.");
     }
   }
-  async function returnForEdit() {
-    if (reason.trim().length < 3) return toast.error(t("evaluations.returnReasonRequired"));
+
+  async function sendComment() {
+    if (reply.trim().length < 1) return;
     try {
-      await review.mutateAsync({ action: "RETURN", reason: reason.trim() });
-      toast.success(t("evaluations.returned"));
-      setReturnOpen(false);
-      router.refresh();
+      await addComment.mutateAsync(reply.trim());
+      setReply("");
+      toast.success(canAddHrNote && !isOwner ? "تمت إضافة ملاحظتك." : "تم إرسال ردّك.");
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : t("evaluations.returnFailed"));
+      toast.error(e instanceof ApiError ? e.message : "تعذّر الإرسال.");
     }
   }
 
@@ -160,9 +170,19 @@ export function EvaluationDetailView({
         </div>
       </div>
 
-      {(status === "NEEDS_EDIT" || status === "REJECTED") && data.rejectionReason && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {t("evaluations.returnReasonPrefix")} {data.rejectionReason}
+      {status === "SENT_TO_EMPLOYEE" && isOwner && (
+        <div className="rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm">
+          أُرسل التقييم للموظف على بريده، بانتظار اطّلاعه وملاحظاته.
+        </div>
+      )}
+      {status === "EMPLOYEE_RESPONDED" && isOwner && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm">
+          أبدى الموظف ملاحظات — راجع المحادثة بالأسفل، وعدّل التقييم إن لزم ثم أعد الإرسال، أو اعتمده.
+        </div>
+      )}
+      {status === "EMPLOYEE_ACKNOWLEDGED" && isOwner && (
+        <div className="rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm">
+          وافق الموظف على التقييم. يمكنك اعتماده نهائيًا.
         </div>
       )}
 
@@ -177,8 +197,6 @@ export function EvaluationDetailView({
                   {formatAnswer(q, answersByQ.get(q.id!), t, locale)}
                 </span>
               </div>
-              {/* The evaluator's note travels with the answer so the reviewer
-                  reads the reasoning, not just the grade. */}
               {answersByQ.get(q.id!)?.remarks && (
                 <p className="mt-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
                   <span className="font-medium">{t("evaluations.remarks")}: </span>
@@ -206,12 +224,74 @@ export function EvaluationDetailView({
         </Card>
       )}
 
+      {/* Conversation thread (manager replies, employee messages, internal HR notes). */}
+      {showThread && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <MessageSquare className="size-4" /> المحادثة والملاحظات
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(comments ?? []).length === 0 && (
+              <p className="text-sm text-muted-foreground">لا توجد رسائل بعد.</p>
+            )}
+            {(comments ?? []).map((c) => (
+              <div
+                key={c.id}
+                className={`rounded-lg border p-3 text-sm ${
+                  c.authorType === "HR"
+                    ? "border-amber-300/50 bg-amber-50 dark:bg-amber-950/20"
+                    : c.authorType === "EMPLOYEE"
+                      ? "border-sky-300/50 bg-sky-50 dark:bg-sky-950/20"
+                      : "border-border bg-muted/40"
+                }`}
+              >
+                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                  <span className="font-semibold">
+                    {AUTHOR_LABEL[c.authorType] ?? c.authorName}
+                    {c.authorType === "HR" && !c.visibleToEmployee && " (داخلي)"}
+                  </span>
+                  <span>{new Date(c.createdAt).toLocaleString(locale === "ar" ? "ar-EG" : "en-US")}</span>
+                </div>
+                <div className="whitespace-pre-wrap">{c.body}</div>
+              </div>
+            ))}
+
+            {(canReply || canAddHrNote) && (
+              <div className="space-y-2 pt-2">
+                <Textarea
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  rows={3}
+                  placeholder={
+                    canAddHrNote && !isOwner
+                      ? "اكتب ملاحظتك الداخلية للمدير (لا يراها الموظف)…"
+                      : "اكتب ردّك للموظف…"
+                  }
+                />
+                <Button onClick={sendComment} disabled={addComment.isPending || reply.trim().length < 1}>
+                  {addComment.isPending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+                  {canAddHrNote && !isOwner ? "إضافة ملاحظة" : "إرسال الرد"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex flex-wrap justify-start gap-3">
-        {isOwner && (status === "DRAFT" || status === "NEEDS_EDIT") && (
-          <Button asChild>
+        {canEdit && (
+          <Button asChild variant={status === "EMPLOYEE_RESPONDED" ? "default" : "outline"}>
             <Link href={`/dashboard/evaluations/${id}/edit`}>
               <Pencil className="size-4" /> {t("evaluations.editAndResend")}
             </Link>
+          </Button>
+        )}
+        {canApprove && (
+          <Button onClick={() => setConfirmApprove(true)} disabled={approve.isPending} className="bg-success hover:bg-success/90">
+            {approve.isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
+            اعتماد نهائي
           </Button>
         )}
         <Button variant="outline" asChild>
@@ -221,30 +301,6 @@ export function EvaluationDetailView({
         </Button>
       </div>
 
-      {showReviewBar && (
-        <div className="flex flex-wrap justify-start gap-3">
-          {showPrelim && (
-            <Button onClick={() => act("PRELIMINARY")} disabled={review.isPending}>
-              {review.isPending ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-              {t("evaluations.approvePrelim")}
-            </Button>
-          )}
-          {showFinal && (
-            <Button onClick={() => act("FINAL")} disabled={review.isPending} className="bg-success hover:bg-success/90">
-              {review.isPending ? <Loader2 className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
-              {t("evaluations.approveFinal")}
-            </Button>
-          )}
-          {showReturn && (
-            <Button variant="outline" onClick={() => setReturnOpen(true)} disabled={review.isPending}>
-              <RotateCcw className="size-4" /> {t("evaluations.returnForEdit")}
-            </Button>
-          )}
-        </div>
-      )}
-
-      {/* Removal is an oversight action (IT / الإدارة), so it stands apart from
-          the reviewer's approve-reject pair and is available in any status. */}
       {canDelete && (
         <div className="flex justify-start border-t pt-4">
           <Button
@@ -258,6 +314,20 @@ export function EvaluationDetailView({
           </Button>
         </div>
       )}
+
+      <Dialog open={confirmApprove} onOpenChange={setConfirmApprove}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>اعتماد التقييم نهائيًا</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            بعد الاعتماد يُقفل التقييم ويُلغى رابط الموظف، وتصله النسخة النهائية على بريده. لا يمكن التراجع.
+          </p>
+          <DialogFooter>
+            <Button className="bg-success hover:bg-success/90" disabled={approve.isPending} onClick={doApprove}>
+              {approve.isPending && <Loader2 className="size-4 animate-spin" />} تأكيد الاعتماد
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent className="max-w-sm">
@@ -280,21 +350,6 @@ export function EvaluationDetailView({
             >
               {del.isPending && <Loader2 className="size-4 animate-spin" />}{" "}
               {t("evaluations.confirmDelete")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={returnOpen} onOpenChange={setReturnOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{t("evaluations.returnReasonTitle")}</DialogTitle></DialogHeader>
-          <div className="space-y-2">
-            <Label>{t("evaluations.writeReturnReason")}</Label>
-            <Textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={4} />
-          </div>
-          <DialogFooter>
-            <Button onClick={returnForEdit} disabled={review.isPending}>
-              {review.isPending && <Loader2 className="size-4 animate-spin" />} {t("evaluations.confirmReturn")}
             </Button>
           </DialogFooter>
         </DialogContent>

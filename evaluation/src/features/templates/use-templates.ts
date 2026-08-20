@@ -32,6 +32,7 @@ export interface TemplateRow {
   id: string;
   title: string;
   description: string | null;
+  kind: "REGULAR" | "PROBATION";
   isActive: boolean;
   createdBy?: { name: string };
   _count?: { questions: number; evaluations: number };

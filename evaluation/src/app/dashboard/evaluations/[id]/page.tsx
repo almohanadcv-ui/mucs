@@ -21,11 +21,10 @@ export default async function EvaluationDetailPage({
   return (
     <EvaluationDetailView
       id={id}
-      canPreliminary={can(user.role, Permission.EVALUATION_APPROVE_PRELIMINARY)}
-      canFinal={can(user.role, Permission.EVALUATION_APPROVE_FINAL)}
-      canReturn={can(user.role, Permission.EVALUATION_RETURN)}
       canReview={canAny(user.role, REVIEW_PERMISSIONS)}
       canDelete={can(user.role, Permission.EVALUATION_DELETE)}
+      canHrNote={can(user.role, Permission.EVALUATION_COMMENT_HR)}
+      canViewThread={can(user.role, Permission.EVALUATION_VIEW_THREAD)}
     />
   );
 }

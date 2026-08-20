@@ -484,10 +484,13 @@ export const ar = {
   },
   evalStatus: {
     DRAFT: "مسودة",
+    SENT_TO_EMPLOYEE: "أُرسل للموظف",
+    EMPLOYEE_RESPONDED: "ردّ الموظف بملاحظات",
+    EMPLOYEE_ACKNOWLEDGED: "وافق الموظف",
+    APPROVED: "معتمد نهائيًا",
     PENDING: "بانتظار الاعتماد المبدئي",
     NEEDS_EDIT: "مُعاد للتعديل",
     PRELIMINARY_APPROVED: "بانتظار الاعتماد النهائي",
-    APPROVED: "معتمد نهائيًا",
     REJECTED: "مرفوض",
   },
   empStatus: {

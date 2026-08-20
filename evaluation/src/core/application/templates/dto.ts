@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { paginationSchema } from "@/lib/pagination";
-import { QuestionType } from "@/core/domain/enums";
+import { QuestionType, TemplateKind } from "@/core/domain/enums";
 
 const questionTypeEnum = z.enum([
   QuestionType.STAR_RATING,
@@ -67,9 +67,12 @@ export const questionInputSchema = z
     }
   });
 
+const templateKindEnum = z.enum([TemplateKind.REGULAR, TemplateKind.PROBATION]);
+
 export const createTemplateSchema = z.object({
   title: z.string().trim().min(2, "عنوان النموذج مطلوب").max(200),
   description: z.string().trim().max(1000).optional().nullable(),
+  kind: templateKindEnum.default(TemplateKind.REGULAR),
   isActive: z.boolean().default(true),
   questions: z.array(questionInputSchema).min(1, "أضف سؤالاً واحداً على الأقل").max(200),
 });
@@ -77,6 +80,7 @@ export const createTemplateSchema = z.object({
 export const updateTemplateSchema = z.object({
   title: z.string().trim().min(2).max(200).optional(),
   description: z.string().trim().max(1000).optional().nullable(),
+  kind: templateKindEnum.optional(),
   isActive: z.boolean().optional(),
   // When provided, replaces the full question set (versioned edit).
   questions: z.array(questionInputSchema).min(1).max(200).optional(),
@@ -84,6 +88,7 @@ export const updateTemplateSchema = z.object({
 
 export const listTemplatesSchema = paginationSchema.extend({
   isActive: z.coerce.boolean().optional(),
+  kind: templateKindEnum.optional(),
 });
 
 export type QuestionInput = z.infer<typeof questionInputSchema>;

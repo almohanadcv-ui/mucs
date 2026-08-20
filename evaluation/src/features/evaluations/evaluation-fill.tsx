@@ -146,7 +146,10 @@ export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
                 <SelectTrigger><SelectValue placeholder={t("evaluations.chooseTemplate")} /></SelectTrigger>
                 <SelectContent>
                   {lookups?.templates.map((tpl) => (
-                    <SelectItem key={tpl.id} value={tpl.id}>{tpl.title}</SelectItem>
+                    <SelectItem key={tpl.id} value={tpl.id}>
+                      {tpl.kind === "PROBATION" ? "🕐 [فترة تجربة] " : ""}
+                      {tpl.title}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

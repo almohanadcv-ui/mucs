@@ -35,6 +35,7 @@ export async function listTemplates(
     tenantId: user.tenantId,
     deletedAt: null,
     ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
     ...(input.search
       ? { title: { contains: input.search, mode: "insensitive" } }
       : {}),
@@ -76,6 +77,7 @@ export async function createTemplate(
       tenantId: user.tenantId,
       title: input.title,
       description: input.description ?? null,
+      kind: input.kind,
       isActive: input.isActive,
       createdById: user.id,
       questions: { create: questionCreateData(input.questions) },
@@ -131,6 +133,7 @@ export async function updateTemplate(
       data: {
         ...(input.title !== undefined ? { title: input.title } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.kind !== undefined ? { kind: input.kind } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       },
       include: { questions: { orderBy: { order: "asc" } } },

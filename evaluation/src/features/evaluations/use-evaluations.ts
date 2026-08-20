@@ -102,3 +102,43 @@ export function useReviewEvaluation(id: string) {
     },
   });
 }
+
+export interface EvaluationComment {
+  id: string;
+  authorType: "MANAGER" | "EMPLOYEE" | "HR";
+  authorName: string | null;
+  body: string;
+  visibleToEmployee: boolean;
+  createdAt: string;
+}
+
+/** The manager's final approval (manager-only, enforced server-side). */
+export function useApproveEvaluation(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiClient.post(`/api/evaluations/${id}/approve`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["evaluations"] });
+      qc.invalidateQueries({ queryKey: ["evaluation", id] });
+      qc.invalidateQueries({ queryKey: ["evaluation-comments", id] });
+    },
+  });
+}
+
+/** The conversation thread (manager replies, employee messages, HR notes). */
+export function useEvaluationComments(id: string | undefined) {
+  return useQuery({
+    queryKey: ["evaluation-comments", id],
+    queryFn: () => apiClient.get<EvaluationComment[]>(`/api/evaluations/${id}/comments`),
+    enabled: !!id,
+  });
+}
+
+/** Post a manager reply (visible to the employee) or an internal HR note. */
+export function useAddEvaluationComment(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => apiClient.post(`/api/evaluations/${id}/comments`, { body }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["evaluation-comments", id] }),
+  });
+}
