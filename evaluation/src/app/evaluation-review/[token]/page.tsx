@@ -100,6 +100,12 @@ export default function EvaluationReviewPage({
     >
       <div className="mx-auto max-w-3xl space-y-6">
         <header className="text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/mab-logo.jpg"
+            alt="MAB United"
+            className="mx-auto mb-3 h-16 w-auto rounded-xl bg-white p-2 shadow-sm"
+          />
           <h1 className="text-2xl font-bold text-[#082b45]">تقييم الأداء الوظيفي</h1>
           <p className="mt-1 text-sm text-[#42647d]">مراجعة تقييمك وإبداء ملاحظاتك</p>
         </header>
@@ -128,8 +134,11 @@ export default function EvaluationReviewPage({
             </section>
 
             {data.locked && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center font-semibold text-emerald-800">
-                تم اعتماد هذا التقييم نهائيًا. وصلتك نسخته الرسمية على بريدك.
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                <div className="text-lg font-bold text-emerald-800">تم اعتماد التقييم ✅</div>
+                <p className="mt-1 text-emerald-700">
+                  شكرًا لك، الله يوفّقك 🌟 وصلتك النسخة الرسمية من التقييم على بريدك الإلكتروني.
+                </p>
               </div>
             )}
 

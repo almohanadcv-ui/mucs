@@ -976,6 +976,7 @@ export async function listEvaluationComments(user: SessionUser, id: string) {
 
 // ── Employee side (magic-link, no account) ───────────────────────────────────
 
+/** Strict token check for actions (respond): rejects revoked/expired links. */
 async function loadEmployeeToken(rawToken: string) {
   const rec = await prisma.evaluationAccessToken.findUnique({
     where: { tokenHash: sha256(rawToken) },
@@ -990,9 +991,15 @@ async function loadEmployeeToken(rawToken: string) {
 /**
  * The employee read view of their evaluation via the magic-link. Excludes the
  * recommendation, HR notes, and internal history — only what they may see.
+ * An approved evaluation stays viewable read-only (so re-opening the link after
+ * approval shows the approved screen); otherwise the token must still be valid.
  */
 export async function getEvaluationForEmployee(rawToken: string) {
-  const rec = await loadEmployeeToken(rawToken);
+  const rec = await prisma.evaluationAccessToken.findUnique({
+    where: { tokenHash: sha256(rawToken) },
+    select: { id: true, evaluationId: true, expiresAt: true, revokedAt: true },
+  });
+  if (!rec) throw AppError.notFound("الرابط غير صالح");
   const ev = await prisma.evaluation.findFirst({
     where: { id: rec.evaluationId, deletedAt: null },
     select: {
@@ -1012,6 +1019,14 @@ export async function getEvaluationForEmployee(rawToken: string) {
     },
   });
   if (!ev) throw AppError.notFound("التقييم غير موجود");
+
+  // A finished (approved/locked) evaluation stays viewable via the link; an
+  // unfinished one requires the link to still be live.
+  const finished = ev.status === EvaluationStatus.APPROVED || Boolean(ev.lockedAt);
+  if (!finished) {
+    if (rec.revokedAt) throw new AppError("CONFLICT", "انتهت صلاحية الرابط");
+    if (rec.expiresAt < new Date()) throw new AppError("CONFLICT", "انتهت صلاحية الرابط");
+  }
 
   const items = ev.answers
     .slice()
@@ -1073,39 +1088,82 @@ export async function employeeRespondToEvaluation(
   }
 
   const now = new Date();
-  const status =
-    decision === "OBJECT"
-      ? EvaluationStatus.EMPLOYEE_RESPONDED
-      : EvaluationStatus.EMPLOYEE_ACKNOWLEDGED;
 
-  await prisma.$transaction(async (tx) => {
-    if (trimmed) {
-      await tx.evaluationComment.create({
+  // Agreement finalizes the evaluation: it is the employee's acceptance, so it
+  // approves, locks, revokes the link and emails the official result. Objecting
+  // keeps the dialogue open for unlimited back-and-forth with the manager.
+  if (decision === "ACKNOWLEDGE") {
+    await prisma.$transaction(async (tx) => {
+      if (trimmed) {
+        await tx.evaluationComment.create({
+          data: {
+            evaluationId: ev.id,
+            authorType: CommentAuthor.EMPLOYEE,
+            authorName: ev.employee.name,
+            body: trimmed,
+            visibleToEmployee: true,
+          },
+        });
+      }
+      await tx.evaluation.update({
+        where: { id: ev.id },
         data: {
-          evaluationId: ev.id,
-          authorType: CommentAuthor.EMPLOYEE,
-          authorName: ev.employee.name,
-          body: trimmed,
-          visibleToEmployee: true,
+          status: EvaluationStatus.APPROVED,
+          employeeDecisionAt: now,
+          reviewedAt: now,
+          lockedAt: now,
         },
       });
-    }
-    await tx.evaluation.update({ where: { id: ev.id }, data: { status, employeeDecisionAt: now } });
+      await tx.evaluationAccessToken.updateMany({
+        where: { evaluationId: ev.id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+    });
+    await snapshotRevision(ev.id, null, "موافقة الموظف — اعتماد نهائي");
+
+    await notify({
+      tenantId: ev.tenantId,
+      userId: ev.evaluatorId,
+      type: NotificationType.APPROVAL,
+      title: "وافق الموظف واعتُمد التقييم",
+      body: `وافق الموظف ${ev.employee.name} على تقييمه، وتم اعتماده وإرساله له.`,
+      data: { evaluationId: ev.id },
+    });
+    void sendApprovedEvaluationToEmployee(ev.id).catch((err) =>
+      console.error(`[evaluations] result email for ${ev.id} failed:`, err),
+    );
+
+    publishToTenant(ev.tenantId, { type: "data-changed", entity: "evaluation" });
+    return { status: EvaluationStatus.APPROVED };
+  }
+
+  // OBJECT — record the message, keep the conversation open.
+  await prisma.$transaction(async (tx) => {
+    await tx.evaluationComment.create({
+      data: {
+        evaluationId: ev.id,
+        authorType: CommentAuthor.EMPLOYEE,
+        authorName: ev.employee.name,
+        body: trimmed,
+        visibleToEmployee: true,
+      },
+    });
+    await tx.evaluation.update({
+      where: { id: ev.id },
+      data: { status: EvaluationStatus.EMPLOYEE_RESPONDED, employeeDecisionAt: now },
+    });
     await tx.evaluationAccessToken.update({ where: { id: rec.id }, data: { consumedAt: now } });
   });
 
   await notify({
     tenantId: ev.tenantId,
     userId: ev.evaluatorId,
-    type: decision === "OBJECT" ? NotificationType.REJECTION : NotificationType.APPROVAL,
-    title: decision === "OBJECT" ? "ردّ الموظف على التقييم" : "وافق الموظف على التقييم",
-    body:
-      decision === "OBJECT"
-        ? `أبدى الموظف ${ev.employee.name} ملاحظات على تقييمه.`
-        : `وافق الموظف ${ev.employee.name} على تقييمه.`,
+    type: NotificationType.REJECTION,
+    title: "ردّ الموظف على التقييم",
+    body: `أبدى الموظف ${ev.employee.name} ملاحظات على تقييمه.`,
     data: { evaluationId: ev.id },
   });
 
   publishToTenant(ev.tenantId, { type: "data-changed", entity: "evaluation" });
-  return { status };
+  return { status: EvaluationStatus.EMPLOYEE_RESPONDED };
 }

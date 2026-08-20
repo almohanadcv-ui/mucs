@@ -92,7 +92,7 @@ export async function buildEvaluationPdf(input: EvaluationPdfInput): Promise<Buf
   const font = await loadArabicFont();
   if (!font) return null;
 
-  const logo = await readFile(path.join(process.cwd(), "public", "mab-logo.png")).catch(() => null);
+  const logo = await readFile(path.join(process.cwd(), "public", "mab-logo.jpg")).catch(() => null);
 
   const doc = new PDFDocument({ size: "A4", margin: 44, bufferPages: true });
   doc.registerFont("ar", font);

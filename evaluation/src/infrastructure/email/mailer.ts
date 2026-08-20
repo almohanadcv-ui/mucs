@@ -20,7 +20,7 @@ export interface Mail {
 let logoPromise: Promise<Buffer | null> | null = null;
 function loadLogo(): Promise<Buffer | null> {
   if (!logoPromise) {
-    logoPromise = readFile(path.join(process.cwd(), "public", "mab-logo.png")).catch(() => null);
+    logoPromise = readFile(path.join(process.cwd(), "public", "mab-logo.jpg")).catch(() => null);
   }
   return logoPromise;
 }
@@ -47,9 +47,9 @@ export async function sendEmail(mail: Mail): Promise<boolean> {
     const logo = await loadLogo();
     if (logo) {
       attachments.push({
-        filename: "mab-logo.png",
+        filename: "mab-logo.jpg",
         content: logo,
-        contentType: "image/png",
+        contentType: "image/jpeg",
         cid: LOGO_CID,
       });
     }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MabLogo } from "@/components/mab-logo";
 import { NAV_ITEMS } from "./nav";
 import { useT } from "@/i18n/client";
 import { can, canAny, type Permission } from "@/core/domain/permissions";
@@ -21,10 +22,9 @@ export function Sidebar({ role }: { role: Role }) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex print:hidden">
       <div className="flex items-center gap-2 px-6 py-5">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <ShieldCheck className="size-5" />
+        <div className="rounded-lg bg-white p-1.5">
+          <MabLogo className="h-8 w-auto" />
         </div>
-        <span className="text-lg font-bold text-white">EMS</span>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-2">
