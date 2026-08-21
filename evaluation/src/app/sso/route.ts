@@ -41,11 +41,40 @@ export async function GET(req: NextRequest) {
   }
   if (!email) return redirect("/login");
 
-  const user = await prisma.user.findFirst({
+  let user = await prisma.user.findFirst({
     where: { email, deletedAt: null, isActive: true, tenant: { deletedAt: null, isActive: true } },
     select: { id: true, tenantId: true, role: true, name: true },
   });
-  if (!user) return redirect("/login?sso=nouser");
+
+  // Just-in-time provisioning: every portal account is created by IT from the
+  // portal, and the portal is the source of truth for who may use a system. So
+  // if the SSO'd email has no account here yet, create one (under the default
+  // tenant, EVALUATOR role, no usable password — SSO-only) rather than bounce to
+  // login. Keeps "any user I add in the portal just works" true.
+  if (!user) {
+    const tenant = await prisma.tenant.findFirst({
+      where: { deletedAt: null, isActive: true },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    if (!tenant) return redirect("/login?sso=notenant");
+    const name = String(payload.name ?? "").trim() || email.split("@")[0];
+    const created = await prisma.user.create({
+      data: {
+        tenantId: tenant.id,
+        email,
+        name,
+        role: "EVALUATOR",
+        // Unusable password hash — this account authenticates via portal SSO
+        // only; a password login can never match this value.
+        passwordHash: `sso-only:${sha256(randomToken(32))}`,
+        isActive: true,
+        emailVerifiedAt: new Date(),
+      },
+      select: { id: true, tenantId: true, role: true, name: true },
+    });
+    user = created;
+  }
 
   const env = getServerEnv();
   const accessMaxAge = durationToSeconds(env.JWT_ACCESS_TTL);
