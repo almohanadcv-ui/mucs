@@ -120,7 +120,7 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 lg:flex-row-reverse">
+      <div className="flex min-h-0 flex-1">
         {/* Backdrop for the mobile drawer */}
         {navOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setNavOpen(false)} />}
 
@@ -129,9 +129,9 @@ export function AppShell({
         <aside
           onMouseEnter={() => setRailHover(true)}
           onMouseLeave={() => setRailHover(false)}
-          className={`shrink-0 flex-col border-r border-slate-200 bg-white transition-[width] duration-200 lg:static lg:z-auto lg:flex ${
+          className={`shrink-0 flex-col border-l border-slate-200 bg-white transition-[width] duration-200 lg:static lg:z-auto lg:flex ${
             showLabels ? "lg:w-64" : "lg:w-[68px]"
-          } ${navOpen ? "fixed inset-y-0 left-0 z-40 flex w-72 shadow-2xl" : "hidden"}`}
+          } ${navOpen ? "fixed inset-y-0 right-0 z-40 flex w-72 shadow-2xl" : "hidden"}`}
         >
           <div className="flex h-full flex-col gap-1 overflow-y-auto overflow-x-hidden p-2.5">
             {/* Home */}
