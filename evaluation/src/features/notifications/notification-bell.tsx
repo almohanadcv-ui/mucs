@@ -60,7 +60,7 @@ export function NotificationBell() {
   const markOne = useMarkRead();
 
   const items = data?.items ?? [];
-  const unread = data?.meta.unread ?? items.filter((i) => !i.readAt).length;
+  const unread = data?.meta?.unread ?? items.filter((i) => !i.readAt).length;
 
   return (
     <Popover>
