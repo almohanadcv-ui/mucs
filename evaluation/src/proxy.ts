@@ -8,6 +8,11 @@ import { ACCESS_COOKIE } from "@/infrastructure/auth/cookies";
  * Fine-grained permission checks happen in server components / API handlers.
  */
 const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password", "/sso"];
+// When embedded in the portal this app is served under a base path (e.g.
+// "/apps/evaluation"). Next strips it from middleware pathnames but does NOT add
+// it back to redirects built with new URL(...), so an unprefixed "/login" would
+// escape the iframe to the portal origin. Prefix it explicitly.
+const BASE = process.env.NEXT_BASE_PATH || "";
 /** Public path prefixes (dynamic segments) — e.g. the employee magic-link page. */
 const PUBLIC_PREFIXES = ["/evaluation-review/"];
 
@@ -30,13 +35,15 @@ export async function proxy(req: NextRequest) {
 
   // Signed-in users shouldn't sit on the login page.
   if (authenticated && pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.redirect(new URL(`${BASE}/dashboard`, req.url));
   }
 
   // Protect everything that isn't public.
   if (!authenticated && !isPublic) {
     // Allow the refresh endpoint through so the client can renew silently.
-    const loginUrl = new URL("/login", req.url);
+    const loginUrl = new URL(`${BASE}/login`, req.url);
+    // Keep `next` as the in-app path (no BASE): the login page's client router
+    // re-adds basePath on redirect, so prefixing here would double it.
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
