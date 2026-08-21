@@ -7,7 +7,7 @@ import { ACCESS_COOKIE } from "@/infrastructure/auth/cookies";
  * short-lived access token; when it's expired the client calls /api/auth/refresh.
  * Fine-grained permission checks happen in server components / API handlers.
  */
-const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password"];
+const PUBLIC_PATHS = ["/", "/login", "/forgot-password", "/reset-password", "/sso"];
 /** Public path prefixes (dynamic segments) — e.g. the employee magic-link page. */
 const PUBLIC_PREFIXES = ["/evaluation-review/"];
 

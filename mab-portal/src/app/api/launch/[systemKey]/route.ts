@@ -32,21 +32,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
   }
 
   const nextPath = sanitizeNext(req.nextUrl.searchParams.get("next"));
-  const base = system.baseUrl.replace(/\/$/, "");
+  // Same-origin proxied prefix so the system renders inside the portal (iframe).
+  const mount = `/apps/${system.key}`;
 
-  // No SSO endpoint configured → plain deep link.
+  // No SSO endpoint → plain same-origin deep link.
   if (!system.ssoPath) {
-    return NextResponse.redirect(`${base}${nextPath}`);
+    return NextResponse.redirect(new URL(`${mount}${nextPath}`, req.url));
   }
 
+  // Hand off through the proxied /sso path; the token carries the target page.
   const token = await signSsoToken({
     email: session.email,
     name: session.name,
     systemKey: system.key,
     next: nextPath,
   });
-  const url = `${base}${system.ssoPath}?token=${encodeURIComponent(token)}`;
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(new URL(`${mount}${system.ssoPath}?token=${encodeURIComponent(token)}`, req.url));
 }
 
 /** Only allow same-site relative paths as the post-login target. */

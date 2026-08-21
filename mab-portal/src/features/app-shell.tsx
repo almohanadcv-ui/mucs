@@ -85,8 +85,10 @@ export function AppShell({
     setNavOpen(false);
   }
 
-  // Same-origin proxy path so the system renders inside the portal.
-  const frameSrc = target ? `/apps/${target.key}${target.path.startsWith("/") ? "" : "/"}${target.path}` : null;
+  // Open through the launch route: it does the SSO handoff (if configured) and
+  // lands on the same-origin proxied page, so the system renders logged-in
+  // inside the portal.
+  const frameSrc = target ? `/api/launch/${target.key}?next=${encodeURIComponent(target.path)}` : null;
 
   return (
     <div className="flex h-[100dvh] flex-col bg-slate-50">

@@ -3,6 +3,12 @@ import path from "node:path";
 
 const isProd = process.env.NODE_ENV === "production";
 
+// When this instance is the one embedded inside the MAB portal, it is served
+// under a base path and must allow the portal origin to frame it. Both are
+// OFF by default, so the standalone production app is completely unchanged.
+const basePath = process.env.NEXT_BASE_PATH || undefined; // e.g. "/apps/evaluation"
+const embedOrigin = process.env.PORTAL_EMBED_ORIGIN || ""; // e.g. "https://portal.mucs.online"
+
 /**
  * Content Security Policy.
  * 'unsafe-eval' / 'unsafe-inline' are only relaxed in dev for Next's HMR.
@@ -18,7 +24,9 @@ const csp = [
   `img-src 'self' data: blob:`,
   `font-src 'self' data:`,
   `connect-src 'self'`,
-  `frame-ancestors 'none'`,
+  // Locked to nobody by default; the portal-embedded instance allows only the
+  // portal origin to frame it.
+  `frame-ancestors ${embedOrigin ? `'self' ${embedOrigin}` : "'none'"}`,
   `base-uri 'self'`,
   `form-action 'self'`,
   `object-src 'none'`,
@@ -29,7 +37,10 @@ const csp = [
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
-  { key: "X-Frame-Options", value: "DENY" },
+  // Standalone app forbids framing; the embedded instance relies on CSP
+  // frame-ancestors (above) to allow only the portal, so X-Frame-Options (which
+  // has no allowlist) is omitted there.
+  ...(embedOrigin ? [] : [{ key: "X-Frame-Options", value: "DENY" }]),
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   {
@@ -50,6 +61,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Set only for the portal-embedded instance (e.g. "/apps/evaluation"); the
+  // standalone app builds with no base path.
+  basePath,
   // NOTE: `output: "standalone"` removed — this app is served via PM2 + `next
   // start`, which serves /_next/static and public/ automatically. (Re-add it
   // only if you switch to the Docker/standalone server: node .next/standalone/server.js.)
