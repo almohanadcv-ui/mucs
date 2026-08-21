@@ -15,9 +15,12 @@ const SYS = {
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   async rewrites() {
+    // Each embedded instance is built with basePath=/apps/<key>, so it serves
+    // its pages AND assets under that prefix — keep the prefix in the proxy
+    // destination (do NOT strip it), or the upstream 404s and _next assets miss.
     return Object.entries(SYS).map(([key, url]) => ({
       source: `/apps/${key}/:path*`,
-      destination: `${url.replace(/\/$/, "")}/:path*`,
+      destination: `${url.replace(/\/$/, "")}/apps/${key}/:path*`,
     }));
   },
 };
