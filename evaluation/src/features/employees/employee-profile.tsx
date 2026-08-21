@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { withBase } from "@/lib/base-path";
 import {
   LineChart,
   Line,
@@ -61,7 +62,7 @@ export function EmployeeProfile({ id }: { id: string }) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["employee-profile", id],
     queryFn: async () => {
-      const res = await fetch(`/api/employees/${id}/profile`);
+      const res = await fetch(withBase(`/api/employees/${id}/profile`));
       const b = await res.json().catch(() => null);
       if (!res.ok) throw new Error(b?.error?.message ?? t("profile.fetchFailed"));
       return (b.data ?? b) as Profile;

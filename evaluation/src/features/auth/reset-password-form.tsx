@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/client";
+import { withBase } from "@/lib/base-path";
 
 export function ResetPasswordForm() {
   const t = useT();
@@ -27,7 +28,7 @@ export function ResetPasswordForm() {
     }
     setBusy(true);
     try {
-      const res = await fetch("/api/auth/reset-password", {
+      const res = await fetch(withBase("/api/auth/reset-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, password }),

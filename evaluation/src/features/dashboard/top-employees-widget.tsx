@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Trophy, Loader2 } from "lucide-react";
+import { withBase } from "@/lib/base-path";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -33,7 +34,7 @@ export function TopEmployeesWidget() {
   const { data, isLoading } = useQuery({
     queryKey: ["top-employees", threshold],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/top-employees?threshold=${threshold}`);
+      const res = await fetch(withBase(`/api/dashboard/top-employees?threshold=${threshold}`));
       const b = await res.json().catch(() => null);
       return ((b?.data ?? b) as TopEmp[]) ?? [];
     },

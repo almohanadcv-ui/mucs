@@ -3,6 +3,8 @@
  * the { success, data } | { success, error } envelope, and throws ApiError on
  * failure so React Query can surface it.
  */
+import { withBase } from "./base-path";
+
 export interface ApiErrorShape {
   code: string;
   message: string;
@@ -28,7 +30,7 @@ export class ApiError extends Error {
 let refreshing: Promise<boolean> | null = null;
 async function refreshSession(): Promise<boolean> {
   if (!refreshing) {
-    refreshing = fetch("/api/auth/refresh", { method: "POST" })
+    refreshing = fetch(withBase("/api/auth/refresh"), { method: "POST" })
       .then((r) => r.ok)
       .catch(() => false)
       .finally(() => {
@@ -47,7 +49,7 @@ async function request<T>(
   // FormData must keep the browser's own multipart Content-Type (it carries the
   // boundary); forcing application/json on it makes the body unparseable.
   const isForm = options.body instanceof FormData;
-  const res = await fetch(path, {
+  const res = await fetch(withBase(path), {
     ...options,
     headers: {
       ...(isForm ? {} : { "Content-Type": "application/json" }),

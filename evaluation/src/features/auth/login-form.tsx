@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/client";
+import { withBase } from "@/lib/base-path";
 
 const formSchema = z.object({
   email: z.string().email("login.invalidEmail"),
@@ -57,7 +58,7 @@ export function LoginForm() {
 
   /** Post credentials → server verifies the password and emails a code. */
   async function requestCode(values: FormValues): Promise<boolean> {
-    const res = await fetch("/api/auth/login", {
+    const res = await fetch(withBase("/api/auth/login"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
@@ -97,7 +98,7 @@ export function LoginForm() {
     }
     setVerifying(true);
     try {
-      const res = await fetch("/api/auth/login/verify", {
+      const res = await fetch(withBase("/api/auth/login/verify"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ challengeId, code }),

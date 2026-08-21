@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useT } from "@/i18n/client";
+import { withBase } from "@/lib/base-path";
 
 export function ForgotPasswordForm() {
   const t = useT();
@@ -18,7 +19,7 @@ export function ForgotPasswordForm() {
     setBusy(true);
     try {
       // Always resolves the same way; the server never reveals if the email exists.
-      await fetch("/api/auth/forgot-password", {
+      await fetch(withBase("/api/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

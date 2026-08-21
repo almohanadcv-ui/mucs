@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { withBase } from "@/lib/base-path";
 
 interface RealtimeEvent {
   type: "notification" | "data-changed" | "session-revoked";
@@ -40,8 +41,8 @@ export function useRealtime(enabled: boolean) {
           // access-token cookie makes the middleware bounce /login back to the
           // dashboard, and the user never actually leaves.
           qc.clear();
-          void fetch("/api/auth/logout", { method: "POST" }).finally(() => {
-            window.location.href = "/login";
+          void fetch(withBase("/api/auth/logout"), { method: "POST" }).finally(() => {
+            window.location.href = withBase("/login");
           });
           break;
         case "notification":
@@ -64,7 +65,7 @@ export function useRealtime(enabled: boolean) {
       if (stopped) return;
       // An expired access token is the likeliest reason the stream died; renew
       // it before reconnecting, or every retry just 401s again.
-      await fetch("/api/auth/refresh", { method: "POST" }).catch(() => {});
+      await fetch(withBase("/api/auth/refresh"), { method: "POST" }).catch(() => {});
       if (stopped) return;
       retryTimer = setTimeout(connect, retryDelay);
       retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
@@ -72,7 +73,7 @@ export function useRealtime(enabled: boolean) {
 
     const connect = () => {
       if (stopped) return;
-      source = new EventSource("/api/events");
+      source = new EventSource(withBase("/api/events"));
 
       source.addEventListener("ready", () => {
         // Stream is live — reset backoff so a later blip retries quickly.

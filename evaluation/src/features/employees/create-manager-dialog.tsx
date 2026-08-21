@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { withBase } from "@/lib/base-path";
 import { Loader2, UserPlus, Copy, CheckCircle2 } from "lucide-react";
 import {
   Dialog,
@@ -63,7 +64,7 @@ export function CreateManagerDialog({ creatableRoles = [] }: { creatableRoles?: 
     if (name.trim().length < 2) return toast.error(t("manager.nameRequired"));
     setLoading(true);
     try {
-      const res = await fetch("/api/managers", {
+      const res = await fetch(withBase("/api/managers"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim(), email: email.trim() || undefined, role }),

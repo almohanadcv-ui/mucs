@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Loader2, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/i18n/client";
+import { withBase } from "@/lib/base-path";
 
 export interface PickerEmployee {
   id: string;
@@ -51,7 +52,7 @@ export function EmployeeSearchCombobox({
   const { data, isFetching } = useQuery({
     queryKey: ["employee-search", debounced],
     queryFn: async () => {
-      const res = await fetch(`/api/employees/search?q=${encodeURIComponent(debounced)}`);
+      const res = await fetch(withBase(`/api/employees/search?q=${encodeURIComponent(debounced)}`));
       const b = await res.json().catch(() => null);
       return ((b?.data ?? b) as PickerEmployee[]) ?? [];
     },

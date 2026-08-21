@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { addMonths, differenceInCalendarDays } from "date-fns";
 import { Plus, Search, Pencil, Trash2, Loader2, Users, FileUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { withBase } from "@/lib/base-path";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -117,7 +118,7 @@ export function EmployeesClient({
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/employees/import", { method: "POST", body: form });
+      const res = await fetch(withBase("/api/employees/import"), { method: "POST", body: form });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error?.message ?? t("employees.importFailed"));
       const d = body.data ?? body;
