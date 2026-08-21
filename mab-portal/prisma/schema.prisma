@@ -123,6 +123,26 @@ model LoginChallenge {
   @@map("login_challenges")
 }
 
+/// Append-only audit trail for the portal: who did what (created a user, granted
+/// or revoked a system, signed in). Never deleted — the record of every change,
+/// so nothing is silently lost and IT can review history.
+model PortalAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  actorEmail String?
+  action     String // CREATE_USER | GRANT_ACCESS | REVOKE_ACCESS | LOGIN | ...
+  entityType String // "PortalUser" | "System" | "Access" | "Session"
+  entityId   String?
+  meta       Json? // extra detail (system key, granted list, …)
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("portal_audit_logs")
+}
+
 /// Portal session (rotating refresh token; only a hash is stored).
 model RefreshToken {
   id        String    @id @default(uuid()) @db.Uuid
