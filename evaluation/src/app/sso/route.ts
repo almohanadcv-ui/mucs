@@ -22,8 +22,25 @@ const BASE = process.env.NEXT_BASE_PATH || "";
 export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("token");
   const secret = process.env.PORTAL_SSO_SECRET;
-  const redirect = (path: string) =>
-    new NextResponse(null, { status: 307, headers: { Location: `${BASE}${path}` } });
+  // Return an HTML interstitial that navigates client-side rather than a bare
+  // 307. A body-less redirect on this extension-less "/sso" path makes some
+  // mobile browsers offer to *download* the response ("download SSO?") instead
+  // of following it. A real text/html page is always rendered, applies the
+  // Set-Cookie headers, then hops to the target.
+  const redirect = (path: string) => {
+    const url = `${BASE}${path}`;
+    const safe = JSON.stringify(url);
+    const html =
+      `<!doctype html><html lang="ar"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<meta http-equiv="refresh" content="0;url=${url.replace(/"/g, "%22")}">` +
+      `<title>جارٍ الدخول…</title></head><body style="font-family:system-ui;text-align:center;padding:2rem;color:#334155">` +
+      `جارٍ تسجيل الدخول…<script>location.replace(${safe})</script></body></html>`;
+    return new NextResponse(html, {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    });
+  };
 
   if (!token || !secret) return redirect("/login");
 
