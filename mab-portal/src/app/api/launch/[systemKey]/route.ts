@@ -12,15 +12,22 @@ export const runtime = "nodejs";
  * deep link.
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: string }> }) {
+  // Emit RELATIVE Location headers, not new URL(..., req.url): behind nginx the
+  // request Host is the internal one (e.g. localhost:3005), so an absolute
+  // redirect would point the browser at an unreachable host. A relative Location
+  // is resolved against the real address-bar origin (portal.mucs.online).
+  const redirect = (path: string) =>
+    new NextResponse(null, { status: 307, headers: { Location: path } });
+
   const session = await getSession();
-  if (!session) return NextResponse.redirect(new URL("/login", req.url));
+  if (!session) return redirect("/login");
 
   const { systemKey } = await ctx.params;
   const system = await prisma.system.findFirst({
     where: { key: systemKey, isActive: true },
     select: { id: true, key: true, baseUrl: true, ssoPath: true },
   });
-  if (!system) return NextResponse.redirect(new URL("/", req.url));
+  if (!system) return redirect("/");
 
   // Only allow systems the user may actually see.
   if (!session.admin) {
@@ -28,7 +35,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
       where: { userId: session.sub, systemId: system.id },
       select: { id: true },
     });
-    if (!allowed) return NextResponse.redirect(new URL("/", req.url));
+    if (!allowed) return redirect("/");
   }
 
   const nextPath = sanitizeNext(req.nextUrl.searchParams.get("next"));
@@ -37,7 +44,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
 
   // No SSO endpoint → plain same-origin deep link.
   if (!system.ssoPath) {
-    return NextResponse.redirect(new URL(`${mount}${nextPath}`, req.url));
+    return redirect(`${mount}${nextPath}`);
   }
 
   // Hand off through the proxied /sso path; the token carries the target page.
@@ -47,7 +54,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
     systemKey: system.key,
     next: nextPath,
   });
-  return NextResponse.redirect(new URL(`${mount}${system.ssoPath}?token=${encodeURIComponent(token)}`, req.url));
+  return redirect(`${mount}${system.ssoPath}?token=${encodeURIComponent(token)}`);
 }
 
 /** Only allow same-site relative paths as the post-login target. */
