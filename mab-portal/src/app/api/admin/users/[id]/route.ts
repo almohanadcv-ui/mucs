@@ -24,6 +24,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     jobTitle?: string | null;
     departmentId?: string | null;
     managerId?: string | null;
+    employeeNo?: string | null;
+    phone?: string | null;
+    nationalId?: string | null;
+    hireDate?: string | null;
+    employmentType?: string | null;
+    workUnit?: string | null;
+    location?: string | null;
   };
 
   const user = await prisma.portalUser.findFirst({ where: { id, deletedAt: null } });
@@ -51,6 +58,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ...(body.jobTitle !== undefined ? { jobTitle: body.jobTitle?.trim() || null } : {}),
       ...(body.departmentId !== undefined ? { departmentId: body.departmentId || null } : {}),
       ...(managerId !== undefined ? { managerId } : {}),
+      ...(body.employeeNo !== undefined ? { employeeNo: body.employeeNo?.trim() || null } : {}),
+      ...(body.phone !== undefined ? { phone: body.phone?.trim() || null } : {}),
+      ...(body.nationalId !== undefined ? { nationalId: body.nationalId?.trim() || null } : {}),
+      ...(body.hireDate !== undefined ? { hireDate: body.hireDate ? new Date(body.hireDate) : null } : {}),
+      ...(body.employmentType !== undefined ? { employmentType: body.employmentType?.trim() || null } : {}),
+      ...(body.workUnit !== undefined ? { workUnit: body.workUnit?.trim() || null } : {}),
+      ...(body.location !== undefined ? { location: body.location?.trim() || null } : {}),
     },
   });
 

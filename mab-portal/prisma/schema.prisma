@@ -32,6 +32,15 @@ model PortalUser {
   departmentId String?    @db.Uuid
   managerId    String?    @db.Uuid
 
+  // Employee (HR) fields
+  employeeNo     String?
+  phone          String?
+  nationalId     String?
+  hireDate       DateTime?
+  employmentType String? // دوام كامل | جزئي | عقد …
+  workUnit       String? // وحدة العمل / الموقع الوظيفي
+  location       String? // الموقع (المكتب الرئيسي…)
+
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -45,11 +54,60 @@ model PortalUser {
   sessions      RefreshToken[]
   access        UserSystemAccess[]
   notifications Notification[]
+  heldAssets    Asset[]            @relation("AssetHolder")
 
   @@index([deletedAt])
   @@index([departmentId])
   @@index([managerId])
   @@map("portal_users")
+}
+
+/// A custody item / company asset (laptop, car, phone…) that can be assigned to
+/// an employee. Every change is recorded in AssetLog.
+model Asset {
+  id           String    @id @default(uuid()) @db.Uuid
+  assetNo      String    @unique // A-86 …
+  type         String    @default("OTHER") // LAPTOP | CAR | PHONE | OTHER
+  nameAr       String
+  nameEn       String?
+  brand        String?
+  serial       String?
+  purchaseCost Float?
+  purchaseDate DateTime?
+  warrantyEnd  DateTime?
+  location     String?
+  note         String?
+  /// AVAILABLE | ASSIGNED | DAMAGED | MAINTENANCE | ARCHIVED
+  status       String    @default("AVAILABLE")
+  assignedToId String?   @db.Uuid
+  assignedAt   DateTime?
+  createdById  String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  assignedTo PortalUser? @relation("AssetHolder", fields: [assignedToId], references: [id], onDelete: SetNull)
+  logs       AssetLog[]
+
+  @@index([status])
+  @@index([assignedToId])
+  @@map("assets")
+}
+
+/// Full, literal history of an asset: who did what, when. Append-only.
+model AssetLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  assetId   String   @db.Uuid
+  action    String // CREATE | ASSIGN | RETURN | UPDATE | STATUS | ARCHIVE
+  actorId   String?  @db.Uuid
+  actorName String?
+  summary   String // human-readable line
+  detail    Json? // structured before/after
+  createdAt DateTime @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, createdAt])
+  @@map("asset_logs")
 }
 
 /// A department / section employees belong to.
