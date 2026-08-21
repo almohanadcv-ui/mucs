@@ -8,6 +8,7 @@ import {
   Trash2,
   Power,
   KeyRound,
+  Building,
   X,
   ArrowRight,
   ArrowLeft,
@@ -20,9 +21,13 @@ type UserRow = {
   name: string;
   isActive: boolean;
   isSuperAdmin: boolean;
+  jobTitle: string | null;
+  departmentId: string | null;
+  managerId: string | null;
+  department: { name: string } | null;
   lastLoginAt: string | null;
   createdAt: string;
-  _count: { access: number };
+  _count: { access: number; reports: number };
 };
 
 type AccessSystem = { id: string; key: string; name: string; isActive: boolean; granted: boolean };
@@ -34,6 +39,8 @@ export function AdminClient() {
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [accessFor, setAccessFor] = useState<UserRow | null>(null);
+  const [orgFor, setOrgFor] = useState<UserRow | null>(null);
+  const [deptOpen, setDeptOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -92,6 +99,12 @@ export function AdminClient() {
             />
           </div>
           <button
+            onClick={() => setDeptOpen(true)}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Building className="size-4" /> الأقسام
+          </button>
+          <button
             onClick={() => setCreateOpen(true)}
             className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#173a5e]"
           >
@@ -123,8 +136,10 @@ export function AdminClient() {
                       </div>
                       <div dir="ltr" className="truncate text-left text-xs text-slate-500">{u.email}</div>
                       <div className="mt-0.5 text-xs text-slate-400">
+                        {u.jobTitle ? `${u.jobTitle} · ` : ""}
+                        {u.department?.name ? `${u.department.name} · ` : ""}
                         {u.isSuperAdmin ? "كل الأنظمة" : `${u._count.access} نظام`}
-                        {u.lastLoginAt ? ` · آخر دخول ${new Date(u.lastLoginAt).toLocaleDateString("ar-EG")}` : ""}
+                        {u._count.reports > 0 ? ` · ${u._count.reports} موظف تحته` : ""}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
@@ -133,6 +148,12 @@ export function AdminClient() {
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >
                         <KeyRound className="size-3.5" /> الصلاحيات
+                      </button>
+                      <button
+                        onClick={() => setOrgFor(u)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        <Building className="size-3.5" /> الهيكل
                       </button>
                       <button
                         onClick={() => act(() => fetch(`/api/admin/users/${u.id}`, {
@@ -175,7 +196,107 @@ export function AdminClient() {
 
       {createOpen && <CreateUserModal onClose={() => setCreateOpen(false)} onDone={() => { setCreateOpen(false); void load(); }} />}
       {accessFor && <AccessModal user={accessFor} onClose={() => setAccessFor(null)} onDone={() => { setAccessFor(null); void load(); }} />}
+      {orgFor && <OrgEditModal user={orgFor} onClose={() => setOrgFor(null)} onDone={() => { setOrgFor(null); void load(); }} />}
+      {deptOpen && <DepartmentsModal onClose={() => setDeptOpen(false)} />}
     </div>
+  );
+}
+
+function OrgEditModal({ user, onClose, onDone }: { user: UserRow; onClose: () => void; onDone: () => void }) {
+  const [jobTitle, setJobTitle] = useState(user.jobTitle ?? "");
+  const [departmentId, setDepartmentId] = useState(user.departmentId ?? "");
+  const [managerId, setManagerId] = useState(user.managerId ?? "");
+  const [depts, setDepts] = useState<{ id: string; name: string }[]>([]);
+  const [managers, setManagers] = useState<{ id: string; name: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/departments").then((r) => r.json()).then((b) => setDepts(b.rows ?? [])).catch(() => {});
+    fetch("/api/admin/users?page=1&search=").then((r) => r.json()).then((b) => setManagers((b.rows ?? []).filter((m: UserRow) => m.id !== user.id))).catch(() => {});
+  }, [user.id]);
+
+  async function save() {
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobTitle: jobTitle || null, departmentId: departmentId || null, managerId: managerId || null }),
+      });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(b?.error || "تعذّر الحفظ.");
+      onDone();
+    } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); setBusy(false); }
+  }
+
+  return (
+    <Modal title={`الهيكل — ${user.name}`} onClose={onClose}>
+      <div className="space-y-3">
+        <div>
+          <label className="text-sm font-medium text-slate-700">المسمّى الوظيفي</label>
+          <input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="مثال: مشرف تكييف" className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]" />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-slate-700">القسم</label>
+          <select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]">
+            <option value="">— بلا قسم —</option>
+            {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium text-slate-700">المدير المباشر</label>
+          <select value={managerId} onChange={(e) => setManagerId(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]">
+            <option value="">— بلا مدير (قمة الهرم) —</option>
+            {managers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <button onClick={save} disabled={busy} className="w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
+          {busy ? "جارٍ الحفظ…" : "حفظ"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function DepartmentsModal({ onClose }: { onClose: () => void }) {
+  const [rows, setRows] = useState<{ id: string; name: string; _count: { users: number } }[]>([]);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/departments").then((r) => r.json()).then((b) => setRows(b.rows ?? [])).catch(() => {});
+  }, []);
+  useEffect(() => load(), [load]);
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setErr(null);
+    try {
+      const res = await fetch("/api/departments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(b?.error || "تعذّر الإضافة.");
+      setName(""); load();
+    } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title="الأقسام" onClose={onClose}>
+      <form onSubmit={add} className="mb-3 flex gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="اسم قسم جديد" className="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]" />
+        <button type="submit" disabled={busy} className="rounded-xl bg-[#0f2b46] px-4 text-sm font-semibold text-white disabled:opacity-60">إضافة</button>
+      </form>
+      {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
+      <div className="max-h-64 space-y-1 overflow-y-auto">
+        {rows.length === 0 && <p className="py-4 text-center text-sm text-slate-400">لا أقسام بعد.</p>}
+        {rows.map((d) => (
+          <div key={d.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2 text-sm">
+            <span className="font-medium text-slate-800">{d.name}</span>
+            <span className="text-xs text-slate-400">{d._count.users} موظف</span>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }
 

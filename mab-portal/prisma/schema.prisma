@@ -27,10 +27,19 @@ model PortalUser {
   /// manages users + access from the portal admin panel.
   isSuperAdmin Boolean @default(false)
 
+  // Org structure
+  jobTitle     String?
+  departmentId String?    @db.Uuid
+  managerId    String?    @db.Uuid
+
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
+
+  department Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  manager    PortalUser?  @relation("ManagerReports", fields: [managerId], references: [id], onDelete: SetNull)
+  reports    PortalUser[] @relation("ManagerReports")
 
   challenges    LoginChallenge[]
   sessions      RefreshToken[]
@@ -38,7 +47,19 @@ model PortalUser {
   notifications Notification[]
 
   @@index([deletedAt])
+  @@index([departmentId])
+  @@index([managerId])
   @@map("portal_users")
+}
+
+/// A department / section employees belong to.
+model Department {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String       @unique
+  createdAt DateTime     @default(now())
+  users     PortalUser[]
+
+  @@map("departments")
 }
 
 /// The catalogue of systems shown in the launcher. Static-ish reference data,

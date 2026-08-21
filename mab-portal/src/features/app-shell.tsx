@@ -16,6 +16,8 @@ import {
   ArrowRight,
   Home,
   ExternalLink,
+  Building2,
+  Inbox,
   type LucideIcon,
 } from "lucide-react";
 import type { LauncherSystem } from "@/lib/access";
@@ -23,6 +25,8 @@ import { FeedbackButtons } from "./feedback";
 import { NotificationsBell } from "./notifications-bell";
 import { Assistant } from "./assistant";
 import { HomeDashboard } from "./home-dashboard";
+import { OrgChart } from "./org-chart";
+import { FeedbackList } from "./feedback-list";
 
 const ICONS: Record<string, LucideIcon> = {
   evaluation: ClipboardList,
@@ -46,6 +50,8 @@ export function AppShell({
 }) {
   const [expanded, setExpanded] = useState<string | null>(systems[0]?.id ?? null);
   const [target, setTarget] = useState<Target>(null);
+  // Internal portal pages (org chart, feedback list) shown in the main area.
+  const [internal, setInternal] = useState<null | "org" | "feedback">(null);
   // Mobile: the systems list is an off-canvas drawer over the main content.
   const [navOpen, setNavOpen] = useState(false);
 
@@ -56,11 +62,19 @@ export function AppShell({
 
   function openTarget(sys: LauncherSystem, path: string, label: string) {
     setTarget({ key: sys.key, path, label });
+    setInternal(null);
+    setNavOpen(false);
+  }
+
+  function openInternal(view: "org" | "feedback") {
+    setInternal(view);
+    setTarget(null);
     setNavOpen(false);
   }
 
   function goHome() {
     setTarget(null);
+    setInternal(null);
     setNavOpen(false);
   }
 
@@ -109,12 +123,27 @@ export function AppShell({
             navOpen ? "fixed inset-y-0 right-0 z-40 flex w-80 max-w-[85vw] shadow-2xl" : "hidden"
           }`}
         >
-          <div className="p-3">
+          <div className="flex h-full flex-col p-3">
+            {/* Home — above the systems, with a divider */}
+            <button
+              onClick={goHome}
+              className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-right ${
+                !target && !internal ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"
+              }`}
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#0f2b46] text-white">
+                <Home className="size-5" />
+              </span>
+              <span className="text-sm font-bold">الصفحة الرئيسية</span>
+            </button>
+
+            <div className="my-2 border-t border-slate-200" />
+
             <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">الأنظمة</p>
             {systems.length === 0 && (
               <p className="px-2 py-6 text-center text-sm text-slate-500">لا توجد أنظمة متاحة لك بعد.</p>
             )}
-            <nav className="space-y-1">
+            <nav className="flex-1 space-y-1">
               {systems.map((sys) => {
                 const Icon = iconFor(sys.key);
                 const isOpen = expanded === sys.id;
@@ -166,6 +195,28 @@ export function AppShell({
                 );
               })}
             </nav>
+
+            {/* Bottom: org chart + complaints/suggestions */}
+            <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
+              <button
+                onClick={() => openInternal("org")}
+                className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-right text-sm ${
+                  internal === "org" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <Building2 className="size-5 text-slate-400" /> المخطط التنظيمي
+              </button>
+              {isAdmin && (
+                <button
+                  onClick={() => openInternal("feedback")}
+                  className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-right text-sm ${
+                    internal === "feedback" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  <Inbox className="size-5 text-slate-400" /> الشكاوى والاقتراحات
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -186,7 +237,13 @@ export function AppShell({
             </>
           ) : (
             <div className="flex-1 overflow-y-auto">
-              <HomeDashboard userName={userName} isAdmin={isAdmin} />
+              {internal === "org" ? (
+                <OrgChart />
+              ) : internal === "feedback" ? (
+                <FeedbackList />
+              ) : (
+                <HomeDashboard userName={userName} isAdmin={isAdmin} />
+              )}
             </div>
           )}
         </main>

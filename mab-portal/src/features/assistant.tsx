@@ -63,6 +63,13 @@ export function Assistant() {
               <div className="text-sm font-bold">مساعد MAB</div>
               <div className="text-[11px] text-slate-300">دعم فوري على مدار الساعة</div>
             </div>
+            <button
+              onClick={() => setOpen(false)}
+              className="ms-auto rounded-lg p-1 text-slate-300 hover:bg-white/10 hover:text-white"
+              aria-label="إغلاق"
+            >
+              <X className="size-5" />
+            </button>
           </div>
 
           <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-3">

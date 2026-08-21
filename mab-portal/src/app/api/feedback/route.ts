@@ -5,6 +5,19 @@ import { sendMail, emailShell, esc } from "@/lib/email";
 
 export const runtime = "nodejs";
 
+// List submitted suggestions & complaints (IT only).
+export async function GET() {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  if (!session.admin) return NextResponse.json({ error: "للمشرفين فقط" }, { status: 403 });
+  const rows = await prisma.feedback.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: { id: true, kind: true, subject: true, body: true, status: true, authorName: true, authorEmail: true, createdAt: true },
+  });
+  return NextResponse.json({ rows });
+}
+
 // Submit a suggestion or a complaint. Saved + emailed to IT/super-admins.
 export async function POST(req: NextRequest) {
   const session = await getSession();

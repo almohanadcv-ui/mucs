@@ -21,10 +21,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     name?: string;
     isActive?: boolean;
     isSuperAdmin?: boolean;
+    jobTitle?: string | null;
+    departmentId?: string | null;
+    managerId?: string | null;
   };
 
   const user = await prisma.portalUser.findFirst({ where: { id, deletedAt: null } });
   if (!user) return NextResponse.json({ error: "المستخدم غير موجود." }, { status: 404 });
+  // A user can't be their own manager.
+  const managerId = body.managerId && body.managerId !== id ? body.managerId : body.managerId === null ? null : undefined;
 
   // Never lock the platform out of its last active super-admin.
   const removingAdminRights =
@@ -43,6 +48,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
       ...(body.isSuperAdmin !== undefined ? { isSuperAdmin: body.isSuperAdmin } : {}),
+      ...(body.jobTitle !== undefined ? { jobTitle: body.jobTitle?.trim() || null } : {}),
+      ...(body.departmentId !== undefined ? { departmentId: body.departmentId || null } : {}),
+      ...(managerId !== undefined ? { managerId } : {}),
     },
   });
 

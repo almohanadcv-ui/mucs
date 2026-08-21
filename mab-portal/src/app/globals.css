@@ -20,3 +20,67 @@ body {
 html {
   overflow-x: hidden;
 }
+
+/* ── Org chart (classic centered top-down tree with connectors) ── */
+.orgtree,
+.orgtree ul {
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.orgtree ul {
+  padding-top: 22px;
+  position: relative;
+}
+.orgtree li {
+  position: relative;
+  padding: 22px 12px 0;
+  text-align: center;
+}
+/* connectors down from a parent to the row of children */
+.orgtree li::before,
+.orgtree li::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  width: 50%;
+  height: 22px;
+  border-top: 2px solid #cbd5e1;
+}
+.orgtree li::after {
+  right: auto;
+  left: 50%;
+  border-left: 2px solid #cbd5e1;
+}
+.orgtree li:only-child::before,
+.orgtree li:only-child::after {
+  display: none;
+}
+.orgtree li:only-child {
+  padding-top: 22px;
+}
+.orgtree li:first-child::before,
+.orgtree li:last-child::after {
+  border: 0 none;
+}
+.orgtree li:last-child::before {
+  border-left: 2px solid #cbd5e1;
+  border-radius: 0 0 0 6px;
+}
+.orgtree li:first-child::after {
+  border-radius: 0 0 6px 0;
+}
+.orgtree ul ul::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 50%;
+  height: 22px;
+  border-left: 2px solid #cbd5e1;
+}
+.orgtree .node {
+  display: inline-flex;
+}
