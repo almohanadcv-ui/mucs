@@ -1,0 +1,181 @@
+"use client";
+
+import { useState } from "react";
+import {
+  ClipboardList,
+  ShieldCheck,
+  Car,
+  ListTodo,
+  Headset,
+  AppWindow,
+  ChevronLeft,
+  ChevronDown,
+  LogOut,
+  Settings,
+  Menu,
+  ArrowRight,
+  Home,
+  ExternalLink,
+  type LucideIcon,
+} from "lucide-react";
+import type { LauncherSystem } from "@/lib/access";
+
+const ICONS: Record<string, LucideIcon> = {
+  evaluation: ClipboardList,
+  gatepass: ShieldCheck,
+  mica: Car,
+  tasks: ListTodo,
+  tickets: Headset,
+};
+const iconFor = (key: string): LucideIcon => ICONS[key] ?? AppWindow;
+
+type Target = { key: string; path: string; label: string } | null;
+
+export function AppShell({
+  userName,
+  isAdmin,
+  systems,
+}: {
+  userName: string;
+  isAdmin: boolean;
+  systems: LauncherSystem[];
+}) {
+  const [expanded, setExpanded] = useState<string | null>(systems[0]?.id ?? null);
+  const [target, setTarget] = useState<Target>(null);
+  // Mobile: show the systems list or the embedded frame.
+  const [mobileView, setMobileView] = useState<"nav" | "frame">("nav");
+
+  async function logout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    window.location.href = "/login";
+  }
+
+  function openTarget(sys: LauncherSystem, path: string, label: string) {
+    setTarget({ key: sys.key, path, label });
+    setMobileView("frame");
+  }
+
+  // Same-origin proxy path so the system renders inside the portal.
+  const frameSrc = target ? `/apps/${target.key}${target.path.startsWith("/") ? "" : "/"}${target.path}` : null;
+
+  return (
+    <div className="flex h-[100dvh] flex-col bg-slate-50">
+      {/* Top bar */}
+      <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2.5 sm:px-5">
+        <div className="flex items-center gap-2">
+          {/* Mobile: back to systems */}
+          {mobileView === "frame" && (
+            <button onClick={() => setMobileView("nav")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden">
+              <Menu className="size-5" />
+            </button>
+          )}
+          <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">
+            M<span className="text-[#5aa6e0]">A</span>B
+          </span>
+          <span className="hidden font-semibold text-slate-700 sm:inline">منصّة MAB</span>
+          {target && <span className="hidden truncate text-sm text-slate-400 md:inline">/ {target.label}</span>}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isAdmin && (
+            <a href="/admin" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <Settings className="size-4" /> <span className="hidden sm:inline">الإدارة</span>
+            </a>
+          )}
+          <span className="hidden max-w-[28vw] truncate text-sm text-slate-600 md:inline">{userName}</span>
+          <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
+            <LogOut className="size-4" /> <span className="hidden sm:inline">خروج</span>
+          </button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Systems sidebar (right in RTL) */}
+        <aside
+          className={`${mobileView === "nav" ? "flex" : "hidden"} w-full shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white lg:flex lg:w-80`}
+        >
+          <div className="p-3">
+            <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">الأنظمة</p>
+            {systems.length === 0 && (
+              <p className="px-2 py-6 text-center text-sm text-slate-500">لا توجد أنظمة متاحة لك بعد.</p>
+            )}
+            <nav className="space-y-1">
+              {systems.map((sys) => {
+                const Icon = iconFor(sys.key);
+                const isOpen = expanded === sys.id;
+                const accent = sys.color ?? "#1178b8";
+                return (
+                  <div key={sys.id} className="rounded-xl">
+                    <button
+                      onClick={() => setExpanded(isOpen ? null : sys.id)}
+                      className="flex w-full items-center gap-3 rounded-xl p-2.5 text-right hover:bg-slate-50"
+                    >
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg text-white" style={{ backgroundColor: accent }}>
+                        <Icon className="size-5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold text-slate-900">{sys.name}</span>
+                        {sys.description && <span className="block truncate text-xs text-slate-400">{sys.description}</span>}
+                      </span>
+                      {isOpen ? <ChevronDown className="size-4 shrink-0 text-slate-400" /> : <ChevronLeft className="size-4 shrink-0 text-slate-400" />}
+                    </button>
+
+                    {isOpen && (
+                      <div className="mt-0.5 space-y-0.5 pb-1 pr-3">
+                        <button
+                          onClick={() => openTarget(sys, "/", sys.name)}
+                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50 ${
+                            target?.key === sys.key && target?.path === "/" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700"
+                          }`}
+                        >
+                          <Home className="size-4 text-slate-400" /> الرئيسية
+                        </button>
+                        {sys.links.map((link) => {
+                          const active = target?.key === sys.key && target?.path === link.path;
+                          return (
+                            <button
+                              key={link.id}
+                              onClick={() => openTarget(sys, link.path, link.label)}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50 ${
+                                active ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700"
+                              }`}
+                            >
+                              <span>{link.label}</span>
+                              <ChevronLeft className="size-4 text-slate-300" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+          </div>
+        </aside>
+
+        {/* Embedded system view */}
+        <main className={`${mobileView === "frame" ? "flex" : "hidden"} min-w-0 flex-1 flex-col bg-white lg:flex`}>
+          {frameSrc ? (
+            <>
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
+                <button onClick={() => setMobileView("nav")} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 lg:hidden">
+                  <ArrowRight className="size-4" /> الأنظمة
+                </button>
+                <span className="truncate text-xs font-medium text-slate-500">{target?.label}</span>
+                <a href={frameSrc} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700" title="فتح في تبويب جديد">
+                  <ExternalLink className="size-3.5" />
+                </a>
+              </div>
+              <iframe key={frameSrc} src={frameSrc} title={target?.label ?? "system"} className="min-h-0 w-full flex-1 border-0" />
+            </>
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-slate-400">
+              <AppWindow className="size-12 opacity-40" />
+              <p className="text-sm">اختر نظامًا من القائمة لعرضه هنا داخل المنصّة.</p>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
