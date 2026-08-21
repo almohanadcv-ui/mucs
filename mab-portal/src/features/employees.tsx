@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Search, ArrowRight, Loader2, Plus, Laptop, Car, Package, Smartphone,
-  RotateCcw, Pencil, X, User, Building2, CalendarDays, History,
+  RotateCcw, Pencil, X, User, Building2, CalendarDays, History, Upload, FileSpreadsheet, CheckCircle2,
 } from "lucide-react";
 
 // ── types ──
@@ -37,14 +37,15 @@ const fmtDate = (v: string | null) => (v ? new Date(v).toLocaleDateString("ar-EG
 export function EmployeesView({ isAdmin }: { isAdmin: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
   if (selected) return <EmployeeProfile id={selected} isAdmin={isAdmin} onBack={() => setSelected(null)} />;
-  return <EmployeeList onOpen={setSelected} />;
+  return <EmployeeList onOpen={setSelected} isAdmin={isAdmin} />;
 }
 
-function EmployeeList({ onOpen }: { onOpen: (id: string) => void }) {
+function EmployeeList({ onOpen, isAdmin }: { onOpen: (id: string) => void; isAdmin: boolean }) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ rows: EmpRow[]; total: number; pages: number; stats: { active: number; all: number } } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importOpen, setImportOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -57,10 +58,18 @@ function EmployeeList({ onOpen }: { onOpen: (id: string) => void }) {
 
   return (
     <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <User className="size-6 text-[#1178b8]" />
-        <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">قائمة الموظفين</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <User className="size-6 text-[#1178b8]" />
+          <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">قائمة الموظفين</h1>
+        </div>
+        {isAdmin && (
+          <button onClick={() => setImportOpen(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+            <Upload className="size-4" /> استيراد Excel
+          </button>
+        )}
       </div>
+      {importOpen && <ImportModal onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); void load(); }} />}
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-slate-200 bg-white p-4">
           <div className="text-sm text-slate-500">إجمالي الموظفين</div>
@@ -293,6 +302,61 @@ function EditEmployeeModal({ user, onClose, onDone }: { user: Profile["user"]; o
       {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
       <button onClick={save} disabled={busy} className="mt-4 w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">{busy ? "جارٍ الحفظ…" : "حفظ"}</button>
       <p className="mt-2 text-center text-[11px] text-slate-400">القسم والمدير يُعدّلان من لوحة الإدارة.</p>
+    </Modal>
+  );
+}
+
+function ImportModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [result, setResult] = useState<{ created: number; updated: number; skipped: number; linked: number } | null>(null);
+
+  async function upload() {
+    if (!file) return;
+    setBusy(true); setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/employees/import", { method: "POST", body: fd });
+      const b = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(b?.error || "تعذّر الاستيراد.");
+      setResult(b);
+    } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal title="استيراد موظفين من Excel" onClose={onClose}>
+      {result ? (
+        <div className="space-y-3 text-center">
+          <CheckCircle2 className="mx-auto size-12 text-emerald-500" />
+          <p className="font-semibold text-slate-800">تم الاستيراد بنجاح</p>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="rounded-xl bg-emerald-50 p-3"><div className="text-lg font-bold text-emerald-700">{result.created}</div>جديد</div>
+            <div className="rounded-xl bg-sky-50 p-3"><div className="text-lg font-bold text-sky-700">{result.updated}</div>محدّث</div>
+            <div className="rounded-xl bg-slate-50 p-3"><div className="text-lg font-bold text-slate-700">{result.linked}</div>رُبط بمدير</div>
+            <div className="rounded-xl bg-amber-50 p-3"><div className="text-lg font-bold text-amber-700">{result.skipped}</div>مُتخطّى</div>
+          </div>
+          <button onClick={onDone} className="w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white">تم</button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <div className="rounded-xl bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+            الأعمدة المدعومة (بالعربي أو الإنجليزي): <b>الاسم، البريد الإلكتروني</b> (مطلوبان)، رقم الموظف، المسمى الوظيفي،
+            القسم، المدير (بريده أو اسمه)، الجوال، رقم الهوية، نوع التوظيف، تاريخ التعيين، الموقع.
+            الأقسام تُنشأ تلقائيًا، والمطابقة بالبريد الإلكتروني.
+          </div>
+          <label className="flex cursor-pointer flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-slate-300 p-6 text-center hover:bg-slate-50">
+            <FileSpreadsheet className="size-8 text-slate-400" />
+            <span className="text-sm font-medium text-slate-700">{file ? file.name : "اختر ملف Excel (.xlsx)"}</span>
+            <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <button onClick={upload} disabled={!file || busy} className="w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
+            {busy ? "جارٍ الاستيراد…" : "استيراد"}
+          </button>
+        </div>
+      )}
     </Modal>
   );
 }
