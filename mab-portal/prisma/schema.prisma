@@ -18,23 +18,24 @@ datasource db {
 /// A portal identity — passwordless (email + emailed code). Separate from every
 /// system's internal users; linked to them only by matching email at SSO time.
 model PortalUser {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
+  id           String  @id @default(uuid()) @db.Uuid
+  email        String  @unique
   name         String
   avatarUrl    String?
-  isActive     Boolean   @default(true)
+  isActive     Boolean @default(true)
   /// IT/super admin — sees every system regardless of explicit grants, and
   /// manages users + access from the portal admin panel.
-  isSuperAdmin Boolean   @default(false)
+  isSuperAdmin Boolean @default(false)
 
   lastLoginAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   deletedAt   DateTime?
 
-  challenges LoginChallenge[]
-  sessions   RefreshToken[]
-  access     UserSystemAccess[]
+  challenges    LoginChallenge[]
+  sessions      RefreshToken[]
+  access        UserSystemAccess[]
+  notifications Notification[]
 
   @@index([deletedAt])
   @@map("portal_users")
@@ -121,6 +122,76 @@ model LoginChallenge {
   @@index([userId, consumedAt])
   @@index([expiresAt])
   @@map("login_challenges")
+}
+
+/// Company announcements shown on the portal home and optionally emailed to all.
+model Announcement {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String
+  body        String
+  important   Boolean   @default(false)
+  emailSent   Boolean   @default(false)
+  createdById String?   @db.Uuid
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  @@index([createdAt])
+  @@map("announcements")
+}
+
+/// Per-user notification — shown in the bell and (optionally) emailed.
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  type      String    @default("INFO") // INFO | ANNOUNCEMENT | EVENT | FEEDBACK | SYSTEM
+  title     String
+  body      String?
+  link      String?
+  readAt    DateTime?
+  emailSent Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  user PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+/// A suggestion or a complaint submitted from the top bar.
+model Feedback {
+  id          String   @id @default(uuid()) @db.Uuid
+  kind        String // SUGGESTION | COMPLAINT
+  subject     String
+  body        String
+  status      String   @default("NEW") // NEW | SEEN | RESOLVED
+  authorId    String?  @db.Uuid
+  authorName  String?
+  authorEmail String?
+  createdAt   DateTime @default(now())
+
+  @@index([kind, status])
+  @@index([createdAt])
+  @@map("feedback")
+}
+
+/// An occasion (birthday, work anniversary, event). A daily job emails the person
+/// and posts a notification on their special day.
+model Event {
+  id          String   @id @default(uuid()) @db.Uuid
+  type        String   @default("OCCASION") // BIRTHDAY | ANNIVERSARY | OCCASION
+  title       String
+  note        String?
+  date        DateTime // the occasion date (year may be ignored for recurring)
+  recurring   Boolean  @default(true) // repeats yearly (e.g. birthdays)
+  personName  String?
+  personEmail String?
+  notifiedOn  String? // last YYYY-MM-DD an email was sent (prevents duplicates)
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  @@index([date])
+  @@map("events")
 }
 
 /// Append-only audit trail for the portal: who did what (created a user, granted

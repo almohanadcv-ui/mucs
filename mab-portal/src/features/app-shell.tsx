@@ -19,6 +19,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { LauncherSystem } from "@/lib/access";
+import { FeedbackButtons } from "./feedback";
+import { NotificationsBell } from "./notifications-bell";
+import { Assistant } from "./assistant";
+import { HomeDashboard } from "./home-dashboard";
 
 const ICONS: Record<string, LucideIcon> = {
   evaluation: ClipboardList,
@@ -42,8 +46,8 @@ export function AppShell({
 }) {
   const [expanded, setExpanded] = useState<string | null>(systems[0]?.id ?? null);
   const [target, setTarget] = useState<Target>(null);
-  // Mobile: show the systems list or the embedded frame.
-  const [mobileView, setMobileView] = useState<"nav" | "frame">("nav");
+  // Mobile: the systems list is an off-canvas drawer over the main content.
+  const [navOpen, setNavOpen] = useState(false);
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -52,7 +56,12 @@ export function AppShell({
 
   function openTarget(sys: LauncherSystem, path: string, label: string) {
     setTarget({ key: sys.key, path, label });
-    setMobileView("frame");
+    setNavOpen(false);
+  }
+
+  function goHome() {
+    setTarget(null);
+    setNavOpen(false);
   }
 
   // Same-origin proxy path so the system renders inside the portal.
@@ -63,25 +72,27 @@ export function AppShell({
       {/* Top bar */}
       <header className="z-20 flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2.5 sm:px-5">
         <div className="flex items-center gap-2">
-          {/* Mobile: back to systems */}
-          {mobileView === "frame" && (
-            <button onClick={() => setMobileView("nav")} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden">
-              <Menu className="size-5" />
-            </button>
-          )}
-          <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">
-            M<span className="text-[#5aa6e0]">A</span>B
-          </span>
-          <span className="hidden font-semibold text-slate-700 sm:inline">منصّة MAB</span>
+          {/* Mobile: open the systems drawer */}
+          <button onClick={() => setNavOpen(true)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden" aria-label="الأنظمة">
+            <Menu className="size-5" />
+          </button>
+          <button onClick={goHome} className="flex items-center gap-2">
+            <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">
+              M<span className="text-[#5aa6e0]">A</span>B
+            </span>
+            <span className="hidden font-semibold text-slate-700 sm:inline">منصّة MAB</span>
+          </button>
           {target && <span className="hidden truncate text-sm text-slate-400 md:inline">/ {target.label}</span>}
         </div>
         <div className="flex items-center gap-1.5">
+          <FeedbackButtons />
+          <NotificationsBell />
           {isAdmin && (
             <a href="/admin" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
               <Settings className="size-4" /> <span className="hidden sm:inline">الإدارة</span>
             </a>
           )}
-          <span className="hidden max-w-[28vw] truncate text-sm text-slate-600 md:inline">{userName}</span>
+          <span className="hidden max-w-[20vw] truncate text-sm text-slate-600 lg:inline">{userName}</span>
           <button onClick={logout} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
             <LogOut className="size-4" /> <span className="hidden sm:inline">خروج</span>
           </button>
@@ -89,9 +100,14 @@ export function AppShell({
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Systems sidebar (right in RTL) */}
+        {/* Backdrop for the mobile drawer */}
+        {navOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setNavOpen(false)} />}
+
+        {/* Systems sidebar (right in RTL; off-canvas drawer on mobile) */}
         <aside
-          className={`${mobileView === "nav" ? "flex" : "hidden"} w-full shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white lg:flex lg:w-80`}
+          className={`shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white lg:static lg:z-auto lg:flex lg:w-80 ${
+            navOpen ? "fixed inset-y-0 right-0 z-40 flex w-80 max-w-[85vw] shadow-2xl" : "hidden"
+          }`}
         >
           <div className="p-3">
             <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">الأنظمة</p>
@@ -153,13 +169,13 @@ export function AppShell({
           </div>
         </aside>
 
-        {/* Embedded system view */}
-        <main className={`${mobileView === "frame" ? "flex" : "hidden"} min-w-0 flex-1 flex-col bg-white lg:flex`}>
+        {/* Main content: home dashboard or the embedded system */}
+        <main className="flex min-w-0 flex-1 flex-col bg-white">
           {frameSrc ? (
             <>
               <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-3 py-1.5">
-                <button onClick={() => setMobileView("nav")} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800 lg:hidden">
-                  <ArrowRight className="size-4" /> الأنظمة
+                <button onClick={goHome} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-800">
+                  <ArrowRight className="size-4" /> الرئيسية
                 </button>
                 <span className="truncate text-xs font-medium text-slate-500">{target?.label}</span>
                 <a href={frameSrc} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-slate-400 hover:text-slate-700" title="فتح في تبويب جديد">
@@ -169,13 +185,15 @@ export function AppShell({
               <iframe key={frameSrc} src={frameSrc} title={target?.label ?? "system"} className="min-h-0 w-full flex-1 border-0" />
             </>
           ) : (
-            <div className="flex flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-slate-400">
-              <AppWindow className="size-12 opacity-40" />
-              <p className="text-sm">اختر نظامًا من القائمة لعرضه هنا داخل المنصّة.</p>
+            <div className="flex-1 overflow-y-auto">
+              <HomeDashboard userName={userName} isAdmin={isAdmin} />
             </div>
           )}
         </main>
       </div>
+
+      {/* Floating AI assistant */}
+      <Assistant />
     </div>
   );
 }

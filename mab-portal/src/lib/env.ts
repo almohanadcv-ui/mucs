@@ -11,6 +11,11 @@ export const env = {
   GRAPH_CLIENT_SECRET: process.env.GRAPH_CLIENT_SECRET ?? "",
   MAIL_FROM: process.env.MAIL_FROM ?? "",
   MAIL_FROM_NAME: process.env.MAIL_FROM_NAME ?? "منصّة MAB",
+
+  ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
+  ASSISTANT_MODEL: process.env.ASSISTANT_MODEL ?? "claude-haiku-4-5-20251001",
+
+  CRON_SECRET: process.env.CRON_SECRET ?? "",
 };
 
 export function isMailConfigured(): boolean {
