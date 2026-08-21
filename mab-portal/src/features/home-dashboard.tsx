@@ -6,7 +6,7 @@ import { Megaphone, Cake, CalendarDays, Bot, Plus, X } from "lucide-react";
 type Ann = { id: string; title: string; body: string; important: boolean; createdAt: string };
 type Ev = { id: string; type: string; title: string; note: string | null; date: string; personName: string | null };
 
-export function HomeDashboard({ userName, isAdmin }: { userName: string; isAdmin: boolean }) {
+export function HomeDashboard({ userName, canPost }: { userName: string; canPost: boolean }) {
   const [anns, setAnns] = useState<Ann[]>([]);
   const [events, setEvents] = useState<Ev[]>([]);
   const [modal, setModal] = useState<null | "ann" | "event">(null);
@@ -32,7 +32,7 @@ export function HomeDashboard({ userName, isAdmin }: { userName: string; isAdmin
           <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">هلا بك يا {userName} 👋</h1>
           <p className="mt-1 text-slate-500">تابع أهم التحديثات في بداية يومك من هنا.</p>
         </div>
-        {isAdmin && (
+        {canPost && (
           <div className="flex gap-2">
             <button onClick={() => setModal("ann")} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
               <Plus className="size-4" /> إعلان
@@ -131,15 +131,32 @@ function AnnouncementModal({ onClose, onDone }: { onClose: () => void; onDone: (
   const [body, setBody] = useState("");
   const [important, setImportant] = useState(false);
   const [email, setEmail] = useState(true);
+  const [audience, setAudience] = useState<"ALL" | "DEPARTMENTS" | "USERS">("ALL");
+  const [depts, setDepts] = useState<{ id: string; name: string }[]>([]);
+  const [deptIds, setDeptIds] = useState<string[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
+  const [userIds, setUserIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => { fetch("/api/departments").then((r) => r.json()).then((b) => setDepts(b.rows ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    if (audience !== "USERS") return;
+    const t = setTimeout(() => {
+      fetch(`/api/employees?search=${encodeURIComponent(userSearch)}&page=1`).then((r) => r.json()).then((b) => setUsers((b.rows ?? []).map((u: { id: string; name: string }) => ({ id: u.id, name: u.name })))).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [audience, userSearch]);
+
+  const toggle = (arr: string[], id: string) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setErr(null);
     try {
       const res = await fetch("/api/announcements", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, body, important, email }),
+        body: JSON.stringify({ title, body, important, email, audience, departmentIds: deptIds, userIds }),
       });
       const b = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(b?.error || "تعذّر النشر.");
@@ -151,9 +168,43 @@ function AnnouncementModal({ onClose, onDone }: { onClose: () => void; onDone: (
     <Modal title="إعلان جديد" onClose={onClose}>
       <form onSubmit={submit} className="space-y-3">
         <input value={title} onChange={(e) => setTitle(e.target.value)} required placeholder="عنوان الإعلان" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]" />
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} required rows={5} placeholder="نص الإعلان…" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]" />
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} required rows={4} placeholder="نص الإعلان…" className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-[#1178b8]" />
+
+        {/* Audience */}
+        <div>
+          <div className="mb-1 text-sm font-medium text-slate-700">المستهدفون</div>
+          <div className="flex gap-1.5">
+            {([["ALL", "الكل"], ["DEPARTMENTS", "أقسام"], ["USERS", "موظفون"]] as const).map(([v, l]) => (
+              <button type="button" key={v} onClick={() => setAudience(v)} className={`rounded-lg border px-3 py-1.5 text-sm ${audience === v ? "border-[#1178b8] bg-[#1178b8] text-white" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {audience === "DEPARTMENTS" && (
+          <div className="max-h-40 space-y-1 overflow-y-auto rounded-xl border border-slate-200 p-2">
+            {depts.map((d) => (
+              <label key={d.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-slate-50">
+                <input type="checkbox" checked={deptIds.includes(d.id)} onChange={() => setDeptIds((a) => toggle(a, d.id))} className="size-4" /> {d.name}
+              </label>
+            ))}
+            {depts.length === 0 && <p className="p-2 text-xs text-slate-400">لا أقسام.</p>}
+          </div>
+        )}
+        {audience === "USERS" && (
+          <div className="rounded-xl border border-slate-200 p-2">
+            <input value={userSearch} onChange={(e) => setUserSearch(e.target.value)} placeholder="ابحث عن موظف…" className="mb-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm outline-none" />
+            <div className="max-h-36 space-y-1 overflow-y-auto">
+              {users.map((u) => (
+                <label key={u.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-slate-50">
+                  <input type="checkbox" checked={userIds.includes(u.id)} onChange={() => setUserIds((a) => toggle(a, u.id))} className="size-4" /> {u.name}
+                </label>
+              ))}
+            </div>
+            {userIds.length > 0 && <p className="mt-1 text-xs text-slate-500">المحددون: {userIds.length}</p>}
+          </div>
+        )}
+
         <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={important} onChange={(e) => setImportant(e.target.checked)} className="size-4" /> مهم</label>
-        <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} className="size-4" /> إرسال إشعار + بريد للجميع</label>
+        <label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={email} onChange={(e) => setEmail(e.target.checked)} className="size-4" /> إرسال بريد أيضًا (مع إشعار الموقع)</label>
         {err && <p className="text-sm text-red-600">{err}</p>}
         <button type="submit" disabled={busy} className="w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">{busy ? "جارٍ النشر…" : "نشر الإعلان"}</button>
       </form>

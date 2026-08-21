@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { canManageContent } from "@/lib/content";
 
 export const runtime = "nodejs";
 
@@ -20,7 +21,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
-  if (!session.admin) return NextResponse.json({ error: "للمشرفين فقط" }, { status: 403 });
+  if (!(await canManageContent(session.sub, session.admin))) {
+    return NextResponse.json({ error: "لا تملك صلاحية النشر." }, { status: 403 });
+  }
 
   const b = (await req.json().catch(() => ({}))) as {
     type?: string;

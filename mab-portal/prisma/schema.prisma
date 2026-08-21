@@ -26,6 +26,8 @@ model PortalUser {
   /// IT/super admin — sees every system regardless of explicit grants, and
   /// manages users + access from the portal admin panel.
   isSuperAdmin Boolean @default(false)
+  /// Granted by IT — may post announcements and occasions (without full admin).
+  canManageContent Boolean @default(false)
 
   // Org structure
   jobTitle     String?
@@ -210,6 +212,8 @@ model Announcement {
   body        String
   important   Boolean   @default(false)
   emailSent   Boolean   @default(false)
+  /// Human-readable audience summary (الكل / أقسام: … / موظفون محددون).
+  audience    String?
   createdById String?   @db.Uuid
   createdAt   DateTime  @default(now())
   deletedAt   DateTime?

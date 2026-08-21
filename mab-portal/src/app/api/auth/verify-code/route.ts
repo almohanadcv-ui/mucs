@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.portalUser.findFirst({
     where: { email: clean, isActive: true, deletedAt: null },
-    select: { id: true, email: true, name: true, isSuperAdmin: true },
+    select: { id: true, email: true, name: true, isSuperAdmin: true, canManageContent: true },
   });
   if (!user) return fail("رمز غير صحيح أو منتهي.", 401);
 
@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
     email: user.email,
     name: user.name,
     admin: user.isSuperAdmin,
+    content: user.canManageContent,
   });
 
   const res = NextResponse.json({ ok: true });

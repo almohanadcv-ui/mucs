@@ -9,6 +9,7 @@ import {
   Power,
   KeyRound,
   Building,
+  Megaphone,
   X,
   ArrowRight,
   ArrowLeft,
@@ -21,6 +22,7 @@ type UserRow = {
   name: string;
   isActive: boolean;
   isSuperAdmin: boolean;
+  canManageContent: boolean;
   jobTitle: string | null;
   departmentId: string | null;
   managerId: string | null;
@@ -154,6 +156,16 @@ export function AdminClient() {
                         className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
                       >
                         <Building className="size-3.5" /> الهيكل
+                      </button>
+                      <button
+                        onClick={() => act(() => fetch(`/api/admin/users/${u.id}`, {
+                          method: "PATCH", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ canManageContent: !u.canManageContent }),
+                        }))}
+                        title="صلاحية نشر الإعلانات والمناسبات"
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium ${u.canManageContent ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 text-slate-700 hover:bg-slate-50"}`}
+                      >
+                        <Megaphone className="size-3.5" /> النشر
                       </button>
                       <button
                         onClick={() => act(() => fetch(`/api/admin/users/${u.id}`, {

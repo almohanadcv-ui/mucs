@@ -11,5 +11,12 @@ export default async function HomePage() {
 
   const systems = await systemsForUser(session.sub, session.admin);
 
-  return <AppShell userName={session.name} isAdmin={session.admin} systems={systems} />;
+  return (
+    <AppShell
+      userName={session.name}
+      isAdmin={session.admin}
+      canPostContent={session.admin || session.content}
+      systems={systems}
+    />
+  );
 }

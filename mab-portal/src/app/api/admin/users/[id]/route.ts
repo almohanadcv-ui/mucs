@@ -21,6 +21,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     name?: string;
     isActive?: boolean;
     isSuperAdmin?: boolean;
+    canManageContent?: boolean;
     jobTitle?: string | null;
     departmentId?: string | null;
     managerId?: string | null;
@@ -55,6 +56,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ...(body.name !== undefined ? { name: body.name.trim() } : {}),
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
       ...(body.isSuperAdmin !== undefined ? { isSuperAdmin: body.isSuperAdmin } : {}),
+      ...(body.canManageContent !== undefined ? { canManageContent: body.canManageContent } : {}),
       ...(body.jobTitle !== undefined ? { jobTitle: body.jobTitle?.trim() || null } : {}),
       ...(body.departmentId !== undefined ? { departmentId: body.departmentId || null } : {}),
       ...(managerId !== undefined ? { managerId } : {}),

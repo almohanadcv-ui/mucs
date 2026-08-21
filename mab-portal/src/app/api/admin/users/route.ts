@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
         name: true,
         isActive: true,
         isSuperAdmin: true,
+        canManageContent: true,
         jobTitle: true,
         departmentId: true,
         managerId: true,

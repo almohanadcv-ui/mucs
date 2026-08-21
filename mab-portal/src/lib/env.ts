@@ -16,7 +16,20 @@ export const env = {
   ASSISTANT_MODEL: process.env.ASSISTANT_MODEL ?? "claude-haiku-4-5-20251001",
 
   CRON_SECRET: process.env.CRON_SECRET ?? "",
+
+  // Only emails on these domains may sign in (comma-separated). Empty = any.
+  ALLOWED_EMAIL_DOMAINS: (process.env.ALLOWED_EMAIL_DOMAINS ?? "mabunited.com")
+    .split(",")
+    .map((d) => d.trim().toLowerCase())
+    .filter(Boolean),
 };
+
+/** Is this email on an allowed domain? (true when no allowlist is configured). */
+export function isAllowedEmailDomain(email: string): boolean {
+  if (env.ALLOWED_EMAIL_DOMAINS.length === 0) return true;
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  return env.ALLOWED_EMAIL_DOMAINS.includes(domain);
+}
 
 export function isMailConfigured(): boolean {
   return Boolean(

@@ -8,26 +8,45 @@ export const runtime = "nodejs";
 
 // Map many possible Arabic/English header names to canonical fields.
 const ALIASES: Record<string, string[]> = {
-  name: ["name", "fullname", "الاسم", "اسم", "الاسم الكامل", "الاسم كاملا", "الاسم كاملاً"],
-  email: ["email", "e-mail", "mail", "البريد", "البريد الإلكتروني", "الايميل", "الإيميل"],
+  name: ["name", "fullname", "الاسم", "اسم", "الاسم الكامل", "الاسم كاملا", "الاسم كاملا باللغة العربية", "الاسم الكامل بالعربية", "الاسم بالعربي"],
+  email: ["email", "e-mail", "mail", "البريد", "البريد الالكتروني", "الايميل"],
   employeeNo: ["employeeno", "empno", "id", "رقم الموظف", "الرقم الوظيفي", "رقم", "الرقم"],
-  jobTitle: ["jobtitle", "title", "المسمى", "المسمى الوظيفي", "الوظيفة", "المسمّى الوظيفي"],
-  department: ["department", "dept", "القسم", "الادارة", "الإدارة"],
+  jobTitle: ["jobtitle", "title", "المسمى", "المسمى الوظيفي", "الوظيفة"],
+  department: ["department", "dept", "القسم", "الادارة", "الاداره"],
   manager: ["manager", "manageremail", "المدير", "المدير المباشر", "بريد المدير"],
   phone: ["phone", "mobile", "الجوال", "الهاتف", "رقم الجوال"],
-  nationalId: ["nationalid", "iqama", "الهوية", "رقم الهوية", "الاقامة", "الإقامة", "رقم الهوية/الإقامة"],
+  nationalId: ["nationalid", "iqama", "الهوية", "رقم الهوية", "الاقامه", "الاقامة", "رقم الهوية/الاقامة", "رقم الهويه/الاقامه"],
   employmentType: ["employmenttype", "type", "نوع التوظيف", "نوع العقد"],
-  hireDate: ["hiredate", "joindate", "تاريخ التعيين", "تاريخ الانضمام", "تاريخ المباشرة"],
+  hireDate: ["hiredate", "joindate", "تاريخ التعيين", "تاريخ الانضمام", "تاريخ المباشره"],
   location: ["location", "الموقع"],
+  workUnit: ["workunit", "وحدة العمل", "وحده العمل", "الاداره المسؤوله 1", "الادارة المسؤولة 1", "الاداره المسؤوله", "الموقع الوظيفي"],
+  birthDate: ["birthdate", "dob", "تاريخ الميلاد"],
+  status: ["status", "حالة الموظف", "حاله الموظف"],
 };
 
-const norm = (s: string) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+// Normalise a header: lowercase, collapse spaces, strip Arabic diacritics/tatweel,
+// and unify hamza/alef/taa-marbuta so "الإلكتروني" == "الالكتروني" == "الإلكترونى".
+const norm = (s: string) =>
+  String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[ً-ٰٟـ]/g, "") // tashkeel + tatweel
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ");
+
+// Pre-normalise every alias once so header matching is diacritic-insensitive.
+const NORM_ALIASES: Record<string, string[]> = Object.fromEntries(
+  Object.entries(ALIASES).map(([field, names]) => [field, names.map(norm)]),
+);
 
 function buildHeaderMap(headers: string[]): Record<number, string> {
   const map: Record<number, string> = {};
   headers.forEach((h, i) => {
     const n = norm(h);
-    for (const [field, names] of Object.entries(ALIASES)) {
+    if (!n) return;
+    for (const [field, names] of Object.entries(NORM_ALIASES)) {
       if (names.includes(n)) { map[i] = field; break; }
     }
   });
@@ -49,12 +68,20 @@ export async function POST(req: NextRequest) {
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: "" });
     if (matrix.length < 2) return NextResponse.json({ error: "الملف فارغ أو بلا بيانات." }, { status: 400 });
-    const headers = (matrix[0] as unknown[]).map((c) => String(c ?? ""));
-    const hmap = buildHeaderMap(headers);
-    if (!Object.values(hmap).includes("email")) {
+
+    // Find the real header row (files often have a category row on top): the
+    // first of the first 6 rows whose columns map to the email field.
+    let headerRowIdx = -1;
+    let hmap: Record<number, string> = {};
+    for (let i = 0; i < Math.min(6, matrix.length); i++) {
+      const hdrs = (matrix[i] as unknown[]).map((c) => String(c ?? ""));
+      const m = buildHeaderMap(hdrs);
+      if (Object.values(m).includes("email")) { headerRowIdx = i; hmap = m; break; }
+    }
+    if (headerRowIdx === -1) {
       return NextResponse.json({ error: "لم يُعثر على عمود «البريد الإلكتروني». تأكّد من رؤوس الأعمدة." }, { status: 400 });
     }
-    rows = (matrix.slice(1) as unknown[][]).map((r) => {
+    rows = (matrix.slice(headerRowIdx + 1) as unknown[][]).map((r) => {
       const o: Record<string, string> = {};
       r.forEach((cell, i) => {
         const field = hmap[i];
@@ -83,6 +110,8 @@ export async function POST(req: NextRequest) {
     const email = norm(r.email);
     const name = r.name?.trim();
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !name) { skipped++; continue; }
+    const s = norm(r.status || "");
+    const isActive = !(s.includes("منتهي") || s.includes("موقوف") || s.includes("غير نشط") || s === "inactive");
     const data = {
       name,
       employeeNo: r.employeeNo || null,
@@ -91,15 +120,26 @@ export async function POST(req: NextRequest) {
       phone: r.phone || null,
       nationalId: r.nationalId || null,
       employmentType: r.employmentType || null,
-      location: r.location || null,
+      workUnit: r.workUnit || null,
+      location: r.location || r.workUnit || null,
       hireDate: r.hireDate ? new Date(r.hireDate) : null,
-      isActive: true,
+      isActive,
       deletedAt: null,
     };
     const existing = await prisma.portalUser.findUnique({ where: { email }, select: { id: true } });
     if (existing) { await prisma.portalUser.update({ where: { email }, data }); updated++; }
     else { await prisma.portalUser.create({ data: { email, ...data } }); created++; }
     if (r.manager?.trim()) managerRefByEmail.set(email, r.manager.trim());
+
+    // Birthday → an Event (so it shows on the home page + emails on the day).
+    if (r.birthDate) {
+      const bd = new Date(r.birthDate);
+      if (!Number.isNaN(bd.getTime())) {
+        const has = await prisma.event.findFirst({ where: { type: "BIRTHDAY", personEmail: email }, select: { id: true } });
+        if (has) await prisma.event.update({ where: { id: has.id }, data: { date: bd, personName: name } });
+        else await prisma.event.create({ data: { type: "BIRTHDAY", title: `عيد ميلاد ${name}`, date: bd, recurring: true, personName: name, personEmail: email } });
+      }
+    }
   }
 
   // Second pass: resolve managers (by email, else by exact name).

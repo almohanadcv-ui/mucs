@@ -10,11 +10,12 @@ export interface SessionClaims {
   email: string;
   name: string;
   admin: boolean;
+  content: boolean; // may post announcements/occasions
 }
 
 /** Portal session token (httpOnly cookie), valid 12h. */
 export async function signSession(claims: SessionClaims): Promise<string> {
-  return new SignJWT({ email: claims.email, name: claims.name, admin: claims.admin })
+  return new SignJWT({ email: claims.email, name: claims.name, admin: claims.admin, content: claims.content })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(claims.sub)
     .setIssuedAt()
@@ -30,6 +31,7 @@ export async function verifySession(token: string): Promise<SessionClaims | null
       email: String(payload.email),
       name: String(payload.name),
       admin: Boolean(payload.admin),
+      content: Boolean(payload.content),
     };
   } catch {
     return null;

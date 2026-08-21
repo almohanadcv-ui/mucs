@@ -57,3 +57,38 @@ export async function notifyAll(opts: {
   }
   return users.length;
 }
+
+/**
+ * Notify a targeted audience: everyone, specific departments, or specific
+ * employees. Returns how many were reached and a human-readable summary.
+ */
+export async function notifyTargeted(opts: {
+  audience: "ALL" | "DEPARTMENTS" | "USERS";
+  departmentIds?: string[];
+  userIds?: string[];
+  type?: string;
+  title: string;
+  body?: string;
+  link?: string;
+  email?: boolean;
+  accent?: string;
+}): Promise<{ count: number; summary: string }> {
+  let where: { isActive: boolean; deletedAt: null; departmentId?: { in: string[] }; id?: { in: string[] } };
+  let summary = "الكل";
+  if (opts.audience === "DEPARTMENTS" && opts.departmentIds?.length) {
+    where = { isActive: true, deletedAt: null, departmentId: { in: opts.departmentIds } };
+    const depts = await prisma.department.findMany({ where: { id: { in: opts.departmentIds } }, select: { name: true } });
+    summary = `أقسام: ${depts.map((d) => d.name).join("، ")}`;
+  } else if (opts.audience === "USERS" && opts.userIds?.length) {
+    where = { isActive: true, deletedAt: null, id: { in: opts.userIds } };
+    summary = `${opts.userIds.length} موظف محدد`;
+  } else {
+    where = { isActive: true, deletedAt: null };
+  }
+
+  const users = await prisma.portalUser.findMany({ where, select: { id: true, email: true } });
+  for (const u of users) {
+    await notifyUser({ type: opts.type, title: opts.title, body: opts.body, link: opts.link, email: opts.email, accent: opts.accent, userId: u.id, toEmail: u.email });
+  }
+  return { count: users.length, summary };
+}
