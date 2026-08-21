@@ -1,0 +1,143 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// MAB Portal — a standalone unified launcher for all MAB systems.
+// Isolated: its own database, its own identity. It never touches any existing
+// system's database. It only decides who sees which system, and hands off a
+// short-lived SSO token so each system can open its own session by email.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// A portal identity — passwordless (email + emailed code). Separate from every
+/// system's internal users; linked to them only by matching email at SSO time.
+model PortalUser {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  /// IT/super admin — sees every system regardless of explicit grants, and
+  /// manages users + access from the portal admin panel.
+  isSuperAdmin Boolean   @default(false)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  challenges LoginChallenge[]
+  sessions   RefreshToken[]
+  access     UserSystemAccess[]
+
+  @@index([deletedAt])
+  @@map("portal_users")
+}
+
+/// The catalogue of systems shown in the launcher. Static-ish reference data,
+/// managed by IT. baseUrl + ssoPath are where the portal hands off to.
+model System {
+  id          String  @id @default(uuid()) @db.Uuid
+  /// Stable machine key: "evaluation" | "gatepass" | "mica" | "tasks" | "tickets".
+  key         String  @unique
+  name        String
+  nameEn      String?
+  description String?
+  /// lucide-react icon name, rendered in the sidebar.
+  icon        String  @default("AppWindow")
+  /// Accent color (hex) for the tile.
+  color       String?
+  /// Where the system lives (same domain, path or subdomain).
+  baseUrl     String
+  /// The SSO handoff path added to each system (e.g. "/sso"). Empty = link only.
+  ssoPath     String  @default("/sso")
+  order       Int     @default(0)
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  links  SystemLink[]
+  access UserSystemAccess[]
+
+  @@map("systems")
+}
+
+/// A sub-link shown under a system when its tile is expanded (e.g. "الموظفون",
+/// "التقارير"). Opened through the same SSO handoff with a `next` target.
+model SystemLink {
+  id       String  @id @default(uuid()) @db.Uuid
+  systemId String  @db.Uuid
+  label    String
+  labelEn  String?
+  /// Path within the system (relative to baseUrl), used as the SSO `next` target.
+  path     String  @default("/")
+  icon     String?
+  order    Int     @default(0)
+
+  system System @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@index([systemId, order])
+  @@map("system_links")
+}
+
+/// Which portal user may see which system. Managed per-user by IT. A super admin
+/// bypasses this table entirely.
+model UserSystemAccess {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  systemId    String   @db.Uuid
+  grantedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+
+  user   PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  system System     @relation(fields: [systemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, systemId])
+  @@index([userId])
+  @@map("user_system_access")
+}
+
+/// Emailed six-digit sign-in code (passwordless). Only a hash is stored.
+model LoginChallenge {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  user PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consumedAt])
+  @@index([expiresAt])
+  @@map("login_challenges")
+}
+
+/// Portal session (rotating refresh token; only a hash is stored).
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  family    String    @db.Uuid
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+  ip        String?
+  userAgent String?
+
+  user PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([family])
+  @@map("refresh_tokens")
+}

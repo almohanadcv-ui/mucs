@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  --mab-navy: #0f2b46;
+  --mab-blue: #1178b8;
+  --mab-blue-dark: #075d96;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  font-family: "Segoe UI", Tahoma, "Helvetica Neue", Arial, "Noto Naskh Arabic", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Never let the page scroll sideways on small screens. */
+html {
+  overflow-x: hidden;
+}
