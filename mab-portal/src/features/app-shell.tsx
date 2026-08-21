@@ -54,6 +54,9 @@ export function AppShell({
   const [internal, setInternal] = useState<null | "org" | "feedback">(null);
   // Mobile: the systems list is an off-canvas drawer over the main content.
   const [navOpen, setNavOpen] = useState(false);
+  // Desktop: a slim icon rail that expands to labels on hover (Jisr-style).
+  const [railHover, setRailHover] = useState(false);
+  const showLabels = navOpen || railHover;
 
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
@@ -117,55 +120,57 @@ export function AppShell({
         {/* Backdrop for the mobile drawer */}
         {navOpen && <div className="fixed inset-0 z-30 bg-black/30 lg:hidden" onClick={() => setNavOpen(false)} />}
 
-        {/* Systems sidebar (right in RTL; off-canvas drawer on mobile) */}
+        {/* Systems rail (right in RTL): a slim icon bar that expands on hover;
+            a full drawer on mobile. */}
         <aside
-          className={`shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white lg:static lg:z-auto lg:flex lg:w-80 ${
-            navOpen ? "fixed inset-y-0 right-0 z-40 flex w-80 max-w-[85vw] shadow-2xl" : "hidden"
-          }`}
+          onMouseEnter={() => setRailHover(true)}
+          onMouseLeave={() => setRailHover(false)}
+          className={`shrink-0 flex-col border-l border-slate-200 bg-white transition-[width] duration-200 lg:static lg:z-auto lg:flex ${
+            showLabels ? "lg:w-64" : "lg:w-[68px]"
+          } ${navOpen ? "fixed inset-y-0 right-0 z-40 flex w-72 shadow-2xl" : "hidden"}`}
         >
-          <div className="flex h-full flex-col p-3">
-            {/* Home — above the systems, with a divider */}
-            <button
+          <div className="flex h-full flex-col gap-1 overflow-y-auto overflow-x-hidden p-2.5">
+            {/* Home */}
+            <RailButton
+              icon={<Home className="size-5" />}
+              label="الصفحة الرئيسية"
+              showLabels={showLabels}
+              active={!target && !internal}
               onClick={goHome}
-              className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-right ${
-                !target && !internal ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"
-              }`}
-            >
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#0f2b46] text-white">
-                <Home className="size-5" />
-              </span>
-              <span className="text-sm font-bold">الصفحة الرئيسية</span>
-            </button>
+            />
 
-            <div className="my-2 border-t border-slate-200" />
-
-            <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">الأنظمة</p>
-            {systems.length === 0 && (
-              <p className="px-2 py-6 text-center text-sm text-slate-500">لا توجد أنظمة متاحة لك بعد.</p>
+            <div className="my-1 border-t border-slate-200" />
+            {showLabels && <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">الأنظمة</p>}
+            {showLabels && systems.length === 0 && (
+              <p className="px-2 py-4 text-center text-xs text-slate-400">لا توجد أنظمة متاحة لك.</p>
             )}
+
             <nav className="flex-1 space-y-1">
               {systems.map((sys) => {
                 const Icon = iconFor(sys.key);
-                const isOpen = expanded === sys.id;
+                const accOpen = expanded === sys.id;
                 const accent = sys.color ?? "#1178b8";
+                const isActive = target?.key === sys.key;
                 return (
-                  <div key={sys.id} className="rounded-xl">
+                  <div key={sys.id}>
                     <button
-                      onClick={() => setExpanded(isOpen ? null : sys.id)}
-                      className="flex w-full items-center gap-3 rounded-xl p-2.5 text-right hover:bg-slate-50"
+                      title={sys.name}
+                      onClick={() => (showLabels ? setExpanded(accOpen ? null : sys.id) : openTarget(sys, "/", sys.name))}
+                      className={`flex w-full items-center gap-3 rounded-xl p-2 text-right hover:bg-slate-100 ${isActive ? "bg-slate-100" : ""}`}
                     >
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg text-white" style={{ backgroundColor: accent }}>
                         <Icon className="size-5" />
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-bold text-slate-900">{sys.name}</span>
-                        {sys.description && <span className="block truncate text-xs text-slate-400">{sys.description}</span>}
-                      </span>
-                      {isOpen ? <ChevronDown className="size-4 shrink-0 text-slate-400" /> : <ChevronLeft className="size-4 shrink-0 text-slate-400" />}
+                      {showLabels && (
+                        <>
+                          <span className="block min-w-0 flex-1 truncate text-sm font-bold text-slate-900">{sys.name}</span>
+                          {accOpen ? <ChevronDown className="size-4 shrink-0 text-slate-400" /> : <ChevronLeft className="size-4 shrink-0 text-slate-400" />}
+                        </>
+                      )}
                     </button>
 
-                    {isOpen && (
-                      <div className="mt-0.5 space-y-0.5 pb-1 pr-3">
+                    {showLabels && accOpen && (
+                      <div className="mt-0.5 space-y-0.5 pb-1 pr-4">
                         <button
                           onClick={() => openTarget(sys, "/", sys.name)}
                           className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50 ${
@@ -196,25 +201,17 @@ export function AppShell({
               })}
             </nav>
 
-            {/* Bottom: org chart + complaints/suggestions */}
-            <div className="mt-2 space-y-1 border-t border-slate-200 pt-2">
-              <button
-                onClick={() => openInternal("org")}
-                className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-right text-sm ${
-                  internal === "org" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                <Building2 className="size-5 text-slate-400" /> المخطط التنظيمي
-              </button>
+            {/* Bottom */}
+            <div className="space-y-1 border-t border-slate-200 pt-1">
+              <RailButton icon={<Building2 className="size-5" />} label="المخطط التنظيمي" showLabels={showLabels} active={internal === "org"} onClick={() => openInternal("org")} />
               {isAdmin && (
-                <button
-                  onClick={() => openInternal("feedback")}
-                  className={`flex w-full items-center gap-3 rounded-xl p-2.5 text-right text-sm ${
-                    internal === "feedback" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                >
-                  <Inbox className="size-5 text-slate-400" /> الشكاوى والاقتراحات
-                </button>
+                <RailButton icon={<Inbox className="size-5" />} label="الشكاوى والاقتراحات" showLabels={showLabels} active={internal === "feedback"} onClick={() => openInternal("feedback")} />
+              )}
+              {isAdmin && (
+                <a href="/admin" title="الإدارة" className="flex items-center gap-3 rounded-xl p-2 text-slate-700 hover:bg-slate-100">
+                  <span className="flex size-9 shrink-0 items-center justify-center text-slate-500"><Settings className="size-5" /></span>
+                  {showLabels && <span className="whitespace-nowrap text-sm">الإدارة</span>}
+                </a>
               )}
             </div>
           </div>
@@ -252,5 +249,34 @@ export function AppShell({
       {/* Floating AI assistant */}
       <Assistant />
     </div>
+  );
+}
+
+function RailButton({
+  icon,
+  label,
+  showLabels,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  showLabels: boolean;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={`flex w-full items-center gap-3 rounded-xl p-2 text-right ${
+        active ? "bg-[#0f2b46] text-white" : "text-slate-700 hover:bg-slate-100"
+      }`}
+    >
+      <span className={`flex size-9 shrink-0 items-center justify-center ${active ? "text-white" : "text-slate-500"}`}>
+        {icon}
+      </span>
+      {showLabels && <span className="whitespace-nowrap text-sm font-bold">{label}</span>}
+    </button>
   );
 }
