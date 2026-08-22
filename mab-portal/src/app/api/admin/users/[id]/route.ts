@@ -22,6 +22,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     isActive?: boolean;
     isSuperAdmin?: boolean;
     canManageContent?: boolean;
+    canViewEmployees?: boolean;
+    canViewOrg?: boolean;
+    canSendNotifications?: boolean;
     jobTitle?: string | null;
     departmentId?: string | null;
     managerId?: string | null;
@@ -57,6 +60,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
       ...(body.isSuperAdmin !== undefined ? { isSuperAdmin: body.isSuperAdmin } : {}),
       ...(body.canManageContent !== undefined ? { canManageContent: body.canManageContent } : {}),
+      ...(body.canViewEmployees !== undefined ? { canViewEmployees: body.canViewEmployees } : {}),
+      ...(body.canViewOrg !== undefined ? { canViewOrg: body.canViewOrg } : {}),
+      ...(body.canSendNotifications !== undefined ? { canSendNotifications: body.canSendNotifications } : {}),
       ...(body.jobTitle !== undefined ? { jobTitle: body.jobTitle?.trim() || null } : {}),
       ...(body.departmentId !== undefined ? { departmentId: body.departmentId || null } : {}),
       ...(managerId !== undefined ? { managerId } : {}),

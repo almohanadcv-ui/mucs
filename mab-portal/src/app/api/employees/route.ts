@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { getUserPerms } from "@/lib/access";
 import type { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
@@ -11,6 +12,9 @@ const PAGE_SIZE = 30;
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const perms = await getUserPerms(session.sub);
+  if (!perms.canViewEmployees)
+    return NextResponse.json({ error: "لا تملك صلاحية عرض الموظفين" }, { status: 403 });
 
   const url = req.nextUrl.searchParams;
   const search = (url.get("search") ?? "").trim();

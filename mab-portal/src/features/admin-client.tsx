@@ -23,6 +23,9 @@ type UserRow = {
   isActive: boolean;
   isSuperAdmin: boolean;
   canManageContent: boolean;
+  canViewEmployees: boolean;
+  canViewOrg: boolean;
+  canSendNotifications: boolean;
   jobTitle: string | null;
   departmentId: string | null;
   managerId: string | null;
@@ -375,6 +378,12 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
   const [systems, setSystems] = useState<AccessSystem[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Per-section permissions (portal areas), edited alongside system access.
+  const [sections, setSections] = useState({
+    canViewEmployees: user.canViewEmployees,
+    canViewOrg: user.canViewOrg,
+    canSendNotifications: user.canSendNotifications,
+  });
 
   useEffect(() => {
     (async () => {
@@ -393,6 +402,13 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
     if (!systems) return;
     setBusy(true); setErr(null);
     try {
+      // Section permissions on the user record …
+      const pRes = await fetch(`/api/admin/users/${user.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sections),
+      });
+      if (!pRes.ok) throw new Error((await pRes.json().catch(() => ({})))?.error || "تعذّر حفظ صلاحيات الأقسام.");
+      // … and system access.
       const res = await fetch(`/api/admin/users/${user.id}/access`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ systemIds: systems.filter((s) => s.granted).map((s) => s.id) }),
@@ -424,6 +440,21 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
               </label>
             ))}
           </div>
+
+          <p className="mb-3 mt-5 text-sm font-semibold text-slate-700">صلاحيات أقسام المنصّة</p>
+          <div className="space-y-2">
+            {([
+              ["canViewEmployees", "عرض الموظفين"],
+              ["canViewOrg", "عرض المخطط التنظيمي"],
+              ["canSendNotifications", "إرسال التنبيهات"],
+            ] as const).map(([key, label]) => (
+              <label key={key} className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 ${sections[key] ? "border-emerald-300 bg-emerald-50" : "border-slate-200"}`}>
+                <span className="text-sm font-medium text-slate-800">{label}</span>
+                <input type="checkbox" checked={sections[key]} onChange={(e) => setSections((p) => ({ ...p, [key]: e.target.checked }))} className="size-4" />
+              </label>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-400">النشر (الإعلانات) يُدار من زر «النشر» في القائمة. المشرف يرى كل شيء.</p>
           {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
           <button onClick={save} disabled={busy} className="mt-4 w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
             {busy ? "جارٍ الحفظ…" : "حفظ الصلاحيات"}

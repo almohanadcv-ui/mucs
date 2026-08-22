@@ -28,6 +28,12 @@ model PortalUser {
   isSuperAdmin Boolean @default(false)
   /// Granted by IT — may post announcements and occasions (without full admin).
   canManageContent Boolean @default(false)
+  /// Per-section permissions, toggled by IT. Off by default (least privilege);
+  /// a super-admin bypasses all of these. Read fresh from the DB each request so
+  /// IT changes take effect on the next page load without a re-login.
+  canViewEmployees    Boolean @default(false)
+  canViewOrg          Boolean @default(false)
+  canSendNotifications Boolean @default(false)
 
   // Org structure
   jobTitle     String?

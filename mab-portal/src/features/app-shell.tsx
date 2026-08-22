@@ -45,11 +45,15 @@ export function AppShell({
   userName,
   isAdmin,
   canPostContent,
+  canViewEmployees,
+  canViewOrg,
   systems,
 }: {
   userName: string;
   isAdmin: boolean;
   canPostContent: boolean;
+  canViewEmployees: boolean;
+  canViewOrg: boolean;
   systems: LauncherSystem[];
 }) {
   const [expanded, setExpanded] = useState<string | null>(systems[0]?.id ?? null);
@@ -145,13 +149,15 @@ export function AppShell({
               onClick={goHome}
             />
 
-            <RailButton
-              icon={<Users2 className="size-5" />}
-              label="الموظفون"
-              showLabels={showLabels}
-              active={internal === "employees"}
-              onClick={() => openInternal("employees")}
-            />
+            {canViewEmployees && (
+              <RailButton
+                icon={<Users2 className="size-5" />}
+                label="الموظفون"
+                showLabels={showLabels}
+                active={internal === "employees"}
+                onClick={() => openInternal("employees")}
+              />
+            )}
 
             <div className="my-1 border-t border-slate-200" />
             {showLabels && <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">الأنظمة</p>}
@@ -217,7 +223,9 @@ export function AppShell({
 
             {/* Bottom */}
             <div className="space-y-1 border-t border-slate-200 pt-1">
-              <RailButton icon={<Building2 className="size-5" />} label="المخطط التنظيمي" showLabels={showLabels} active={internal === "org"} onClick={() => openInternal("org")} />
+              {canViewOrg && (
+                <RailButton icon={<Building2 className="size-5" />} label="المخطط التنظيمي" showLabels={showLabels} active={internal === "org"} onClick={() => openInternal("org")} />
+              )}
               {isAdmin && (
                 <RailButton icon={<Inbox className="size-5" />} label="الشكاوى والاقتراحات" showLabels={showLabels} active={internal === "feedback"} onClick={() => openInternal("feedback")} />
               )}

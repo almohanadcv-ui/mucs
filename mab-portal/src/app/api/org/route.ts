@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/session";
+import { getUserPerms } from "@/lib/access";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,9 @@ export const runtime = "nodejs";
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const perms = await getUserPerms(session.sub);
+  if (!perms.canViewOrg)
+    return NextResponse.json({ error: "لا تملك صلاحية عرض الهيكل" }, { status: 403 });
 
   const users = await prisma.portalUser.findMany({
     where: { deletedAt: null, isActive: true },

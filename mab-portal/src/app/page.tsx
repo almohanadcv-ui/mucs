@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
-import { systemsForUser } from "@/lib/access";
+import { systemsForUser, getUserPerms } from "@/lib/access";
 import { AppShell } from "@/features/app-shell";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +9,18 @@ export default async function HomePage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const systems = await systemsForUser(session.sub, session.admin);
+  // Permissions come fresh from the DB (not the token) so an IT change applies
+  // on the next load without a re-login.
+  const perms = await getUserPerms(session.sub);
+  const systems = await systemsForUser(session.sub, perms.isAdmin);
 
   return (
     <AppShell
       userName={session.name}
-      isAdmin={session.admin}
-      canPostContent={session.admin || session.content}
+      isAdmin={perms.isAdmin}
+      canPostContent={perms.canManageContent}
+      canViewEmployees={perms.canViewEmployees}
+      canViewOrg={perms.canViewOrg}
       systems={systems}
     />
   );
