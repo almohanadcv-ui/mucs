@@ -29,14 +29,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
   });
   if (!system) return redirect("/");
 
-  // Only allow systems the user may actually see.
-  if (!session.admin) {
-    const allowed = await prisma.userSystemAccess.findFirst({
-      where: { userId: session.sub, systemId: system.id },
-      select: { id: true },
-    });
-    if (!allowed) return redirect("/");
-  }
+  // The user's grant for this system carries the role + visible sections that
+  // travel to the system in the SSO token. Super-admins have no grant row (they
+  // see everything) → send the admin role.
+  const grant = await prisma.userSystemAccess.findFirst({
+    where: { userId: session.sub, systemId: system.id },
+    select: { id: true, role: true, features: true },
+  });
+  if (!session.admin && !grant) return redirect("/");
+  const role = session.admin ? "ADMIN" : grant?.role ?? null;
+  const features = session.admin ? [] : grant?.features ?? [];
 
   const nextPath = sanitizeNext(req.nextUrl.searchParams.get("next"));
   // Same-origin proxied prefix so the system renders inside the portal (iframe).
@@ -53,6 +55,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
     name: session.name,
     systemKey: system.key,
     next: nextPath,
+    role,
+    features,
   });
   return redirect(`${mount}${system.ssoPath}?token=${encodeURIComponent(token)}`);
 }

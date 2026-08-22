@@ -44,8 +44,12 @@ export async function GET(req: NextRequest) {
 
   if (!token || !secret) return redirect("/login");
 
+  // The evaluation roles the portal may assign (must match prisma enum Role).
+  const VALID_ROLES = ["ADMIN", "MANAGEMENT", "HR", "EVALUATOR", "EMPLOYEE"];
+
   let email = "";
   let ssoName = "";
+  let ssoRole: string | null = null;
   let next = "/dashboard";
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
@@ -54,6 +58,7 @@ export async function GET(req: NextRequest) {
     });
     email = String(payload.email ?? "").trim().toLowerCase();
     ssoName = String(payload.name ?? "").trim();
+    if (typeof payload.role === "string" && VALID_ROLES.includes(payload.role)) ssoRole = payload.role;
     if (typeof payload.next === "string" && payload.next.startsWith("/")) next = payload.next;
   } catch {
     return redirect("/login?sso=invalid");
@@ -64,6 +69,14 @@ export async function GET(req: NextRequest) {
     where: { email, deletedAt: null, isActive: true, tenant: { deletedAt: null, isActive: true } },
     select: { id: true, tenantId: true, role: true, name: true },
   });
+
+  // The portal is the authority for a user's role within the system: if it sent
+  // one and it differs, sync it (so changing the role in the portal takes effect
+  // here on next launch).
+  if (user && ssoRole && ssoRole !== user.role) {
+    await prisma.user.update({ where: { id: user.id }, data: { role: ssoRole as typeof user.role } });
+    user = { ...user, role: ssoRole as typeof user.role };
+  }
 
   // Just-in-time provisioning: every portal account is created by IT from the
   // portal, and the portal is the source of truth for who may use a system. So
@@ -85,7 +98,8 @@ export async function GET(req: NextRequest) {
         tenantId: tenant.id,
         email,
         name,
-        role: "EMPLOYEE",
+        // The role the portal assigned for this system, else least-privilege.
+        role: (ssoRole ?? "EMPLOYEE") as "EMPLOYEE",
         // Unusable password hash — this account authenticates via portal SSO
         // only; a password login can never match this value.
         passwordHash: `sso-only:${sha256(randomToken(32))}`,

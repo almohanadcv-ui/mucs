@@ -47,8 +47,18 @@ export async function signSsoToken(params: {
   name: string;
   systemKey: string;
   next?: string;
+  /** The user's role WITHIN the target system (from their grant). */
+  role?: string | null;
+  /** The sections the user may see in the target system. */
+  features?: string[];
 }): Promise<string> {
-  return new SignJWT({ email: params.email, name: params.name, next: params.next ?? "/" })
+  return new SignJWT({
+    email: params.email,
+    name: params.name,
+    next: params.next ?? "/",
+    role: params.role ?? null,
+    features: params.features ?? [],
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setAudience(params.systemKey)
     .setIssuer("mab-portal")

@@ -182,6 +182,12 @@ model UserSystemAccess {
   userId      String   @db.Uuid
   systemId    String   @db.Uuid
   grantedById String?  @db.Uuid
+  /// The user's role WITHIN this system (system-specific key, e.g. evaluation's
+  /// EMPLOYEE|EVALUATOR|HR|MANAGEMENT|ADMIN). Null = the system's default.
+  role        String?
+  /// Per-user feature/section keys this user may see in the system (from the
+  /// system's catalog). Empty = the role's default set (the system decides).
+  features    String[] @default([])
   createdAt   DateTime @default(now())
 
   user   PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)

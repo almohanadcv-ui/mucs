@@ -35,7 +35,22 @@ type UserRow = {
   _count: { access: number; reports: number };
 };
 
-type AccessSystem = { id: string; key: string; name: string; isActive: boolean; granted: boolean };
+type Catalog = {
+  defaultRole: string;
+  roles: { key: string; label: string }[];
+  features: { key: string; label: string }[];
+  roleFeatures: Record<string, string[]>;
+} | null;
+type AccessSystem = {
+  id: string;
+  key: string;
+  name: string;
+  isActive: boolean;
+  granted: boolean;
+  role: string | null;
+  features: string[];
+  catalog: Catalog;
+};
 
 export function AdminClient() {
   const [search, setSearch] = useState("");
@@ -394,24 +409,61 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
     })();
   }, [user.id]);
 
+  function patch(id: string, next: Partial<AccessSystem>) {
+    setSystems((prev) => prev?.map((s) => (s.id === id ? { ...s, ...next } : s)) ?? null);
+  }
   function toggle(id: string) {
-    setSystems((prev) => prev?.map((s) => (s.id === id ? { ...s, granted: !s.granted } : s)) ?? null);
+    setSystems((prev) =>
+      prev?.map((s) => {
+        if (s.id !== id) return s;
+        const granted = !s.granted;
+        // On first grant, seed features from the chosen role's defaults.
+        const role = s.role ?? s.catalog?.defaultRole ?? null;
+        const seeded =
+          granted && s.features.length === 0 && s.catalog && role
+            ? s.catalog.roleFeatures[role] ?? []
+            : s.features;
+        return { ...s, granted, role, features: seeded };
+      }) ?? null,
+    );
+  }
+  function setRole(id: string, role: string) {
+    setSystems((prev) =>
+      prev?.map((s) =>
+        s.id === id
+          ? { ...s, role, features: s.catalog?.roleFeatures[role] ?? s.features }
+          : s,
+      ) ?? null,
+    );
+  }
+  function toggleFeature(id: string, fkey: string) {
+    setSystems((prev) =>
+      prev?.map((s) => {
+        if (s.id !== id) return s;
+        const has = s.features.includes(fkey);
+        return { ...s, features: has ? s.features.filter((f) => f !== fkey) : [...s.features, fkey] };
+      }) ?? null,
+    );
   }
 
   async function save() {
     if (!systems) return;
     setBusy(true); setErr(null);
     try {
-      // Section permissions on the user record …
+      // Portal-area section permissions on the user record …
       const pRes = await fetch(`/api/admin/users/${user.id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(sections),
       });
       if (!pRes.ok) throw new Error((await pRes.json().catch(() => ({})))?.error || "تعذّر حفظ صلاحيات الأقسام.");
-      // … and system access.
+      // … and per-system grants (role + visible sections).
       const res = await fetch(`/api/admin/users/${user.id}/access`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemIds: systems.filter((s) => s.granted).map((s) => s.id) }),
+        body: JSON.stringify({
+          grants: systems
+            .filter((s) => s.granted)
+            .map((s) => ({ systemId: s.id, role: s.role, features: s.features })),
+        }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "تعذّر الحفظ.");
@@ -429,15 +481,45 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
         <div className="flex justify-center py-8"><Loader2 className="size-5 animate-spin text-slate-400" /></div>
       ) : (
         <>
-          <p className="mb-3 text-sm text-slate-500">حدّد الأنظمة التي تظهر لهذا المستخدم:</p>
+          <p className="mb-3 text-sm text-slate-500">حدّد الأنظمة التي تظهر لهذا المستخدم، ولكل نظام: الدور ثم الأقسام التي يراها.</p>
           <div className="space-y-2">
             {systems.map((s) => (
-              <label key={s.id} className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 ${s.granted ? "border-[#1178b8] bg-[#1178b8]/5" : "border-slate-200"}`}>
-                <span className="text-sm font-medium text-slate-800">
-                  {s.name}{!s.isActive && <span className="ms-2 text-xs text-slate-400">(غير مفعّل)</span>}
-                </span>
-                <input type="checkbox" checked={s.granted} onChange={() => toggle(s.id)} className="size-4" />
-              </label>
+              <div key={s.id} className={`rounded-xl border ${s.granted ? "border-[#1178b8] bg-[#1178b8]/5" : "border-slate-200"}`}>
+                <label className="flex cursor-pointer items-center justify-between px-3 py-2.5">
+                  <span className="text-sm font-medium text-slate-800">
+                    {s.name}{!s.isActive && <span className="ms-2 text-xs text-slate-400">(غير مفعّل)</span>}
+                  </span>
+                  <input type="checkbox" checked={s.granted} onChange={() => toggle(s.id)} className="size-4" />
+                </label>
+
+                {s.granted && s.catalog && (
+                  <div className="space-y-3 border-t border-[#1178b8]/15 px-3 py-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-slate-500">الدور</label>
+                      <select
+                        value={s.role ?? s.catalog.defaultRole}
+                        onChange={(e) => setRole(s.id, e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm"
+                      >
+                        {s.catalog.roles.map((r) => (
+                          <option key={r.key} value={r.key}>{r.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <p className="mb-1 text-xs font-semibold text-slate-500">الأقسام التي يراها</p>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {s.catalog.features.map((f) => (
+                          <label key={f.key} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${s.features.includes(f.key) ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 text-slate-700"}`}>
+                            <input type="checkbox" checked={s.features.includes(f.key)} onChange={() => toggleFeature(s.id, f.key)} className="size-3.5" />
+                            {f.label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
 
