@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
+import { withBase } from "@/lib/base-path";
 
 type Item = { label: string; value: string; remarks: string | null };
 type Comment = { authorType: "MANAGER" | "EMPLOYEE" | "HR"; authorName: string | null; body: string; createdAt: string };
@@ -39,7 +40,7 @@ export default function EvaluationReviewPage({
     async (silent = false) => {
       if (!silent) setLoading(true);
       try {
-        const res = await fetch(`/api/evaluation-review/${token}`);
+        const res = await fetch(withBase(`/api/evaluation-review/${token}`));
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body?.error?.message || "تعذّر فتح التقييم.");
         setData(body.data as Review);
@@ -72,7 +73,7 @@ export default function EvaluationReviewPage({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`/api/evaluation-review/${token}/respond`, {
+      const res = await fetch(withBase(`/api/evaluation-review/${token}/respond`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision, comment: comment.trim() || undefined }),
@@ -102,7 +103,7 @@ export default function EvaluationReviewPage({
         <header className="text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/mab-logo.jpg"
+            src={`${process.env.NEXT_PUBLIC_BASE_PATH || ""}/mab-logo.jpg`}
             alt="MAB United"
             className="mx-auto mb-4 w-64 rounded-xl bg-white px-5 py-3 shadow-sm"
           />

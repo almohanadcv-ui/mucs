@@ -1181,12 +1181,34 @@ const EMPLOYEE_VISIBLE_STATUSES: EvaluationStatus[] = [
   EvaluationStatus.APPROVED,
 ];
 
-/** The employee record linked to this signed-in user (set at SSO time). */
+/**
+ * The employee record for this signed-in user. Prefers the explicit user↔employee
+ * link (set at SSO time), but falls back to matching by email so it still works
+ * when the account and the HR record share an address that was never linked. On a
+ * successful email match it back-fills the link so later reads are direct.
+ */
 async function linkedEmployee(user: SessionUser) {
-  return prisma.employee.findFirst({
+  const byLink = await prisma.employee.findFirst({
     where: { tenantId: user.tenantId, deletedAt: null, userId: user.id },
     select: { id: true, name: true },
   });
+  if (byLink) return byLink;
+
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { email: true },
+  });
+  const email = account?.email?.trim().toLowerCase();
+  if (!email) return null;
+
+  const byEmail = await prisma.employee.findFirst({
+    where: { tenantId: user.tenantId, deletedAt: null, email: { equals: email, mode: "insensitive" } },
+    select: { id: true, name: true, userId: true },
+  });
+  if (byEmail && !byEmail.userId) {
+    await prisma.employee.update({ where: { id: byEmail.id }, data: { userId: user.id } }).catch(() => {});
+  }
+  return byEmail ? { id: byEmail.id, name: byEmail.name } : null;
 }
 
 /** The employee's most recent dispatched evaluation (id only), or null. */
