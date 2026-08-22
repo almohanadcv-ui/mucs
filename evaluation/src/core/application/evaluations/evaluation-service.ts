@@ -1167,3 +1167,177 @@ export async function employeeRespondToEvaluation(
   publishToTenant(ev.tenantId, { type: "data-changed", entity: "evaluation" });
   return { status: EvaluationStatus.EMPLOYEE_RESPONDED };
 }
+
+// ─────────────────── Authenticated employee (portal, no token) ───────────────
+// The same manager↔employee dialogue as the magic-link flow, but for an EMPLOYEE
+// who is signed in (via portal SSO). Their evaluation is resolved by the
+// employee↔user link instead of a one-time token, so it stays available.
+
+/** Statuses at which an evaluation is visible to its own employee. */
+const EMPLOYEE_VISIBLE_STATUSES: EvaluationStatus[] = [
+  EvaluationStatus.SENT_TO_EMPLOYEE,
+  EvaluationStatus.EMPLOYEE_RESPONDED,
+  EvaluationStatus.EMPLOYEE_ACKNOWLEDGED,
+  EvaluationStatus.APPROVED,
+];
+
+/** The employee record linked to this signed-in user (set at SSO time). */
+async function linkedEmployee(user: SessionUser) {
+  return prisma.employee.findFirst({
+    where: { tenantId: user.tenantId, deletedAt: null, userId: user.id },
+    select: { id: true, name: true },
+  });
+}
+
+/** The employee's most recent dispatched evaluation (id only), or null. */
+async function myLatestEvaluationId(user: SessionUser): Promise<string | null> {
+  const emp = await linkedEmployee(user);
+  if (!emp) return null;
+  const ev = await prisma.evaluation.findFirst({
+    where: {
+      tenantId: user.tenantId,
+      deletedAt: null,
+      employeeId: emp.id,
+      status: { in: EMPLOYEE_VISIBLE_STATUSES },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return ev?.id ?? null;
+}
+
+/**
+ * The signed-in employee's own evaluation + dialogue, in the same shape the
+ * magic-link page uses. Returns null when they have no evaluation yet.
+ */
+export async function getMyEvaluation(user: SessionUser) {
+  const evId = await myLatestEvaluationId(user);
+  if (!evId) return null;
+
+  const ev = await prisma.evaluation.findFirst({
+    where: { id: evId, deletedAt: null },
+    select: {
+      status: true,
+      score: true,
+      lockedAt: true,
+      overallNote: true,
+      employee: { select: { name: true } },
+      evaluator: { select: { name: true } },
+      template: { select: { title: true } },
+      answers: {
+        select: {
+          valueNumber: true, valueText: true, valueBool: true, valueDate: true, valueJson: true, remarks: true,
+          question: { select: { id: true, label: true, type: true, required: true, config: true, order: true } },
+        },
+      },
+    },
+  });
+  if (!ev) return null;
+
+  const items = ev.answers
+    .slice()
+    .sort((a, b) => a.question.order - b.question.order)
+    .map((a) => {
+      const q = toQuestionLike(a.question);
+      let value = formatAnswerDisplay(q, {
+        valueNumber: a.valueNumber, valueText: a.valueText, valueBool: a.valueBool,
+        valueDate: a.valueDate, valueJson: a.valueJson,
+      });
+      if (a.question.type === QuestionType.STAR_RATING && a.valueNumber != null) {
+        const max = (a.question.config as { max?: number } | null)?.max ?? 5;
+        const label = max === 5 ? STAR_RATING_LABELS[a.valueNumber] : undefined;
+        if (label) value = `${value} — ${label}`;
+      }
+      return { label: a.question.label, value, remarks: a.remarks };
+    });
+
+  const comments = await prisma.evaluationComment.findMany({
+    where: { evaluationId: evId, visibleToEmployee: true },
+    orderBy: { createdAt: "asc" },
+    select: { authorType: true, authorName: true, body: true, createdAt: true },
+  });
+
+  return {
+    employeeName: ev.employee.name,
+    evaluatorName: ev.evaluator?.name ?? null,
+    templateTitle: ev.template.title,
+    score: ev.score,
+    status: ev.status,
+    locked: Boolean(ev.lockedAt),
+    overallNote: ev.overallNote,
+    items,
+    comments,
+  };
+}
+
+/**
+ * The signed-in employee agrees to / objects to their evaluation — the token-free
+ * twin of employeeRespondToEvaluation. ACKNOWLEDGE finalizes (approve + lock +
+ * result email); OBJECT records the message and keeps the dialogue open.
+ */
+export async function myEvaluationRespond(
+  user: SessionUser,
+  decision: "ACKNOWLEDGE" | "OBJECT",
+  comment?: string,
+) {
+  const evId = await myLatestEvaluationId(user);
+  if (!evId) throw AppError.notFound("لا يوجد تقييم لك");
+  const ev = await prisma.evaluation.findFirst({
+    where: { id: evId, deletedAt: null },
+    select: { id: true, tenantId: true, lockedAt: true, evaluatorId: true, employee: { select: { name: true } } },
+  });
+  if (!ev) throw AppError.notFound("التقييم غير موجود");
+  if (ev.lockedAt) throw new AppError("CONFLICT", "تم اعتماد التقييم");
+
+  const trimmed = comment?.trim() ?? "";
+  if (decision === "OBJECT" && trimmed.length < 3) {
+    throw AppError.validation("الرجاء كتابة ملاحظتك");
+  }
+  const now = new Date();
+
+  if (decision === "ACKNOWLEDGE") {
+    await prisma.$transaction(async (tx) => {
+      if (trimmed) {
+        await tx.evaluationComment.create({
+          data: { evaluationId: ev.id, authorType: CommentAuthor.EMPLOYEE, authorName: ev.employee.name, body: trimmed, visibleToEmployee: true },
+        });
+      }
+      await tx.evaluation.update({
+        where: { id: ev.id },
+        data: { status: EvaluationStatus.APPROVED, employeeDecisionAt: now, reviewedAt: now, lockedAt: now },
+      });
+      await tx.evaluationAccessToken.updateMany({ where: { evaluationId: ev.id, revokedAt: null }, data: { revokedAt: now } });
+    });
+    await snapshotRevision(ev.id, null, "موافقة الموظف — اعتماد نهائي");
+    await notify({
+      tenantId: ev.tenantId, userId: ev.evaluatorId, type: NotificationType.APPROVAL,
+      title: "وافق الموظف واعتُمد التقييم",
+      body: `وافق الموظف ${ev.employee.name} على تقييمه، وتم اعتماده وإرساله له.`,
+      data: { evaluationId: ev.id },
+    });
+    void sendApprovedEvaluationToEmployee(ev.id).catch((err) =>
+      console.error(`[evaluations] result email for ${ev.id} failed:`, err),
+    );
+    publishToTenant(ev.tenantId, { type: "data-changed", entity: "evaluation" });
+    return { status: EvaluationStatus.APPROVED };
+  }
+
+  // OBJECT
+  await prisma.$transaction(async (tx) => {
+    await tx.evaluationComment.create({
+      data: { evaluationId: ev.id, authorType: CommentAuthor.EMPLOYEE, authorName: ev.employee.name, body: trimmed, visibleToEmployee: true },
+    });
+    await tx.evaluation.update({
+      where: { id: ev.id },
+      data: { status: EvaluationStatus.EMPLOYEE_RESPONDED, employeeDecisionAt: now },
+    });
+  });
+  await notify({
+    tenantId: ev.tenantId, userId: ev.evaluatorId, type: NotificationType.REJECTION,
+    title: "ردّ الموظف على التقييم",
+    body: `أبدى الموظف ${ev.employee.name} ملاحظات على تقييمه.`,
+    data: { evaluationId: ev.id },
+  });
+  publishToTenant(ev.tenantId, { type: "data-changed", entity: "evaluation" });
+  return { status: EvaluationStatus.EMPLOYEE_RESPONDED };
+}

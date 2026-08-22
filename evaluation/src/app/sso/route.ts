@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
   if (!token || !secret) return redirect("/login");
 
   let email = "";
+  let ssoName = "";
   let next = "/dashboard";
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
@@ -52,6 +53,7 @@ export async function GET(req: NextRequest) {
       audience: "evaluation",
     });
     email = String(payload.email ?? "").trim().toLowerCase();
+    ssoName = String(payload.name ?? "").trim();
     if (typeof payload.next === "string" && payload.next.startsWith("/")) next = payload.next;
   } catch {
     return redirect("/login?sso=invalid");
@@ -65,9 +67,11 @@ export async function GET(req: NextRequest) {
 
   // Just-in-time provisioning: every portal account is created by IT from the
   // portal, and the portal is the source of truth for who may use a system. So
-  // if the SSO'd email has no account here yet, create one (under the default
-  // tenant, EVALUATOR role, no usable password — SSO-only) rather than bounce to
-  // login. Keeps "any user I add in the portal just works" true.
+  // if the SSO'd email has no account here yet, create one rather than bounce to
+  // login. New accounts default to the EMPLOYEE role — the least-privilege one,
+  // which sees only its own evaluation and messages its manager. A manager / HR
+  // is upgraded explicitly. Keeps "any user I add in the portal just works" true
+  // without handing everyone the manager view.
   if (!user) {
     const tenant = await prisma.tenant.findFirst({
       where: { deletedAt: null, isActive: true },
@@ -75,13 +79,13 @@ export async function GET(req: NextRequest) {
       select: { id: true },
     });
     if (!tenant) return redirect("/login?sso=notenant");
-    const name = String(payload.name ?? "").trim() || email.split("@")[0];
+    const name = ssoName || email.split("@")[0];
     const created = await prisma.user.create({
       data: {
         tenantId: tenant.id,
         email,
         name,
-        role: "EVALUATOR",
+        role: "EMPLOYEE",
         // Unusable password hash — this account authenticates via portal SSO
         // only; a password login can never match this value.
         passwordHash: `sso-only:${sha256(randomToken(32))}`,
@@ -92,6 +96,19 @@ export async function GET(req: NextRequest) {
     });
     user = created;
   }
+
+  // Link the employee master-record (same email, not yet linked) to this account
+  // so /my-evaluation can resolve "my own evaluation" by the user↔employee link.
+  await prisma.employee
+    .updateMany({
+      where: { tenantId: user.tenantId, email, userId: null, deletedAt: null },
+      data: { userId: user.id },
+    })
+    .catch(() => {});
+
+  // A plain employee has no manager pages — send them straight to their own
+  // evaluation, regardless of the portal's requested landing path.
+  if (user.role === "EMPLOYEE") next = "/my-evaluation";
 
   const env = getServerEnv();
   const accessMaxAge = durationToSeconds(env.JWT_ACCESS_TTL);

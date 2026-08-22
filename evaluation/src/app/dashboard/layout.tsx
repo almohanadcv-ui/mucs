@@ -22,6 +22,9 @@ export default async function DashboardLayout({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  // A plain employee has no manager dashboard — their only screen is their own
+  // evaluation. Keep them out of the manager shell entirely.
+  if (user.role === "EMPLOYEE") redirect("/my-evaluation");
   const t = await getT();
 
   return (

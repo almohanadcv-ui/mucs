@@ -16,6 +16,9 @@ export const Role = {
   SUPERVISOR: "SUPERVISOR",
   /** المقيّم / المدير — fills AND approves evaluations for their own team. */
   EVALUATOR: "EVALUATOR",
+  /** الموظف — sees only their OWN evaluation and messages their manager. The
+   *  default role for anyone provisioned via the portal SSO. */
+  EMPLOYEE: "EMPLOYEE",
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 export const ROLES = Object.values(Role);

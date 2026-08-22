@@ -27,6 +27,7 @@ enum Role {
   PRIMARY_REVIEWER // (legacy) المراجع الأساسي — retained for existing accounts
   SUPERVISOR // (legacy) المراجع — retained for existing accounts
   EVALUATOR // المقيّم / المدير — fills AND approves evaluations
+  EMPLOYEE // الموظف — sees only their own evaluation; messages their manager (portal SSO default)
 }
 
 enum EmployeeStatus {

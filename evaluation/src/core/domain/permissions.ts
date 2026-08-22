@@ -112,6 +112,15 @@ const EVALUATOR: Permission[] = [
   Permission.EVALUATION_VIEW_OWN,
 ];
 
+/**
+ * الموظف — the plainest role. Holds NO manager permission: cannot browse the
+ * roster, create evaluations, or approve. Their only capability (seeing their
+ * own evaluation and replying to their manager) is served by the dedicated
+ * /my-evaluation page, which authorizes by the employee↔user link, not by these
+ * permissions. Kept as an empty set so every manager gate denies them by default.
+ */
+const EMPLOYEE: Permission[] = [];
+
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.ADMIN]: ALL, // IT
   [Role.MANAGEMENT]: MANAGEMENT,
@@ -119,6 +128,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.PRIMARY_REVIEWER]: PRIMARY_REVIEWER, // legacy
   [Role.SUPERVISOR]: SUPERVISOR, // legacy
   [Role.EVALUATOR]: EVALUATOR,
+  [Role.EMPLOYEE]: EMPLOYEE,
 };
 
 /** Any permission that lets a user act on the review queue. */
@@ -133,12 +143,13 @@ export const REVIEW_PERMISSIONS: Permission[] = [
  * at or above its own level — that is how privilege escalation happens.
  */
 export const CREATABLE_ROLES: Record<Role, Role[]> = {
-  [Role.ADMIN]: [Role.MANAGEMENT, Role.HR, Role.EVALUATOR],
-  [Role.MANAGEMENT]: [Role.HR, Role.EVALUATOR],
+  [Role.ADMIN]: [Role.MANAGEMENT, Role.HR, Role.EVALUATOR, Role.EMPLOYEE],
+  [Role.MANAGEMENT]: [Role.HR, Role.EVALUATOR, Role.EMPLOYEE],
   [Role.HR]: [],
   [Role.PRIMARY_REVIEWER]: [], // legacy
   [Role.SUPERVISOR]: [Role.EVALUATOR], // legacy
   [Role.EVALUATOR]: [],
+  [Role.EMPLOYEE]: [],
 };
 
 export function canCreateRole(actor: Role, target: Role): boolean {
