@@ -99,12 +99,23 @@ export async function GET(req: NextRequest) {
 
   // Link the employee master-record (same email, not yet linked) to this account
   // so /my-evaluation can resolve "my own evaluation" by the user↔employee link.
-  await prisma.employee
-    .updateMany({
-      where: { tenantId: user.tenantId, email, userId: null, deletedAt: null },
-      data: { userId: user.id },
-    })
-    .catch(() => {});
+  // Link exactly ONE record (userId is unique) and only if this user isn't
+  // already linked, so a duplicated email can never trip the unique constraint.
+  try {
+    const alreadyLinked = await prisma.employee.findFirst({
+      where: { tenantId: user.tenantId, userId: user.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!alreadyLinked) {
+      const match = await prisma.employee.findFirst({
+        where: { tenantId: user.tenantId, email: { equals: email, mode: "insensitive" }, userId: null, deletedAt: null },
+        select: { id: true },
+      });
+      if (match) await prisma.employee.update({ where: { id: match.id }, data: { userId: user.id } });
+    }
+  } catch {
+    // Best-effort link — never block sign-in on it.
+  }
 
   // A plain employee has no manager pages — send them straight to their own
   // evaluation, regardless of the portal's requested landing path.
