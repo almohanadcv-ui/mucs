@@ -27,6 +27,19 @@ export default async function DashboardLayout({
   if (user.role === "EMPLOYEE") redirect("/my-evaluation");
   const t = await getT();
 
+  // When embedded in the MAB portal, the portal already supplies the chrome
+  // (system rail, top bar, notifications, logout). Drop this app's own sidebar
+  // and header so it reads as ONE system, not a system-within-a-system.
+  const embedded = !!process.env.NEXT_BASE_PATH;
+  if (embedded) {
+    return (
+      <div className="min-h-screen bg-muted/30">
+        <RealtimeProvider />
+        <main className="p-6">{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-muted/30">
       <RealtimeProvider />
