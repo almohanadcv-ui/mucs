@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { getT } from "@/i18n/server";
 import type { Metadata } from "next";
-import { getCurrentUser } from "@/infrastructure/auth/session";
-import { can, Permission } from "@/core/domain/permissions";
+import { getCurrentUser, userCan } from "@/infrastructure/auth/session";
+import { Permission } from "@/core/domain/permissions";
 import { TemplateEditLoader } from "@/features/templates/template-edit-loader";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -17,7 +17,7 @@ export default async function EditTemplatePage({
 }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!can(user.role, Permission.TEMPLATE_MANAGE)) redirect("/dashboard");
+  if (!userCan(user, Permission.TEMPLATE_MANAGE)) redirect("/dashboard");
   const { id } = await params;
   return <TemplateEditLoader id={id} />;
 }

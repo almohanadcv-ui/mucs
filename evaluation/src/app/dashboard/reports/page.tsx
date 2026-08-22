@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { BarChart3 } from "lucide-react";
-import { getCurrentUser } from "@/infrastructure/auth/session";
+import { getCurrentUser, userCan } from "@/infrastructure/auth/session";
 import { getT } from "@/i18n/server";
-import { can, Permission } from "@/core/domain/permissions";
+import { Permission } from "@/core/domain/permissions";
 import {
   getEvaluationReport,
   reportColumns,
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function ReportsPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
-  if (!can(user.role, Permission.REPORT_VIEW)) redirect("/dashboard");
+  if (!userCan(user, Permission.REPORT_VIEW)) redirect("/dashboard");
   const t = await getT();
 
   const rows = await getEvaluationReport(user, {}, t);

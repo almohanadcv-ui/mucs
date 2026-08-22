@@ -160,6 +160,29 @@ export function permissionsFor(role: Role): ReadonlySet<Permission> {
   return new Set(ROLE_PERMISSIONS[role]);
 }
 
+/**
+ * Portal "section" keys → the permissions they unlock. The MAB portal grants
+ * sections per user; these ADD to the role's permissions, so IT can let a plain
+ * employee also see e.g. the reports section without changing their role.
+ */
+const FEATURE_PERMISSIONS: Record<string, Permission[]> = {
+  evaluations: [Permission.EVALUATION_VIEW_ALL],
+  employees: [Permission.EMPLOYEE_VIEW],
+  templates: [Permission.TEMPLATE_VIEW, Permission.TEMPLATE_MANAGE],
+  reports: [Permission.REPORT_VIEW, Permission.REPORT_EXPORT],
+  // my_evaluation needs no manager permission — it's the employee's own page.
+};
+
+/** Role permissions ∪ the permissions granted by the user's portal sections. */
+export function effectivePermissions(
+  role: Role,
+  features: string[] = [],
+): ReadonlySet<Permission> {
+  const set = new Set<Permission>(ROLE_PERMISSIONS[role]);
+  for (const f of features) for (const p of FEATURE_PERMISSIONS[f] ?? []) set.add(p);
+  return set;
+}
+
 export function can(role: Role, permission: Permission): boolean {
   return permissionsFor(role).has(permission);
 }

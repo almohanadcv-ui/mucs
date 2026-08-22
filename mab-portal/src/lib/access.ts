@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "./db";
+import { catalogFor, effectiveFeatures } from "./system-catalog";
 
 /** Per-section permissions for a portal user, read fresh from the DB. */
 export interface UserPerms {
@@ -46,11 +47,18 @@ export interface LauncherSystem {
   baseUrl: string;
   ssoPath: string;
   links: { id: string; label: string; path: string; icon: string | null }[];
+  /** True when the sub-links come from the catalog (filtered by the user's
+   *  granted sections) — the shell then hides its hard-coded "الرئيسية". */
+  catalogDriven: boolean;
 }
 
 /**
  * The systems a portal user may see, ordered. A super-admin (IT) sees every
  * active system; everyone else sees only what UserSystemAccess grants them.
+ *
+ * For a system with a catalog, the rail sub-links are the sections the user is
+ * granted (role default or per-user override) — so a user with only "تقييمي +
+ * التقارير" sees exactly those, not the whole menu.
  */
 export async function systemsForUser(userId: string, isAdmin: boolean): Promise<LauncherSystem[]> {
   const systems = await prisma.system.findMany({
@@ -61,17 +69,29 @@ export async function systemsForUser(userId: string, isAdmin: boolean): Promise<
     orderBy: { order: "asc" },
     include: {
       links: { orderBy: { order: "asc" }, select: { id: true, label: true, path: true, icon: true } },
+      access: { where: { userId }, select: { role: true, features: true } },
     },
   });
-  return systems.map((s) => ({
-    id: s.id,
-    key: s.key,
-    name: s.name,
-    description: s.description,
-    icon: s.icon,
-    color: s.color,
-    baseUrl: s.baseUrl,
-    ssoPath: s.ssoPath,
-    links: s.links,
-  }));
+
+  return systems.map((s) => {
+    const cat = catalogFor(s.key);
+    if (cat) {
+      const grant = s.access[0];
+      // Admins (no grant row) see every catalog section.
+      const allowed = isAdmin
+        ? cat.features.map((f) => f.key)
+        : effectiveFeatures(s.key, grant?.role ?? null, grant?.features ?? []);
+      const links = cat.features
+        .filter((f) => allowed.includes(f.key))
+        .map((f) => ({ id: `${s.key}:${f.key}`, label: f.label, path: f.path, icon: null }));
+      return {
+        id: s.id, key: s.key, name: s.name, description: s.description, icon: s.icon,
+        color: s.color, baseUrl: s.baseUrl, ssoPath: s.ssoPath, links, catalogDriven: true,
+      };
+    }
+    return {
+      id: s.id, key: s.key, name: s.name, description: s.description, icon: s.icon,
+      color: s.color, baseUrl: s.baseUrl, ssoPath: s.ssoPath, links: s.links, catalogDriven: false,
+    };
+  });
 }

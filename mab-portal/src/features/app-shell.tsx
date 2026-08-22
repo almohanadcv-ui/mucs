@@ -175,7 +175,11 @@ export function AppShell({
                   <div key={sys.id}>
                     <button
                       title={sys.name}
-                      onClick={() => (showLabels ? setExpanded(accOpen ? null : sys.id) : openTarget(sys, "/", sys.name))}
+                      onClick={() =>
+                        showLabels
+                          ? setExpanded(accOpen ? null : sys.id)
+                          : openTarget(sys, sys.links[0]?.path ?? "/", sys.links[0]?.label ?? sys.name)
+                      }
                       className={`flex w-full items-center gap-3 rounded-xl p-2 text-right hover:bg-slate-100 ${isActive ? "bg-slate-100" : ""}`}
                     >
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg text-white" style={{ backgroundColor: accent }}>
@@ -191,14 +195,22 @@ export function AppShell({
 
                     {showLabels && accOpen && (
                       <div className="mt-0.5 space-y-0.5 pb-1 pr-4">
-                        <button
-                          onClick={() => openTarget(sys, "/", sys.name)}
-                          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50 ${
-                            target?.key === sys.key && target?.path === "/" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700"
-                          }`}
-                        >
-                          <Home className="size-4 text-slate-400" /> الرئيسية
-                        </button>
+                        {/* Catalog-driven systems list only the sections the user
+                            is granted, so no generic "الرئيسية" (which would land
+                            on a manager home they may not be allowed to see). */}
+                        {!sys.catalogDriven && (
+                          <button
+                            onClick={() => openTarget(sys, "/", sys.name)}
+                            className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-sm hover:bg-slate-50 ${
+                              target?.key === sys.key && target?.path === "/" ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700"
+                            }`}
+                          >
+                            <Home className="size-4 text-slate-400" /> الرئيسية
+                          </button>
+                        )}
+                        {sys.links.length === 0 && (
+                          <p className="px-3 py-2 text-xs text-slate-400">لا أقسام مصرّح بها.</p>
+                        )}
                         {sys.links.map((link) => {
                           const active = target?.key === sys.key && target?.path === link.path;
                           return (

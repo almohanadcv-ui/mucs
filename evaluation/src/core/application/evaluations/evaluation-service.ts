@@ -5,7 +5,7 @@ import { publishToTenant } from "@/infrastructure/realtime/bus";
 import { notify, notifyMany } from "@/core/application/notifications/notification-service";
 import { evaluatorOwns } from "@/core/application/employees/employee-service";
 import { AppError } from "@/core/application/errors";
-import { can, Permission } from "@/core/domain/permissions";
+import { can, effectivePermissions, Permission } from "@/core/domain/permissions";
 import {
   AuditAction,
   EvaluationStatus,
@@ -142,20 +142,15 @@ const LIST_INCLUDE = {
 } satisfies Prisma.EvaluationInclude;
 
 function scopeForRole(user: SessionUser): Prisma.EvaluationWhereInput {
-  switch (user.role) {
-    // These roles all hold EVALUATION_VIEW_ALL. Which evaluations they may *act*
-    // on is enforced per-status in reviewEvaluation; for listing they see all.
-    case Role.ADMIN:
-    case Role.MANAGEMENT:
-    case Role.HR:
-    case Role.PRIMARY_REVIEWER:
-    case Role.SUPERVISOR:
-      return {};
-    case Role.EVALUATOR:
-      return { evaluatorId: user.id };
-    default:
-      return { id: { in: [] } };
+  // VIEW_ALL may come from the role OR from a portal-granted "evaluations"
+  // section, so scope by the effective permission, not the role string.
+  if (effectivePermissions(user.role, user.features).has(Permission.EVALUATION_VIEW_ALL)) {
+    // Which evaluations they may *act* on is enforced per-status in
+    // reviewEvaluation; for listing they see all.
+    return {};
   }
+  if (user.role === Role.EVALUATOR) return { evaluatorId: user.id };
+  return { id: { in: [] } };
 }
 
 export async function listEvaluations(

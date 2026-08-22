@@ -134,6 +134,11 @@ model User {
   avatarUrl    String?
   isActive     Boolean @default(true)
 
+  /// Section keys granted by the MAB portal (per-user), e.g. ["reports"]. They
+  /// add to the role's permissions so IT can, from the portal, let a plain
+  /// employee also see specific sections. Empty for direct (non-portal) accounts.
+  portalFeatures String[] @default([])
+
   emailVerifiedAt DateTime?
 
   // Brute-force / lockout

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getCurrentUser, type SessionUser } from "@/infrastructure/auth/session";
-import { can, canAny, type Permission } from "@/core/domain/permissions";
+import { getCurrentUser, userCan, userCanAny, type SessionUser } from "@/infrastructure/auth/session";
+import { type Permission } from "@/core/domain/permissions";
 import { AppError } from "@/core/application/errors";
 import { handleApiError, requestMeta } from "@/lib/http";
 import type { RequestMeta } from "@/core/application/auth/dto";
@@ -36,12 +36,12 @@ export function withAuth<TParams = Record<string, string>>(
     try {
       const user = await getCurrentUser();
       if (!user) throw AppError.unauthorized();
-      if (options.permission && !can(user.role, options.permission)) {
+      if (options.permission && !userCan(user, options.permission)) {
         throw AppError.forbidden();
       }
       if (
         options.anyPermission &&
-        !canAny(user.role, options.anyPermission)
+        !userCanAny(user, options.anyPermission)
       ) {
         throw AppError.forbidden();
       }

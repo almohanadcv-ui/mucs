@@ -50,6 +50,7 @@ export async function GET(req: NextRequest) {
   let email = "";
   let ssoName = "";
   let ssoRole: string | null = null;
+  let ssoFeatures: string[] = [];
   let next = "/dashboard";
   try {
     const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
@@ -59,6 +60,7 @@ export async function GET(req: NextRequest) {
     email = String(payload.email ?? "").trim().toLowerCase();
     ssoName = String(payload.name ?? "").trim();
     if (typeof payload.role === "string" && VALID_ROLES.includes(payload.role)) ssoRole = payload.role;
+    if (Array.isArray(payload.features)) ssoFeatures = payload.features.filter((f): f is string => typeof f === "string");
     if (typeof payload.next === "string" && payload.next.startsWith("/")) next = payload.next;
   } catch {
     return redirect("/login?sso=invalid");
@@ -70,12 +72,14 @@ export async function GET(req: NextRequest) {
     select: { id: true, tenantId: true, role: true, name: true },
   });
 
-  // The portal is the authority for a user's role within the system: if it sent
-  // one and it differs, sync it (so changing the role in the portal takes effect
-  // here on next launch).
-  if (user && ssoRole && ssoRole !== user.role) {
-    await prisma.user.update({ where: { id: user.id }, data: { role: ssoRole as typeof user.role } });
-    user = { ...user, role: ssoRole as typeof user.role };
+  // The portal is the authority for a user's role AND granted sections within the
+  // system: sync both on each launch so portal changes take effect here.
+  if (user) {
+    const data: { role?: typeof user.role; portalFeatures?: string[] } = {};
+    if (ssoRole && ssoRole !== user.role) data.role = ssoRole as typeof user.role;
+    data.portalFeatures = ssoFeatures;
+    await prisma.user.update({ where: { id: user.id }, data });
+    if (data.role) user = { ...user, role: data.role };
   }
 
   // Just-in-time provisioning: every portal account is created by IT from the
@@ -100,6 +104,7 @@ export async function GET(req: NextRequest) {
         name,
         // The role the portal assigned for this system, else least-privilege.
         role: (ssoRole ?? "EMPLOYEE") as "EMPLOYEE",
+        portalFeatures: ssoFeatures,
         // Unusable password hash — this account authenticates via portal SSO
         // only; a password login can never match this value.
         passwordHash: `sso-only:${sha256(randomToken(32))}`,

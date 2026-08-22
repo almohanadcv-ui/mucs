@@ -14,6 +14,8 @@ export interface SystemRole {
 export interface SystemFeature {
   key: string;
   label: string;
+  /** Deep-link path within the system this section opens (SSO `next`). */
+  path: string;
 }
 export interface SystemCatalog {
   roles: SystemRole[];
@@ -35,11 +37,11 @@ export const SYSTEM_CATALOG: Record<string, SystemCatalog> = {
       { key: "ADMIN", label: "مشرف النظام (IT)" },
     ],
     features: [
-      { key: "my_evaluation", label: "تقييمي" },
-      { key: "evaluations", label: "كل التقييمات" },
-      { key: "employees", label: "الموظفون" },
-      { key: "templates", label: "نماذج التقييم" },
-      { key: "reports", label: "التقارير" },
+      { key: "my_evaluation", label: "تقييمي", path: "/my-evaluation" },
+      { key: "evaluations", label: "كل التقييمات", path: "/dashboard/evaluations" },
+      { key: "employees", label: "الموظفون", path: "/dashboard/employees" },
+      { key: "templates", label: "نماذج التقييم", path: "/dashboard/templates" },
+      { key: "reports", label: "التقارير", path: "/dashboard/reports" },
     ],
     roleFeatures: {
       EMPLOYEE: ["my_evaluation"],
