@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { LauncherSystem } from "@/lib/access";
 import { FeedbackButtons } from "./feedback";
+import { TasksButton, NotificationEngine } from "./tasks";
 import { NotificationsBell } from "./notifications-bell";
 import { Assistant } from "./assistant";
 import { HomeDashboard } from "./home-dashboard";
@@ -113,6 +114,7 @@ export function AppShell({
         </div>
         <div className="flex items-center gap-1.5">
           <FeedbackButtons />
+          <TasksButton />
           <NotificationsBell />
           {isAdmin && (
             <a href="/admin" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">
@@ -281,6 +283,9 @@ export function AppShell({
           )}
         </main>
       </div>
+
+      {/* Site-wide desktop notifications + task reminders (sound + browser) */}
+      <NotificationEngine />
 
       {/* Floating AI assistant */}
       <Assistant />

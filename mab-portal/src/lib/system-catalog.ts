@@ -37,6 +37,7 @@ export const SYSTEM_CATALOG: Record<string, SystemCatalog> = {
       { key: "ADMIN", label: "مشرف النظام (IT)" },
     ],
     features: [
+      { key: "dashboard", label: "لوحة المعلومات", path: "/dashboard" },
       { key: "my_evaluation", label: "تقييمي", path: "/my-evaluation" },
       { key: "evaluations", label: "كل التقييمات", path: "/dashboard/evaluations" },
       { key: "employees", label: "الموظفون", path: "/dashboard/employees" },
@@ -45,10 +46,10 @@ export const SYSTEM_CATALOG: Record<string, SystemCatalog> = {
     ],
     roleFeatures: {
       EMPLOYEE: ["my_evaluation"],
-      EVALUATOR: ["evaluations", "employees", "templates", "reports"],
-      HR: ["evaluations", "reports"],
-      MANAGEMENT: ["evaluations", "employees", "templates", "reports"],
-      ADMIN: ["evaluations", "employees", "templates", "reports"],
+      EVALUATOR: ["dashboard", "evaluations", "employees", "templates", "reports"],
+      HR: ["dashboard", "evaluations", "reports"],
+      MANAGEMENT: ["dashboard", "evaluations", "employees", "templates", "reports"],
+      ADMIN: ["dashboard", "evaluations", "employees", "templates", "reports"],
     },
   },
 };
