@@ -1,6 +1,8 @@
 import "server-only";
 import { prisma } from "./db";
 import { notifyUser } from "./notify";
+import { readUpload, writeGenerated } from "./uploads";
+import { buildSignedPdf } from "./signed-pdf";
 
 const APP_URL = process.env.APP_URL || "https://portal.mucs.online";
 
@@ -203,6 +205,7 @@ export async function signStep(
   input: { note?: string; signatureImg?: string },
 ) {
   const notifications: { userId: string; email: string | null; title: string; body: string }[] = [];
+  let didComplete = false;
 
   await prisma.$transaction(async (txdb) => {
     const { t, step } = await loadForAction(txdb, id, userId);
@@ -219,6 +222,7 @@ export async function signStep(
     });
 
     if (isLast) {
+      didComplete = true;
       await bumpVersion(txdb, id, t.version, { status: "COMPLETED", currentStep: t.steps.length });
       notifications.push({
         userId: t.initiator.id, email: t.initiator.email,
@@ -245,6 +249,32 @@ export async function signStep(
   for (const n of notifications) {
     await notifyUser({ userId: n.userId, toEmail: n.email, type: "SYSTEM", title: n.title, body: n.body, link: txLink(id), email: true, accent: "#0f9d58" });
   }
+
+  // On completion, burn every signature into the final document (best-effort —
+  // a failure here never unwinds the approval, which is a committed fact).
+  if (didComplete) {
+    try { await generateSignedFile(id); }
+    catch (err) { console.error(`[transactions] signed-file generation failed for ${id}:`, err); }
+  }
+}
+
+/** Assemble the final signed PDF from the original + each step's signature. */
+async function generateSignedFile(id: string) {
+  const tx = await prisma.transaction.findUnique({
+    where: { id },
+    select: {
+      originalFile: true, mimeType: true,
+      steps: { orderBy: { order: "asc" }, select: { signatureImg: true, status: true } },
+    },
+  });
+  if (!tx) return;
+  const sigs = tx.steps
+    .filter((s) => s.status === "SIGNED" && s.signatureImg)
+    .map((s) => s.signatureImg as string);
+  const original = await readUpload("transactions", tx.originalFile);
+  const bytes = await buildSignedPdf(original, tx.mimeType, sigs);
+  const stored = await writeGenerated("transactions", ".pdf", Buffer.from(bytes));
+  await prisma.transaction.update({ where: { id }, data: { signedFile: stored } });
 }
 
 /** The initiator restarts a RETURNED transaction from the top (after fixing the

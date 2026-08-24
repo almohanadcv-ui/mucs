@@ -18,7 +18,7 @@ type ListRow = {
 type Person = { id: string; name: string; jobTitle: string | null };
 type Detail = {
   id: string; title: string; type: string | null; note: string | null; status: TxStatus;
-  currentStep: number; originalName: string; createdAt: string;
+  currentStep: number; originalName: string; createdAt: string; signedFile: string | null;
   initiator: { id: string; name: string };
   steps: { id: string; order: number; status: StepStatus; note: string | null; signatureImg: string | null; actedAt: string | null; approver: { id: string; name: string; jobTitle: string | null } }[];
   canActNow: boolean;
@@ -33,6 +33,40 @@ const STATUS_CLR: Record<TxStatus, string> = {
 };
 const stepColor = (s: StepStatus) =>
   s === "SIGNED" ? "#0f9d58" : s === "REJECTED" ? "#dc2626" : s === "RETURNED" ? "#d97706" : "#94a3b8";
+
+/**
+ * Composite a drawn signature with the signer's name + title + date into ONE
+ * PNG. The final PDF then only places images (never draws text), so Arabic
+ * renders perfectly here via the browser canvas and never hits PDF font/shaping
+ * limits on the server.
+ */
+function composeSignature(sigDataUrl: string, name: string, jobTitle: string | null, dateStr: string): Promise<string> {
+  return new Promise((resolve) => {
+    const W = 560, H = 200;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, W, H);
+    const img = new Image();
+    img.onload = () => {
+      // Signature in the top area.
+      const maxW = W - 40, maxH = 110;
+      const s = Math.min(maxW / img.width, maxH / img.height, 1);
+      const w = img.width * s, h = img.height * s;
+      ctx.drawImage(img, (W - w) / 2, 10, w, h);
+      // Meta below, right-aligned RTL.
+      ctx.direction = "rtl"; ctx.textAlign = "right";
+      ctx.fillStyle = "#0f2b46"; ctx.font = "bold 22px system-ui, sans-serif";
+      ctx.fillText(name, W - 20, 150);
+      ctx.fillStyle = "#64748b"; ctx.font = "16px system-ui, sans-serif";
+      if (jobTitle) ctx.fillText(jobTitle, W - 20, 174);
+      ctx.fillText(dateStr, W - 20, 194);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => resolve(sigDataUrl);
+    img.src = sigDataUrl;
+  });
+}
 
 /* ───────────────────────────── main view ───────────────────────────── */
 
@@ -395,7 +429,14 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
     try {
       const payload: Record<string, unknown> = { note: note.trim() || undefined };
       // Prefer a freshly drawn signature; otherwise use the chosen saved one.
-      if (kind === "sign") payload.signatureImg = sigRef.current?.dataUrl() ?? chosenSig ?? undefined;
+      if (kind === "sign") {
+        const raw = sigRef.current?.dataUrl() ?? chosenSig ?? null;
+        if (raw && tx) {
+          const me = tx.steps[tx.currentStep]?.approver;
+          const dateStr = new Date().toLocaleString("ar", { dateStyle: "long", timeStyle: "short" });
+          payload.signatureImg = await composeSignature(raw, me?.name ?? "", me?.jobTitle ?? null, dateStr);
+        }
+      }
       const res = await fetch(`/api/transactions/${id}/${kind}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
@@ -426,9 +467,16 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
           </div>
           {tx.note && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{tx.note}</p>}
 
-          <a href={`/api/transactions/${id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#075d96] hover:bg-slate-50">
-            <Paperclip className="size-4" /> {tx.originalName}
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/transactions/${id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#075d96] hover:bg-slate-50">
+              <Paperclip className="size-4" /> {tx.originalName}
+            </a>
+            {tx.status === "COMPLETED" && tx.signedFile && (
+              <a href={`/api/transactions/${id}/signed`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
+                <Check className="size-4" /> تنزيل الملف الموقّع
+              </a>
+            )}
+          </div>
 
           {/* Vertical chain of arrows */}
           <div className="space-y-0">
