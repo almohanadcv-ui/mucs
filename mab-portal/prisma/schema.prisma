@@ -64,6 +64,8 @@ model PortalUser {
   notifications Notification[]
   tasks         Task[]
   heldAssets    Asset[]            @relation("AssetHolder")
+  initiatedTransactions Transaction[]     @relation("TxInitiator")
+  approvalSteps         TransactionStep[] @relation("TxApprover")
 
   @@index([deletedAt])
   @@index([departmentId])
@@ -270,6 +272,59 @@ model Task {
 
   @@index([userId, done, dueAt])
   @@map("tasks")
+}
+
+/// A dynamic approval transaction: a file that travels UP an ordered chain of
+/// signers the initiator picked. Each step signs (approve) or rejects (returns
+/// one step). When the last step signs, it completes and returns to the
+/// initiator with every signature on the file. `version` guards against races.
+model Transaction {
+  id           String   @id @default(uuid()) @db.Uuid
+  initiatorId  String   @db.Uuid
+  title        String
+  type         String?
+  note         String?
+  /// IN_PROGRESS | COMPLETED | REJECTED | CANCELLED
+  status       String   @default("IN_PROGRESS")
+  /// Order index of the active step (0-based); equals step count when finished.
+  currentStep  Int      @default(0)
+  /// Optimistic-lock counter — every sign/reject bumps it inside a transaction.
+  version      Int      @default(0)
+  originalFile String   // stored filename on disk
+  originalName String   // display name
+  mimeType     String
+  /// The final signed PDF (burned signatures) or the signatures certificate.
+  signedFile   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  initiator PortalUser        @relation("TxInitiator", fields: [initiatorId], references: [id], onDelete: Cascade)
+  steps     TransactionStep[]
+
+  @@index([initiatorId])
+  @@index([status])
+  @@map("transactions")
+}
+
+model TransactionStep {
+  id            String    @id @default(uuid()) @db.Uuid
+  transactionId String    @db.Uuid
+  order         Int
+  approverId    String    @db.Uuid
+  /// PENDING | SIGNED | REJECTED | RETURNED
+  status        String    @default("PENDING")
+  note          String?
+  /// The drawn signature/stamp as a data URL (small PNG).
+  signatureImg  String?
+  actedAt       DateTime?
+  createdAt     DateTime  @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  approver    PortalUser  @relation("TxApprover", fields: [approverId], references: [id], onDelete: Cascade)
+
+  @@unique([transactionId, order])
+  @@index([approverId, status])
+  @@map("transaction_steps")
 }
 
 /// A suggestion or a complaint submitted from the top bar.

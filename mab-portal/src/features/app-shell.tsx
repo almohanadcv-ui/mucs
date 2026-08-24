@@ -19,6 +19,7 @@ import {
   Building2,
   Inbox,
   Users2,
+  FileSignature,
   type LucideIcon,
 } from "lucide-react";
 import type { LauncherSystem } from "@/lib/access";
@@ -30,6 +31,7 @@ import { HomeDashboard } from "./home-dashboard";
 import { OrgChart } from "./org-chart";
 import { FeedbackList } from "./feedback-list";
 import { EmployeesView } from "./employees";
+import { TransactionsView } from "./transactions";
 
 const ICONS: Record<string, LucideIcon> = {
   evaluation: ClipboardList,
@@ -60,7 +62,7 @@ export function AppShell({
   const [expanded, setExpanded] = useState<string | null>(systems[0]?.id ?? null);
   const [target, setTarget] = useState<Target>(null);
   // Internal portal pages (org chart, feedback list) shown in the main area.
-  const [internal, setInternal] = useState<null | "org" | "feedback" | "employees">(null);
+  const [internal, setInternal] = useState<null | "org" | "feedback" | "employees" | "transactions">(null);
   // Mobile: the systems list is an off-canvas drawer over the main content.
   const [navOpen, setNavOpen] = useState(false);
   // Desktop: a slim icon rail that expands to labels on hover (Jisr-style).
@@ -78,7 +80,7 @@ export function AppShell({
     setNavOpen(false);
   }
 
-  function openInternal(view: "org" | "feedback" | "employees") {
+  function openInternal(view: "org" | "feedback" | "employees" | "transactions") {
     setInternal(view);
     setTarget(null);
     setNavOpen(false);
@@ -149,6 +151,14 @@ export function AppShell({
               showLabels={showLabels}
               active={!target && !internal}
               onClick={goHome}
+            />
+
+            <RailButton
+              icon={<FileSignature className="size-5" />}
+              label="المعاملات"
+              showLabels={showLabels}
+              active={internal === "transactions"}
+              onClick={() => openInternal("transactions")}
             />
 
             {canViewEmployees && (
@@ -272,6 +282,8 @@ export function AppShell({
             <div className="flex-1 overflow-y-auto">
               {internal === "org" ? (
                 <OrgChart />
+              ) : internal === "transactions" ? (
+                <TransactionsView isAdmin={isAdmin} />
               ) : internal === "employees" ? (
                 <EmployeesView isAdmin={isAdmin} />
               ) : internal === "feedback" ? (
