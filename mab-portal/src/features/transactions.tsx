@@ -3,7 +3,8 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import {
   FileSignature, Plus, X, Search, GripVertical, ArrowLeft, Check, RotateCcw,
-  Loader2, Paperclip, Trash2, ChevronUp, ChevronDown,
+  Loader2, Paperclip, Trash2, ChevronUp, ChevronDown, LayoutDashboard, Inbox,
+  PenTool, Star, FilePlus2,
 } from "lucide-react";
 
 type StepStatus = "PENDING" | "SIGNED" | "REJECTED" | "RETURNED";
@@ -35,12 +36,85 @@ const stepColor = (s: StepStatus) =>
 
 /* ───────────────────────────── main view ───────────────────────────── */
 
-export function TransactionsView({ isAdmin }: { isAdmin: boolean }) {
+type Section = "dashboard" | "inbox" | "signatures";
+
+export function TransactionsView({ isAdmin, userName }: { isAdmin: boolean; userName: string }) {
+  const [section, setSection] = useState<Section>("inbox");
+  const [creating, setCreating] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const NAV: { key: Section; label: string; icon: typeof Inbox }[] = [
+    { key: "dashboard", label: "لوحة المعلومات", icon: LayoutDashboard },
+    { key: "inbox", label: "صندوق المعاملات", icon: Inbox },
+    { key: "signatures", label: "إدارة التواقيع", icon: PenTool },
+  ];
+
+  return (
+    <div className="flex min-h-full">
+      {/* Module sub-nav */}
+      <aside className="w-52 shrink-0 border-l border-slate-200 bg-white p-3">
+        <h2 className="mb-3 flex items-center gap-2 px-1 text-sm font-bold text-slate-900">
+          <FileSignature className="size-5 text-[#1178b8]" /> المعاملات
+        </h2>
+        <button onClick={() => setCreating(true)} className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-3 py-2 text-sm font-semibold text-white hover:bg-[#173a5e]">
+          <FilePlus2 className="size-4" /> معاملة جديدة
+        </button>
+        <nav className="space-y-1">
+          {NAV.map(({ key, label, icon: Icon }) => (
+            <button key={key} onClick={() => setSection(key)} className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-right text-sm ${section === key ? "bg-[#1178b8]/10 font-semibold text-[#075d96]" : "text-slate-700 hover:bg-slate-50"}`}>
+              <Icon className="size-4" /> {label}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      {/* Section body */}
+      <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        {section === "dashboard" && <Dashboard onGoInbox={() => setSection("inbox")} />}
+        {section === "inbox" && <Inbox_ isAdmin={isAdmin} reloadKey={reloadKey} />}
+        {section === "signatures" && <SignaturesManager userName={userName} />}
+      </div>
+
+      {creating && <CreateModal onClose={() => setCreating(false)} onDone={() => { setCreating(false); setSection("inbox"); setReloadKey((k) => k + 1); }} />}
+    </div>
+  );
+}
+
+/* ─────────────────────────── dashboard ─────────────────────────────── */
+
+function Dashboard({ onGoInbox }: { onGoInbox: () => void }) {
+  const [s, setS] = useState<{ mine: number; completed: number; returned: number; awaitingMe: number; all?: number } | null>(null);
+  useEffect(() => { (async () => { const r = await fetch("/api/transactions/stats", { cache: "no-store" }); if (r.ok) setS((await r.json()).stats); })(); }, []);
+
+  const cards = [
+    { label: "بانتظار توقيعي", value: s?.awaitingMe, color: "#1178b8", go: true },
+    { label: "معاملاتي", value: s?.mine, color: "#0f2b46" },
+    { label: "مكتملة", value: s?.completed, color: "#0f9d58" },
+    { label: "أُعيدت للتعديل", value: s?.returned, color: "#d97706" },
+    ...(s?.all !== undefined ? [{ label: "كل المعاملات", value: s.all, color: "#6d28d9" }] : []),
+  ];
+  return (
+    <div>
+      <h1 className="mb-4 text-xl font-bold text-slate-900">لوحة المعلومات</h1>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {cards.map((c) => (
+          <button key={c.label} onClick={c.go ? onGoInbox : undefined} className={`rounded-2xl border border-slate-200 bg-white p-4 text-right ${c.go ? "hover:border-[#1178b8]" : ""}`}>
+            <p className="text-sm text-slate-500">{c.label}</p>
+            <p className="mt-1 text-3xl font-black" style={{ color: c.color }}>{c.value ?? "—"}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ───────────────────────────── inbox ───────────────────────────────── */
+
+function Inbox_({ isAdmin, reloadKey }: { isAdmin: boolean; reloadKey: number }) {
   const [tab, setTab] = useState<"pending" | "mine" | "all">("pending");
   const [rows, setRows] = useState<ListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,25 +122,15 @@ export function TransactionsView({ isAdmin }: { isAdmin: boolean }) {
     if (res.ok) setRows((await res.json()).rows ?? []);
     setLoading(false);
   }, [tab]);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, reloadKey]);
 
   return (
-    <div className="mx-auto max-w-4xl p-4 sm:p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-          <FileSignature className="size-6 text-[#1178b8]" /> المعاملات
-        </h1>
-        <button onClick={() => setCreating(true)} className="inline-flex items-center gap-1.5 rounded-xl bg-[#0f2b46] px-3.5 py-2 text-sm font-semibold text-white hover:bg-[#173a5e]">
-          <Plus className="size-4" /> معاملة جديدة
-        </button>
-      </div>
-
+    <div className="mx-auto max-w-3xl">
       <div className="mb-4 flex gap-1 rounded-xl bg-slate-100 p-1 text-sm">
         {([["pending", "بانتظار توقيعي"], ["mine", "معاملاتي"], ...(isAdmin ? [["all", "الكل"]] : [])] as [typeof tab, string][]).map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded-lg px-3 py-1.5 font-medium ${tab === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>{label}</button>
         ))}
       </div>
-
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="size-6 animate-spin text-slate-400" /></div>
       ) : rows.length === 0 ? (
@@ -79,17 +143,87 @@ export function TransactionsView({ isAdmin }: { isAdmin: boolean }) {
                 <span className="font-semibold text-slate-900">{t.title}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLR[t.status]}`}>{STATUS_LABEL[t.status]}</span>
               </div>
-              <div className="flex items-center gap-1 overflow-x-auto">
-                <MiniArrows steps={t.steps} currentStep={t.currentStep} />
-              </div>
+              <div className="flex items-center gap-1 overflow-x-auto"><MiniArrows steps={t.steps} currentStep={t.currentStep} /></div>
               <span className="text-xs text-slate-400">المُنشئ: {t.initiatorName}</span>
             </button>
           ))}
         </div>
       )}
-
-      {creating && <CreateModal onClose={() => setCreating(false)} onDone={() => { setCreating(false); void load(); }} />}
       {openId && <DetailModal id={openId} onClose={() => setOpenId(null)} onChanged={() => void load()} />}
+    </div>
+  );
+}
+
+/* ─────────────────────── signatures manager ────────────────────────── */
+
+type SavedSig = { id: string; label: string | null; kind: string; imageData: string; isDefault: boolean };
+
+function SignaturesManager({ userName }: { userName: string }) {
+  const [rows, setRows] = useState<SavedSig[]>([]);
+  const [label, setLabel] = useState("");
+  const [kind, setKind] = useState<"SIGNATURE" | "STAMP">("SIGNATURE");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const sigRef = useRef<SignatureHandle>(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch("/api/signatures", { cache: "no-store" });
+    if (r.ok) setRows((await r.json()).rows ?? []);
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  async function save() {
+    const data = sigRef.current?.dataUrl();
+    if (!data) { setErr("ارسم التوقيع أولًا."); return; }
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch("/api/signatures", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: label.trim() || undefined, kind, imageData: data }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || "تعذّر الحفظ.");
+      setLabel(""); sigRef.current?.clear(); await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); } finally { setBusy(false); }
+  }
+  async function setDefault(id: string) { await fetch(`/api/signatures/${id}`, { method: "PATCH" }); void load(); }
+  async function remove(id: string) { await fetch(`/api/signatures/${id}`, { method: "DELETE" }); void load(); }
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <h1 className="mb-1 text-xl font-bold text-slate-900">إدارة التواقيع</h1>
+      <p className="mb-4 text-sm text-slate-500">الاسم يُسجّل تلقائيًا: <span className="font-semibold text-slate-700">{userName}</span></p>
+
+      <div className="mb-5 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+        <SignaturePad ref={sigRef} />
+        <div className="grid grid-cols-2 gap-2">
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="وصف (اختياري)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <select value={kind} onChange={(e) => setKind(e.target.value as "SIGNATURE" | "STAMP")} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="SIGNATURE">توقيع</option>
+            <option value="STAMP">ختم</option>
+          </select>
+        </div>
+        {err && <p className="text-sm text-red-600">{err}</p>}
+        <button disabled={busy} onClick={save} className="w-full rounded-xl bg-[#1178b8] px-4 py-2.5 font-semibold text-white hover:bg-[#0d5f92] disabled:opacity-60">
+          {busy ? "جارٍ الحفظ…" : "حفظ التوقيع"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {rows.map((s) => (
+          <div key={s.id} className={`rounded-xl border bg-white p-3 ${s.isDefault ? "border-emerald-300" : "border-slate-200"}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={s.imageData} alt="توقيع" className="mb-2 h-16 w-full rounded border border-slate-100 object-contain" />
+            <div className="flex items-center justify-between">
+              <span className="truncate text-xs text-slate-500">{s.label || (s.kind === "STAMP" ? "ختم" : "توقيع")}</span>
+              <div className="flex items-center gap-1">
+                <button onClick={() => setDefault(s.id)} title="الافتراضي" className={s.isDefault ? "text-emerald-600" : "text-slate-300 hover:text-amber-500"}><Star className="size-4" fill={s.isDefault ? "currentColor" : "none"} /></button>
+                <button onClick={() => remove(s.id)} className="text-slate-300 hover:text-red-600"><Trash2 className="size-4" /></button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {rows.length === 0 && <p className="col-span-full py-8 text-center text-sm text-slate-400">لا توقيعات محفوظة بعد.</p>}
+      </div>
     </div>
   );
 }
@@ -232,6 +366,21 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const sigRef = useRef<SignatureHandle>(null);
+  const [savedSigs, setSavedSigs] = useState<SavedSig[]>([]);
+  const [chosenSig, setChosenSig] = useState<string | null>(null); // data URL of a saved signature
+
+  useEffect(() => {
+    if (mode !== "sign") return;
+    (async () => {
+      const r = await fetch("/api/signatures", { cache: "no-store" });
+      if (r.ok) {
+        const rows: SavedSig[] = (await r.json()).rows ?? [];
+        setSavedSigs(rows);
+        const def = rows.find((s) => s.isDefault) ?? rows[0];
+        if (def) setChosenSig(def.imageData);
+      }
+    })();
+  }, [mode]);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/transactions/${id}`, { cache: "no-store" });
@@ -245,7 +394,8 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
     setBusy(true); setErr(null);
     try {
       const payload: Record<string, unknown> = { note: note.trim() || undefined };
-      if (kind === "sign") payload.signatureImg = sigRef.current?.dataUrl() ?? undefined;
+      // Prefer a freshly drawn signature; otherwise use the chosen saved one.
+      if (kind === "sign") payload.signatureImg = sigRef.current?.dataUrl() ?? chosenSig ?? undefined;
       const res = await fetch(`/api/transactions/${id}/${kind}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
       });
@@ -308,7 +458,21 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
           )}
           {tx.canActNow && mode === "sign" && (
             <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
-              <p className="text-sm font-semibold text-slate-700">وقّع هنا</p>
+              {savedSigs.length > 0 && (
+                <div>
+                  <p className="mb-1 text-xs font-semibold text-slate-500">اختر توقيعًا محفوظًا، أو ارسم جديدًا بالأسفل</p>
+                  <div className="flex flex-wrap gap-2">
+                    {savedSigs.map((s) => (
+                      <button key={s.id} type="button" onClick={() => { setChosenSig(s.imageData); sigRef.current?.clear(); }}
+                        className={`rounded-lg border bg-white p-1 ${chosenSig === s.imageData ? "border-emerald-500 ring-2 ring-emerald-200" : "border-slate-200"}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={s.imageData} alt="توقيع" className="h-10 w-24 object-contain" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-sm font-semibold text-slate-700">أو وقّع هنا</p>
               <SignaturePad ref={sigRef} />
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               <div className="flex gap-2">

@@ -50,6 +50,7 @@ export function AppShell({
   canPostContent,
   canViewEmployees,
   canViewOrg,
+  canUseTransactions,
   systems,
 }: {
   userName: string;
@@ -57,6 +58,7 @@ export function AppShell({
   canPostContent: boolean;
   canViewEmployees: boolean;
   canViewOrg: boolean;
+  canUseTransactions: boolean;
   systems: LauncherSystem[];
 }) {
   const [expanded, setExpanded] = useState<string | null>(systems[0]?.id ?? null);
@@ -153,13 +155,15 @@ export function AppShell({
               onClick={goHome}
             />
 
-            <RailButton
-              icon={<FileSignature className="size-5" />}
-              label="المعاملات"
-              showLabels={showLabels}
-              active={internal === "transactions"}
-              onClick={() => openInternal("transactions")}
-            />
+            {canUseTransactions && (
+              <RailButton
+                icon={<FileSignature className="size-5" />}
+                label="المعاملات"
+                showLabels={showLabels}
+                active={internal === "transactions"}
+                onClick={() => openInternal("transactions")}
+              />
+            )}
 
             {canViewEmployees && (
               <RailButton
@@ -283,7 +287,7 @@ export function AppShell({
               {internal === "org" ? (
                 <OrgChart />
               ) : internal === "transactions" ? (
-                <TransactionsView isAdmin={isAdmin} />
+                <TransactionsView isAdmin={isAdmin} userName={userName} />
               ) : internal === "employees" ? (
                 <EmployeesView isAdmin={isAdmin} />
               ) : internal === "feedback" ? (

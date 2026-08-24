@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
         canViewEmployees: true,
         canViewOrg: true,
         canSendNotifications: true,
+        canUseTransactions: true,
         jobTitle: true,
         departmentId: true,
         managerId: true,

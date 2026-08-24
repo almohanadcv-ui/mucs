@@ -21,6 +21,7 @@ export default async function HomePage() {
       canPostContent={perms.canManageContent}
       canViewEmployees={perms.canViewEmployees}
       canViewOrg={perms.canViewOrg}
+      canUseTransactions={perms.canUseTransactions}
       systems={systems}
     />
   );

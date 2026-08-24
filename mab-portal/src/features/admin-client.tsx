@@ -26,6 +26,7 @@ type UserRow = {
   canViewEmployees: boolean;
   canViewOrg: boolean;
   canSendNotifications: boolean;
+  canUseTransactions: boolean;
   jobTitle: string | null;
   departmentId: string | null;
   managerId: string | null;
@@ -398,6 +399,7 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
     canViewEmployees: user.canViewEmployees,
     canViewOrg: user.canViewOrg,
     canSendNotifications: user.canSendNotifications,
+    canUseTransactions: user.canUseTransactions,
   });
 
   useEffect(() => {
@@ -529,6 +531,7 @@ function AccessModal({ user, onClose, onDone }: { user: UserRow; onClose: () => 
               ["canViewEmployees", "عرض الموظفين"],
               ["canViewOrg", "عرض المخطط التنظيمي"],
               ["canSendNotifications", "إرسال التنبيهات"],
+              ["canUseTransactions", "نظام المعاملات"],
             ] as const).map(([key, label]) => (
               <label key={key} className={`flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 ${sections[key] ? "border-emerald-300 bg-emerald-50" : "border-slate-200"}`}>
                 <span className="text-sm font-medium text-slate-800">{label}</span>

@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     canViewEmployees?: boolean;
     canViewOrg?: boolean;
     canSendNotifications?: boolean;
+    canUseTransactions?: boolean;
     jobTitle?: string | null;
     departmentId?: string | null;
     managerId?: string | null;
@@ -63,6 +64,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ...(body.canViewEmployees !== undefined ? { canViewEmployees: body.canViewEmployees } : {}),
       ...(body.canViewOrg !== undefined ? { canViewOrg: body.canViewOrg } : {}),
       ...(body.canSendNotifications !== undefined ? { canSendNotifications: body.canSendNotifications } : {}),
+      ...(body.canUseTransactions !== undefined ? { canUseTransactions: body.canUseTransactions } : {}),
       ...(body.jobTitle !== undefined ? { jobTitle: body.jobTitle?.trim() || null } : {}),
       ...(body.departmentId !== undefined ? { departmentId: body.departmentId || null } : {}),
       ...(managerId !== undefined ? { managerId } : {}),

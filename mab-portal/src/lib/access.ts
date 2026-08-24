@@ -9,6 +9,7 @@ export interface UserPerms {
   canViewEmployees: boolean;
   canViewOrg: boolean;
   canSendNotifications: boolean;
+  canUseTransactions: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export async function getUserPerms(userId: string): Promise<UserPerms> {
       canViewEmployees: true,
       canViewOrg: true,
       canSendNotifications: true,
+      canUseTransactions: true,
     },
   });
   const admin = !!u?.isSuperAdmin;
@@ -34,6 +36,7 @@ export async function getUserPerms(userId: string): Promise<UserPerms> {
     canViewEmployees: admin || !!u?.canViewEmployees,
     canViewOrg: admin || !!u?.canViewOrg,
     canSendNotifications: admin || !!u?.canSendNotifications,
+    canUseTransactions: admin || !!u?.canUseTransactions,
   };
 }
 

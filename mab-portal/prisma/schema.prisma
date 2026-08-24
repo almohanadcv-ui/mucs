@@ -34,6 +34,8 @@ model PortalUser {
   canViewEmployees    Boolean @default(false)
   canViewOrg          Boolean @default(false)
   canSendNotifications Boolean @default(false)
+  /// May use the Transactions module (create + sign correspondence).
+  canUseTransactions  Boolean @default(false)
 
   // Org structure
   jobTitle     String?
@@ -66,6 +68,7 @@ model PortalUser {
   heldAssets    Asset[]            @relation("AssetHolder")
   initiatedTransactions Transaction[]     @relation("TxInitiator")
   approvalSteps         TransactionStep[] @relation("TxApprover")
+  signatures            UserSignature[]
 
   @@index([deletedAt])
   @@index([departmentId])
@@ -325,6 +328,23 @@ model TransactionStep {
   @@unique([transactionId, order])
   @@index([approverId, status])
   @@map("transaction_steps")
+}
+
+/// A user's saved signature or stamp (drawn once, reused on transactions). The
+/// owner's NAME is never stored here — it comes from their account at sign time.
+model UserSignature {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  label     String?
+  kind      String   @default("SIGNATURE") // SIGNATURE | STAMP
+  imageData String    // PNG data URL
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_signatures")
 }
 
 /// A suggestion or a complaint submitted from the top bar.

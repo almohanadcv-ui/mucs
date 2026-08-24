@@ -136,6 +136,24 @@ export async function listTransactions(
   }));
 }
 
+/** Dashboard counters for the current user. */
+export async function transactionStats(userId: string, isAdmin: boolean) {
+  const [mine, completed, returned, pendingRows] = await Promise.all([
+    prisma.transaction.count({ where: { initiatorId: userId } }),
+    prisma.transaction.count({ where: { initiatorId: userId, status: "COMPLETED" } }),
+    prisma.transaction.count({ where: { initiatorId: userId, status: "RETURNED" } }),
+    prisma.transaction.findMany({
+      where: { status: "IN_PROGRESS", steps: { some: { approverId: userId } } },
+      select: { currentStep: true, steps: { orderBy: { order: "asc" }, select: { approverId: true, status: true } } },
+    }),
+  ]);
+  const awaitingMe = pendingRows.filter(
+    (t) => t.steps[t.currentStep]?.approverId === userId && t.steps[t.currentStep]?.status === "PENDING",
+  ).length;
+  const all = isAdmin ? await prisma.transaction.count() : undefined;
+  return { mine, completed, returned, awaitingMe, all };
+}
+
 /* ─────────────────────────── act: sign / reject ────────────────────── */
 
 /** Load + authorize the current actionable step, all inside a tx callback. */

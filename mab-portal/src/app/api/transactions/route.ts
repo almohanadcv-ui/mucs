@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   const perms = await getUserPerms(session.sub);
+  if (!perms.canUseTransactions) return NextResponse.json({ error: "لا تملك صلاحية المعاملات." }, { status: 403 });
   const tabParam = req.nextUrl.searchParams.get("tab");
   const tab = tabParam === "pending" || tabParam === "all" ? tabParam : "mine";
   const rows = await listTransactions(session.sub, perms.isAdmin, tab);
@@ -21,6 +22,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
+  const perms = await getUserPerms(session.sub);
+  if (!perms.canUseTransactions) return NextResponse.json({ error: "لا تملك صلاحية المعاملات." }, { status: 403 });
 
   try {
     const form = await req.formData();
