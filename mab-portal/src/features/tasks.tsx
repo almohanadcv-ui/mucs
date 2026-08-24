@@ -14,29 +14,51 @@ type Task = {
   remindedAt: string | null;
 };
 
-/** A short two-tone chime via Web Audio — no asset needed. */
-function playChime() {
+// One shared AudioContext. Browsers start it "suspended" and block sound until a
+// user gesture resumes it, so we keep ONE context and unlock it on the first
+// click; a chime fired later from a timer then plays.
+let audioCtx: AudioContext | null = null;
+function getCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
   try {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new Ctx();
-    const now = ctx.currentTime;
-    [880, 1320].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.value = freq;
-      const t = now + i * 0.18;
-      gain.gain.setValueAtTime(0.0001, t);
-      gain.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.18);
-    });
-    setTimeout(() => ctx.close().catch(() => {}), 800);
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtx) audioCtx = new Ctx();
+    return audioCtx;
   } catch {
-    /* Web Audio unavailable — silent. */
+    return null;
   }
+}
+
+/** Call on a user gesture (click) so audio is allowed to play later. */
+export function unlockAudio() {
+  const ctx = getCtx();
+  if (ctx && ctx.state === "suspended") void ctx.resume().catch(() => {});
+}
+
+function ring(ctx: AudioContext) {
+  const now = ctx.currentTime;
+  [880, 1320].forEach((freq, i) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const t = now + i * 0.18;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.16);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.18);
+  });
+}
+
+/** A short two-tone chime via Web Audio — resumes the context first if needed. */
+function playChime() {
+  const ctx = getCtx();
+  if (!ctx) return;
+  if (ctx.state === "suspended") ctx.resume().then(() => ring(ctx)).catch(() => {});
+  else ring(ctx);
 }
 
 /** Ask for browser-notification permission (needs a user gesture the first time). */
@@ -153,6 +175,7 @@ export function TasksButton() {
     if (!title.trim() || !dueAt) return;
     setBusy(true);
     try {
+      unlockAudio();
       await ensureNotifyPermission();
       const res = await fetch("/api/tasks", {
         method: "POST",
@@ -185,7 +208,7 @@ export function TasksButton() {
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => { unlockAudio(); setOpen(true); }}
         title="التقويم والمهام"
         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
       >
@@ -209,7 +232,7 @@ export function TasksButton() {
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {perm !== "granted" && perm !== "unsupported" && (
                 <button
-                  onClick={async () => setPerm((await ensureNotifyPermission()) ? "granted" : "denied")}
+                  onClick={async () => { unlockAudio(); setPerm((await ensureNotifyPermission()) ? "granted" : "denied"); }}
                   className="mb-3 flex w-full items-center justify-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 hover:bg-amber-100"
                 >
                   <BellRing className="size-4" /> فعّل إشعارات المتصفّح للتذكيرات
