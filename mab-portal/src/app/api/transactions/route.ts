@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 import { getUserPerms } from "@/lib/access";
 import { saveUpload, MAX_UPLOAD_BYTES } from "@/lib/uploads";
-import { createTransaction, listTransactions, TxError } from "@/lib/transactions";
+import { createTransaction, listTransactions, TxError, type TxTab } from "@/lib/transactions";
 
 export const runtime = "nodejs";
 
@@ -12,8 +12,9 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "غير مصرّح" }, { status: 401 });
   const perms = await getUserPerms(session.sub);
   if (!perms.canUseTransactions) return NextResponse.json({ error: "لا تملك صلاحية المعاملات." }, { status: 403 });
-  const tabParam = req.nextUrl.searchParams.get("tab");
-  const tab = tabParam === "pending" || tabParam === "all" ? tabParam : "mine";
+  const tabParam = req.nextUrl.searchParams.get("tab") ?? "";
+  const valid: TxTab[] = ["pending", "mine", "drafts", "completed", "all"];
+  const tab: TxTab = (valid as string[]).includes(tabParam) ? (tabParam as TxTab) : "mine";
   const rows = await listTransactions(session.sub, perms.isAdmin, tab);
   return NextResponse.json({ rows });
 }
@@ -27,26 +28,31 @@ export async function POST(req: NextRequest) {
 
   try {
     const form = await req.formData();
-    const title = String(form.get("title") ?? "").trim();
-    const type = String(form.get("type") ?? "").trim();
-    const note = String(form.get("note") ?? "").trim();
-    const approverIds = String(form.get("approverIds") ?? "")
-      .split(",").map((s) => s.trim()).filter(Boolean);
+    const g = (k: string) => String(form.get(k) ?? "").trim();
+    const title = g("title");
+    const draft = g("draft") === "1";
+    const approverIds = g("approverIds").split(",").map((s) => s.trim()).filter(Boolean);
     const file = form.get("file");
 
-    if (!title) return NextResponse.json({ error: "العنوان مطلوب." }, { status: 400 });
-    if (!(file instanceof File) || file.size === 0)
-      return NextResponse.json({ error: "أرفق ملفًا." }, { status: 400 });
-    if (file.size > MAX_UPLOAD_BYTES)
-      return NextResponse.json({ error: "الملف أكبر من 25MB." }, { status: 400 });
+    if (!title) return NextResponse.json({ error: "الموضوع مطلوب." }, { status: 400 });
 
-    const stored = await saveUpload(file, "transactions");
+    let stored: string | null = null;
+    let originalName: string | null = null;
+    let mimeType: string | null = null;
+    if (file instanceof File && file.size > 0) {
+      if (file.size > MAX_UPLOAD_BYTES) return NextResponse.json({ error: "الملف أكبر من 25MB." }, { status: 400 });
+      stored = await saveUpload(file, "transactions");
+      originalName = file.name;
+      mimeType = file.type || "application/octet-stream";
+    }
+
     const id = await createTransaction({
       initiatorId: session.sub,
-      title, type, note, approverIds,
-      originalFile: stored,
-      originalName: file.name,
-      mimeType: file.type || "application/octet-stream",
+      title, type: g("type"), note: g("note"),
+      secrecy: g("secrecy"), importance: g("importance"), content: g("content"),
+      signerName: g("signerName"), signerTitle: g("signerTitle"),
+      approverIds, draft,
+      originalFile: stored, originalName, mimeType,
     });
     return NextResponse.json({ id }, { status: 201 });
   } catch (e) {

@@ -8,27 +8,28 @@ import {
 } from "lucide-react";
 
 type StepStatus = "PENDING" | "SIGNED" | "REJECTED" | "RETURNED";
-type TxStatus = "IN_PROGRESS" | "COMPLETED" | "REJECTED" | "RETURNED" | "CANCELLED";
+type TxStatus = "DRAFT" | "IN_PROGRESS" | "COMPLETED" | "REJECTED" | "RETURNED" | "CANCELLED";
 
 type ListRow = {
-  id: string; title: string; type: string | null; status: TxStatus; currentStep: number;
+  id: string; number: string | null; title: string; type: string | null; status: TxStatus; currentStep: number;
   createdAt: string; initiatorName: string;
   steps: { status: StepStatus; name: string }[];
 };
 type Person = { id: string; name: string; jobTitle: string | null };
 type Detail = {
-  id: string; title: string; type: string | null; note: string | null; status: TxStatus;
-  currentStep: number; originalName: string; createdAt: string; signedFile: string | null;
+  id: string; number: string | null; title: string; type: string | null; note: string | null; status: TxStatus;
+  secrecy: string | null; importance: string | null; content: string | null; signerName: string | null; signerTitle: string | null;
+  currentStep: number; originalName: string | null; createdAt: string; signedFile: string | null;
   initiator: { id: string; name: string };
   steps: { id: string; order: number; status: StepStatus; note: string | null; signatureImg: string | null; actedAt: string | null; approver: { id: string; name: string; jobTitle: string | null } }[];
   canActNow: boolean;
 };
 
 const STATUS_LABEL: Record<TxStatus, string> = {
-  IN_PROGRESS: "جارية", COMPLETED: "مكتملة", REJECTED: "مرفوضة", RETURNED: "أُعيدت للتعديل", CANCELLED: "ملغاة",
+  DRAFT: "مسودة", IN_PROGRESS: "جارية", COMPLETED: "مكتملة", REJECTED: "مرفوضة", RETURNED: "أُعيدت للتعديل", CANCELLED: "ملغاة",
 };
 const STATUS_CLR: Record<TxStatus, string> = {
-  IN_PROGRESS: "bg-sky-50 text-sky-700", COMPLETED: "bg-emerald-50 text-emerald-700",
+  DRAFT: "bg-slate-100 text-slate-600", IN_PROGRESS: "bg-sky-50 text-sky-700", COMPLETED: "bg-emerald-50 text-emerald-700",
   REJECTED: "bg-red-50 text-red-700", RETURNED: "bg-amber-50 text-amber-800", CANCELLED: "bg-slate-100 text-slate-500",
 };
 const stepColor = (s: StepStatus) =>
@@ -144,8 +145,9 @@ function Dashboard({ onGoInbox }: { onGoInbox: () => void }) {
 
 /* ───────────────────────────── inbox ───────────────────────────────── */
 
+type Folder = "pending" | "mine" | "drafts" | "completed" | "all";
 function Inbox_({ isAdmin, reloadKey }: { isAdmin: boolean; reloadKey: number }) {
-  const [tab, setTab] = useState<"pending" | "mine" | "all">("pending");
+  const [tab, setTab] = useState<Folder>("pending");
   const [rows, setRows] = useState<ListRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -158,10 +160,15 @@ function Inbox_({ isAdmin, reloadKey }: { isAdmin: boolean; reloadKey: number })
   }, [tab]);
   useEffect(() => { void load(); }, [load, reloadKey]);
 
+  const folders: [Folder, string][] = [
+    ["pending", "بانتظار توقيعي"], ["mine", "معاملاتي"], ["drafts", "المسودات"],
+    ["completed", "المكتملة"], ...(isAdmin ? [["all", "الكل"] as [Folder, string]] : []),
+  ];
+
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="mb-4 flex gap-1 rounded-xl bg-slate-100 p-1 text-sm">
-        {([["pending", "بانتظار توقيعي"], ["mine", "معاملاتي"], ...(isAdmin ? [["all", "الكل"]] : [])] as [typeof tab, string][]).map(([k, label]) => (
+      <div className="mb-4 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1 text-sm">
+        {folders.map(([k, label]) => (
           <button key={k} onClick={() => setTab(k)} className={`flex-1 rounded-lg px-3 py-1.5 font-medium ${tab === k ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}>{label}</button>
         ))}
       </div>
@@ -177,8 +184,8 @@ function Inbox_({ isAdmin, reloadKey }: { isAdmin: boolean; reloadKey: number })
                 <span className="font-semibold text-slate-900">{t.title}</span>
                 <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLR[t.status]}`}>{STATUS_LABEL[t.status]}</span>
               </div>
-              <div className="flex items-center gap-1 overflow-x-auto"><MiniArrows steps={t.steps} currentStep={t.currentStep} /></div>
-              <span className="text-xs text-slate-400">المُنشئ: {t.initiatorName}</span>
+              {t.steps.length > 0 && <div className="flex items-center gap-1 overflow-x-auto"><MiniArrows steps={t.steps} currentStep={t.currentStep} /></div>}
+              <span className="text-xs text-slate-400">{t.number && <span className="font-mono">#{t.number} · </span>}المُنشئ: {t.initiatorName}</span>
             </button>
           ))}
         </div>
@@ -199,6 +206,17 @@ function SignaturesManager({ userName }: { userName: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const sigRef = useRef<SignatureHandle>(null);
+  const [pin, setPin] = useState("");
+  const [hasPin, setHasPin] = useState(false);
+  const [pinMsg, setPinMsg] = useState<string | null>(null);
+
+  useEffect(() => { (async () => { const r = await fetch("/api/signatures/pin", { cache: "no-store" }); if (r.ok) setHasPin((await r.json()).hasPin); })(); }, []);
+  async function savePin() {
+    setPinMsg(null);
+    const r = await fetch("/api/signatures/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
+    if (r.ok) { setHasPin(pin.trim().length >= 4); setPin(""); setPinMsg("تم حفظ كلمة السر."); }
+    else setPinMsg((await r.json().catch(() => ({})))?.error || "تعذّر الحفظ.");
+  }
 
   const load = useCallback(async () => {
     const r = await fetch("/api/signatures", { cache: "no-store" });
@@ -226,6 +244,14 @@ function SignaturesManager({ userName }: { userName: string }) {
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-1 text-xl font-bold text-slate-900">إدارة التواقيع</h1>
       <p className="mb-4 text-sm text-slate-500">الاسم يُسجّل تلقائيًا: <span className="font-semibold text-slate-700">{userName}</span></p>
+
+      <div className="mb-5 flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-white p-4">
+        <label className="flex-1 text-xs font-semibold text-slate-500">كلمة السر للتوقيع {hasPin && <span className="text-emerald-600">(مضبوطة)</span>}
+          <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder={hasPin ? "لتغييرها…" : "٤ خانات على الأقل"} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+        </label>
+        <button onClick={savePin} className="rounded-lg bg-[#0f2b46] px-4 py-2 text-sm font-semibold text-white hover:bg-[#173a5e]">حفظ</button>
+        {pinMsg && <p className="w-full text-xs text-slate-500">{pinMsg}</p>}
+      </div>
 
       <div className="mb-5 space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
         <SignaturePad ref={sigRef} />
@@ -280,7 +306,12 @@ function MiniArrows({ steps, currentStep }: { steps: { status: StepStatus; name:
 
 function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [title, setTitle] = useState("");
-  const [type, setType] = useState("");
+  const [type, setType] = useState("خطاب");
+  const [secrecy, setSecrecy] = useState("عادي");
+  const [importance, setImportance] = useState("عادي");
+  const [content, setContent] = useState("");
+  const [signerName, setSignerName] = useState("");
+  const [signerTitle, setSignerTitle] = useState("");
   const [note, setNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [chain, setChain] = useState<Person[]>([]);
@@ -312,18 +343,19 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     setChain((c) => { const next = [...c]; const [m] = next.splice(from, 1); next.splice(to, 0, m); return next; });
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(draft: boolean) {
     setErr(null);
-    if (!title.trim()) return setErr("العنوان مطلوب.");
-    if (!file) return setErr("أرفق ملفًا.");
-    if (chain.length === 0) return setErr("اختر موقّعًا واحدًا على الأقل.");
+    if (!title.trim()) return setErr("الموضوع مطلوب.");
+    if (!draft && chain.length === 0) return setErr("اختر موقّعًا واحدًا على الأقل للإرسال.");
     setBusy(true);
     try {
       const fd = new FormData();
       fd.set("title", title.trim()); fd.set("type", type.trim()); fd.set("note", note.trim());
+      fd.set("secrecy", secrecy); fd.set("importance", importance);
+      fd.set("content", content.trim()); fd.set("signerName", signerName.trim()); fd.set("signerTitle", signerTitle.trim());
       fd.set("approverIds", chain.map((c) => c.id).join(","));
-      fd.set("file", file);
+      fd.set("draft", draft ? "1" : "0");
+      if (file) fd.set("file", file);
       const res = await fetch("/api/transactions", { method: "POST", body: fd });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "تعذّر الإنشاء.");
@@ -333,20 +365,48 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
 
   return (
     <Shell title="معاملة جديدة" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-3">
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="عنوان المعاملة *" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <input value={type} onChange={(e) => setType(e.target.value)} placeholder="النوع (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ملاحظة (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="col-span-2 block text-xs font-semibold text-slate-500">الموضوع *
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="موضوع المعاملة" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+          </label>
+          <label className="block text-xs font-semibold text-slate-500">نوع المعاملة
+            <select value={type} onChange={(e) => setType(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal">
+              <option>خطاب</option><option>تعميم</option><option>مذكرة</option><option>طلب</option><option>أخرى</option>
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-slate-500">درجة السرية
+            <select value={secrecy} onChange={(e) => setSecrecy(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal">
+              <option>عادي</option><option>سري</option><option>سري للغاية</option>
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-slate-500">الأهمية
+            <select value={importance} onChange={(e) => setImportance(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal">
+              <option>عادي</option><option>عاجل</option><option>عاجل جدا</option>
+            </select>
+          </label>
+          <label className="block text-xs font-semibold text-slate-500">اسم صاحب التوقيع
+            <input value={signerName} onChange={(e) => setSignerName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+          </label>
+          <label className="col-span-2 block text-xs font-semibold text-slate-500">منصب صاحب التوقيع
+            <input value={signerTitle} onChange={(e) => setSignerTitle(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+          </label>
+        </div>
+
+        <label className="block text-xs font-semibold text-slate-500">محتوى الخطاب
+          <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} placeholder="اكتب نص الخطاب…" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+        </label>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
 
         <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-600 hover:bg-slate-50">
           <Paperclip className="size-4" />
-          <span className="truncate">{file ? file.name : "أرفق ملف المعاملة (حتى 25MB)"}</span>
+          <span className="truncate">{file ? file.name : "أرفق ملفًا (اختياري، حتى 25MB)"}</span>
           <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         </label>
 
         <div>
-          <p className="mb-1 text-xs font-semibold text-slate-500">سلسلة الموقّعين (الأول أسفل → الأعلى في الأخير) — اسحب لإعادة الترتيب</p>
-          {chain.length === 0 && <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">لم تختر موقّعين بعد.</p>}
+          <p className="mb-1 text-xs font-semibold text-slate-500">الإحالة — سلسلة الموقّعين (الأول أسفل → الأعلى في الأخير)، اسحب لإعادة الترتيب</p>
+          {chain.length === 0 && <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">لم تختر موقّعين بعد (اختياري للمسودة).</p>}
           <div className="mb-2 space-y-1">
             {chain.map((p, i) => (
               <div
@@ -383,10 +443,15 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
         </div>
 
         {err && <p className="text-sm text-red-600">{err}</p>}
-        <button disabled={busy} className="w-full rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
-          {busy ? "جارٍ الإرسال…" : "إرسال المعاملة"}
-        </button>
-      </form>
+        <div className="flex gap-2">
+          <button type="button" disabled={busy} onClick={() => submit(true)} className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+            حفظ كمسودة
+          </button>
+          <button type="button" disabled={busy} onClick={() => submit(false)} className="flex-1 rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
+            {busy ? "جارٍ…" : "إرسال المعاملة"}
+          </button>
+        </div>
+      </div>
     </Shell>
   );
 }
@@ -402,17 +467,23 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
   const sigRef = useRef<SignatureHandle>(null);
   const [savedSigs, setSavedSigs] = useState<SavedSig[]>([]);
   const [chosenSig, setChosenSig] = useState<string | null>(null); // data URL of a saved signature
+  const [pin, setPin] = useState("");
+  const [hasPin, setHasPin] = useState(false);
 
   useEffect(() => {
     if (mode !== "sign") return;
     (async () => {
-      const r = await fetch("/api/signatures", { cache: "no-store" });
+      const [r, rp] = await Promise.all([
+        fetch("/api/signatures", { cache: "no-store" }),
+        fetch("/api/signatures/pin", { cache: "no-store" }),
+      ]);
       if (r.ok) {
         const rows: SavedSig[] = (await r.json()).rows ?? [];
         setSavedSigs(rows);
         const def = rows.find((s) => s.isDefault) ?? rows[0];
         if (def) setChosenSig(def.imageData);
       }
+      if (rp.ok) setHasPin((await rp.json()).hasPin);
     })();
   }, [mode]);
 
@@ -436,6 +507,7 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
           const dateStr = new Date().toLocaleString("ar", { dateStyle: "long", timeStyle: "short" });
           payload.signatureImg = await composeSignature(raw, me?.name ?? "", me?.jobTitle ?? null, dateStr);
         }
+        if (hasPin) payload.pin = pin;
       }
       const res = await fetch(`/api/transactions/${id}/${kind}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
@@ -455,6 +527,18 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
     } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); } finally { setBusy(false); }
   }
 
+  async function sendDraftNow() {
+    if (!tx) return;
+    const ids = tx.steps.map((s) => s.approver.id);
+    if (ids.length === 0) { setErr("المسودة بلا موقّعين — أنشئ معاملة جديدة وحدّد الموقّعين."); return; }
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch(`/api/transactions/${id}/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approverIds: ids }) });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "تعذّر الإرسال.");
+      await load(); onChanged();
+    } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); } finally { setBusy(false); }
+  }
+
   return (
     <Shell title={tx?.title ?? "معاملة"} onClose={onClose}>
       {!tx ? (
@@ -463,14 +547,23 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLR[tx.status]}`}>{STATUS_LABEL[tx.status]}</span>
-            {tx.type && <span className="text-slate-500">{tx.type}</span>}
+            {tx.number && <span className="font-mono text-xs text-slate-400">#{tx.number}</span>}
+            {tx.type && <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{tx.type}</span>}
+            {tx.importance && tx.importance !== "عادي" && <span className="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">{tx.importance}</span>}
+            {tx.secrecy && tx.secrecy !== "عادي" && <span className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700">{tx.secrecy}</span>}
           </div>
+          {(tx.signerName || tx.signerTitle) && (
+            <p className="text-xs text-slate-500">صاحب التوقيع: <span className="font-medium text-slate-700">{tx.signerName}</span>{tx.signerTitle && ` — ${tx.signerTitle}`}</p>
+          )}
+          {tx.content && <div className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm leading-7 text-slate-700">{tx.content}</div>}
           {tx.note && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{tx.note}</p>}
 
           <div className="flex flex-wrap gap-2">
-            <a href={`/api/transactions/${id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#075d96] hover:bg-slate-50">
-              <Paperclip className="size-4" /> {tx.originalName}
-            </a>
+            {tx.originalName && (
+              <a href={`/api/transactions/${id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#075d96] hover:bg-slate-50">
+                <Paperclip className="size-4" /> {tx.originalName}
+              </a>
+            )}
             {tx.status === "COMPLETED" && tx.signedFile && (
               <a href={`/api/transactions/${id}/signed`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
                 <Check className="size-4" /> تنزيل الملف الموقّع
@@ -523,6 +616,9 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
               <p className="text-sm font-semibold text-slate-700">أو وقّع هنا</p>
               <SignaturePad ref={sigRef} />
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              {hasPin && (
+                <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="الرمز السري للتوقيع *" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              )}
               <div className="flex gap-2">
                 <button disabled={busy} onClick={() => act("sign")} className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"><Check className="mr-1 inline size-4" /> اعتماد</button>
                 <button onClick={() => setMode(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">إلغاء</button>
@@ -541,6 +637,11 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
           {tx.status === "RETURNED" && tx.initiator.id && (
             <button disabled={busy} onClick={resubmit} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
               <RotateCcw className="size-4" /> إعادة الإرسال بعد التعديل
+            </button>
+          )}
+          {tx.status === "DRAFT" && (
+            <button disabled={busy} onClick={sendDraftNow} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
+              <ArrowLeft className="size-4" /> إرسال المسودة للموقّعين
             </button>
           )}
         </div>

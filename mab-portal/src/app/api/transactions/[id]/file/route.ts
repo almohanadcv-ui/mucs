@@ -20,12 +20,12 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
       where: { id },
       select: { originalFile: true, originalName: true, mimeType: true },
     });
-    if (!tx) throw new TxError("غير موجود.", 404);
+    if (!tx?.originalFile) throw new TxError("لا يوجد ملف مرفق.", 404);
     const buf = await readUpload("transactions", tx.originalFile);
     return new NextResponse(new Uint8Array(buf), {
       headers: {
         "Content-Type": tx.mimeType || "application/octet-stream",
-        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(tx.originalName)}`,
+        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(tx.originalName ?? "file")}`,
         "Cache-Control": "private, no-store",
       },
     });

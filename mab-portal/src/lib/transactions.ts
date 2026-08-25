@@ -3,6 +3,17 @@ import { prisma } from "./db";
 import { notifyUser } from "./notify";
 import { readUpload, writeGenerated } from "./uploads";
 import { buildSignedPdf } from "./signed-pdf";
+import { sha256, safeEqual } from "./crypto";
+
+/** Set/clear the current user's signing PIN (كلمة السر). */
+export async function setSignPin(userId: string, pin: string | null) {
+  const hash = pin && pin.trim().length >= 4 ? sha256(pin.trim()) : null;
+  await prisma.portalUser.update({ where: { id: userId }, data: { signPinHash: hash } });
+}
+export async function hasSignPin(userId: string): Promise<boolean> {
+  const u = await prisma.portalUser.findUnique({ where: { id: userId }, select: { signPinHash: true } });
+  return !!u?.signPinHash;
+}
 
 const APP_URL = process.env.APP_URL || "https://portal.mucs.online";
 
@@ -26,53 +37,86 @@ export async function createTransaction(input: {
   title: string;
   type?: string | null;
   note?: string | null;
+  secrecy?: string | null;
+  importance?: string | null;
+  content?: string | null;
+  signerName?: string | null;
+  signerTitle?: string | null;
   approverIds: string[]; // ordered, top of the chain LAST
-  originalFile: string;
-  originalName: string;
-  mimeType: string;
+  originalFile?: string | null;
+  originalName?: string | null;
+  mimeType?: string | null;
+  draft?: boolean; // save without sending
 }) {
   const approverIds = input.approverIds.filter(Boolean);
-  if (approverIds.length === 0) throw new TxError("اختر موقّعًا واحدًا على الأقل.");
-  // Validate the approvers exist and are active.
-  const found = await prisma.portalUser.findMany({
-    where: { id: { in: approverIds }, isActive: true, deletedAt: null },
-    select: { id: true, name: true, email: true },
-  });
-  const byId = new Map(found.map((u) => [u.id, u]));
-  if (approverIds.some((id) => !byId.has(id))) throw new TxError("أحد الموقّعين غير صالح.");
+  if (!input.draft && approverIds.length === 0) throw new TxError("اختر موقّعًا واحدًا على الأقل.");
+
+  const byId = new Map<string, { id: string; name: string; email: string | null }>();
+  if (approverIds.length) {
+    const found = await prisma.portalUser.findMany({
+      where: { id: { in: approverIds }, isActive: true, deletedAt: null },
+      select: { id: true, name: true, email: true },
+    });
+    for (const u of found) byId.set(u.id, u);
+    if (approverIds.some((id) => !byId.has(id))) throw new TxError("أحد الموقّعين غير صالح.");
+  }
+
+  const status = input.draft ? "DRAFT" : "IN_PROGRESS";
+  const number = `43${String(Date.now()).slice(-8)}`;
 
   const tx = await prisma.transaction.create({
     data: {
       initiatorId: input.initiatorId,
+      number,
       title: input.title.trim(),
       type: input.type?.trim() || null,
       note: input.note?.trim() || null,
-      originalFile: input.originalFile,
-      originalName: input.originalName,
-      mimeType: input.mimeType,
+      secrecy: input.secrecy?.trim() || "عادي",
+      importance: input.importance?.trim() || "عادي",
+      content: input.content?.trim() || null,
+      signerName: input.signerName?.trim() || null,
+      signerTitle: input.signerTitle?.trim() || null,
+      originalFile: input.originalFile ?? null,
+      originalName: input.originalName ?? null,
+      mimeType: input.mimeType ?? null,
       currentStep: 0,
-      status: "IN_PROGRESS",
-      steps: {
-        create: approverIds.map((approverId, order) => ({ approverId, order })),
-      },
+      status,
+      steps: { create: approverIds.map((approverId, order) => ({ approverId, order })) },
     },
     select: { id: true },
   });
 
-  // Notify the first signer.
-  const first = byId.get(approverIds[0])!;
-  await notifyUser({
-    userId: first.id,
-    toEmail: first.email,
-    type: "SYSTEM",
-    title: "معاملة بانتظار توقيعك",
-    body: `وصلتك معاملة «${input.title.trim()}» لمراجعتها وتوقيعها.`,
-    link: txLink(tx.id),
-    email: true,
-    accent: "#1178b8",
-  });
-
+  if (!input.draft && approverIds.length) {
+    const first = byId.get(approverIds[0])!;
+    await notifyUser({
+      userId: first.id, toEmail: first.email, type: "SYSTEM",
+      title: "معاملة بانتظار توقيعك",
+      body: `وصلتك معاملة «${input.title.trim()}» لمراجعتها وتوقيعها.`,
+      link: txLink(tx.id), email: true, accent: "#1178b8",
+    });
+  }
   return tx.id;
+}
+
+/** Send a DRAFT: (re)set the ordered signers, start the flow, notify signer 1. */
+export async function sendDraft(id: string, userId: string, approverIds: string[]) {
+  approverIds = approverIds.filter(Boolean);
+  if (approverIds.length === 0) throw new TxError("اختر موقّعًا واحدًا على الأقل.");
+  const t = await prisma.transaction.findUnique({ where: { id }, select: { id: true, initiatorId: true, status: true, title: true } });
+  if (!t) throw new TxError("المعاملة غير موجودة.", 404);
+  if (t.initiatorId !== userId) throw new TxError("للمُنشئ فقط.", 403);
+  if (t.status !== "DRAFT") throw new TxError("ليست مسودة.", 409);
+  const found = await prisma.portalUser.findMany({ where: { id: { in: approverIds }, isActive: true, deletedAt: null }, select: { id: true, email: true } });
+  const byId = new Map(found.map((u) => [u.id, u]));
+  if (approverIds.some((a) => !byId.has(a))) throw new TxError("أحد الموقّعين غير صالح.");
+
+  await prisma.$transaction([
+    prisma.transactionStep.deleteMany({ where: { transactionId: id } }),
+    prisma.transactionStep.createMany({ data: approverIds.map((approverId, order) => ({ transactionId: id, approverId, order })) }),
+    prisma.transaction.update({ where: { id }, data: { status: "IN_PROGRESS", currentStep: 0, version: { increment: 1 } } }),
+  ]);
+  const first = byId.get(approverIds[0])!;
+  await notifyUser({ userId: first.id, toEmail: first.email, type: "SYSTEM", title: "معاملة بانتظار توقيعك", body: `وصلتك معاملة «${t.title}» لمراجعتها وتوقيعها.`, link: txLink(id), email: true, accent: "#1178b8" });
 }
 
 /* ────────────────────────────── read ───────────────────────────────── */
@@ -86,8 +130,9 @@ export async function getTransaction(id: string, userId: string, isAdmin: boolea
   const tx = await prisma.transaction.findUnique({
     where: { id },
     select: {
-      id: true, title: true, type: true, note: true, status: true, currentStep: true,
-      version: true, originalName: true, mimeType: true, signedFile: true, createdAt: true,
+      id: true, number: true, title: true, type: true, note: true, status: true, currentStep: true,
+      secrecy: true, importance: true, content: true, signerName: true, signerTitle: true,
+      version: true, originalFile: true, originalName: true, mimeType: true, signedFile: true, createdAt: true,
       initiator: { select: { id: true, name: true } },
       steps: { orderBy: { order: "asc" }, select: STEP_SELECT },
     },
@@ -104,24 +149,26 @@ export async function getTransaction(id: string, userId: string, isAdmin: boolea
   return { ...tx, canActNow };
 }
 
-export async function listTransactions(
-  userId: string,
-  isAdmin: boolean,
-  tab: "mine" | "pending" | "all",
-) {
+export type TxTab = "pending" | "mine" | "drafts" | "completed" | "all";
+
+export async function listTransactions(userId: string, isAdmin: boolean, tab: TxTab) {
   if (tab === "all" && !isAdmin) tab = "mine";
   const where =
     tab === "mine"
-      ? { initiatorId: userId }
-      : tab === "pending"
-        ? { status: "IN_PROGRESS", steps: { some: { approverId: userId } } }
-        : {};
+      ? { initiatorId: userId, status: { not: "DRAFT" } }
+      : tab === "drafts"
+        ? { initiatorId: userId, status: "DRAFT" }
+        : tab === "completed"
+          ? { status: "COMPLETED", OR: [{ initiatorId: userId }, { steps: { some: { approverId: userId } } }] }
+          : tab === "pending"
+            ? { status: "IN_PROGRESS", steps: { some: { approverId: userId } } }
+            : { status: { not: "DRAFT" } };
   const rows = await prisma.transaction.findMany({
     where,
     orderBy: { createdAt: "desc" },
     take: 100,
     select: {
-      id: true, title: true, type: true, status: true, currentStep: true, createdAt: true,
+      id: true, number: true, title: true, type: true, status: true, currentStep: true, createdAt: true,
       initiator: { select: { name: true } },
       steps: { orderBy: { order: "asc" }, select: { status: true, approverId: true, approver: { select: { name: true } } } },
     },
@@ -132,7 +179,7 @@ export async function listTransactions(
       ? rows.filter((t) => t.steps[t.currentStep]?.approverId === userId && t.steps[t.currentStep]?.status === "PENDING")
       : rows;
   return filtered.map((t) => ({
-    id: t.id, title: t.title, type: t.type, status: t.status, currentStep: t.currentStep,
+    id: t.id, number: t.number, title: t.title, type: t.type, status: t.status, currentStep: t.currentStep,
     createdAt: t.createdAt, initiatorName: t.initiator.name,
     steps: t.steps.map((s) => ({ status: s.status, name: s.approver.name })),
   }));
@@ -202,8 +249,15 @@ async function bumpVersion(
 export async function signStep(
   id: string,
   userId: string,
-  input: { note?: string; signatureImg?: string },
+  input: { note?: string; signatureImg?: string; pin?: string },
 ) {
+  // If the signer set a PIN (كلمة السر), it must match to place a signature.
+  const acct = await prisma.portalUser.findUnique({ where: { id: userId }, select: { signPinHash: true } });
+  if (acct?.signPinHash) {
+    if (!input.pin || !safeEqual(sha256(input.pin.trim()), acct.signPinHash))
+      throw new TxError("الرمز السري غير صحيح.", 403);
+  }
+
   const notifications: { userId: string; email: string | null; title: string; body: string }[] = [];
   let didComplete = false;
 
@@ -271,8 +325,9 @@ async function generateSignedFile(id: string) {
   const sigs = tx.steps
     .filter((s) => s.status === "SIGNED" && s.signatureImg)
     .map((s) => s.signatureImg as string);
-  const original = await readUpload("transactions", tx.originalFile);
-  const bytes = await buildSignedPdf(original, tx.mimeType, sigs);
+  // A letter may carry no attachment → produce a signatures certificate only.
+  const original = tx.originalFile ? await readUpload("transactions", tx.originalFile) : Buffer.alloc(0);
+  const bytes = await buildSignedPdf(original, tx.mimeType ?? "application/octet-stream", sigs);
   const stored = await writeGenerated("transactions", ".pdf", Buffer.from(bytes));
   await prisma.transaction.update({ where: { id }, data: { signedFile: stored } });
 }

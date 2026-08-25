@@ -36,6 +36,8 @@ model PortalUser {
   canSendNotifications Boolean @default(false)
   /// May use the Transactions module (create + sign correspondence).
   canUseTransactions  Boolean @default(false)
+  /// Signing PIN (كلمة السر) hash — required to place a signature when set.
+  signPinHash         String?
 
   // Org structure
   jobTitle     String?
@@ -284,18 +286,26 @@ model Task {
 model Transaction {
   id           String   @id @default(uuid()) @db.Uuid
   initiatorId  String   @db.Uuid
-  title        String
-  type         String?
+  /// Auto reference number shown to users (e.g. 4300041698).
+  number       String?  @unique
+  title        String   // الموضوع
+  type         String?  // نوع المعاملة: خطاب | تعميم | …
   note         String?
-  /// IN_PROGRESS | COMPLETED | REJECTED | CANCELLED
+  // Letter fields (البيانات)
+  secrecy      String?  @default("عادي") // درجة السرية
+  importance   String?  @default("عادي") // الأهمية
+  content      String?  // محتوى الخطاب
+  signerName   String?  // اسم صاحب التوقيع
+  signerTitle  String?  // منصب صاحب التوقيع
+  /// DRAFT | IN_PROGRESS | COMPLETED | REJECTED | RETURNED | CANCELLED
   status       String   @default("IN_PROGRESS")
   /// Order index of the active step (0-based); equals step count when finished.
   currentStep  Int      @default(0)
   /// Optimistic-lock counter — every sign/reject bumps it inside a transaction.
   version      Int      @default(0)
-  originalFile String   // stored filename on disk
-  originalName String   // display name
-  mimeType     String
+  originalFile String?  // stored filename on disk (optional — a letter may have none)
+  originalName String?  // display name
+  mimeType     String?
   /// The final signed PDF (burned signatures) or the signatures certificate.
   signedFile   String?
   createdAt    DateTime @default(now())
