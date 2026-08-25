@@ -18,10 +18,13 @@ type ListRow = {
 type Person = { id: string; name: string; jobTitle: string | null };
 type Detail = {
   id: string; number: string | null; title: string; type: string | null; note: string | null; status: TxStatus;
-  secrecy: string | null; importance: string | null; content: string | null; signerName: string | null; signerTitle: string | null;
+  secrecy: string | null; importance: string | null; content: string | null; contentEnding: string | null;
+  signerName: string | null; signerTitle: string | null;
+  enclosures: string | null; internalCopies: string | null; prepEntity: string | null; approvalEntity: string | null;
+  recipients: { name: string; ending: string }[] | null;
   currentStep: number; originalName: string | null; createdAt: string; signedFile: string | null;
   initiator: { id: string; name: string };
-  steps: { id: string; order: number; status: StepStatus; note: string | null; signatureImg: string | null; actedAt: string | null; approver: { id: string; name: string; jobTitle: string | null } }[];
+  steps: { id: string; order: number; status: StepStatus; directive: string | null; note: string | null; signatureImg: string | null; actedAt: string | null; approver: { id: string; name: string; jobTitle: string | null } }[];
   canActNow: boolean;
 };
 
@@ -71,11 +74,10 @@ function composeSignature(sigDataUrl: string, name: string, jobTitle: string | n
 
 /* ───────────────────────────── main view ───────────────────────────── */
 
-type Section = "dashboard" | "inbox" | "signatures";
+type Section = "dashboard" | "inbox" | "signatures" | "new";
 
 export function TransactionsView({ isAdmin, userName }: { isAdmin: boolean; userName: string }) {
   const [section, setSection] = useState<Section>("inbox");
-  const [creating, setCreating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const NAV: { key: Section; label: string; icon: typeof Inbox }[] = [
@@ -91,7 +93,7 @@ export function TransactionsView({ isAdmin, userName }: { isAdmin: boolean; user
         <h2 className="mb-3 flex items-center gap-2 px-1 text-sm font-bold text-slate-900">
           <FileSignature className="size-5 text-[#1178b8]" /> المعاملات
         </h2>
-        <button onClick={() => setCreating(true)} className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-3 py-2 text-sm font-semibold text-white hover:bg-[#173a5e]">
+        <button onClick={() => setSection("new")} className={`mb-3 flex w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold ${section === "new" ? "bg-[#173a5e] text-white" : "bg-[#0f2b46] text-white hover:bg-[#173a5e]"}`}>
           <FilePlus2 className="size-4" /> معاملة جديدة
         </button>
         <nav className="space-y-1">
@@ -108,9 +110,10 @@ export function TransactionsView({ isAdmin, userName }: { isAdmin: boolean; user
         {section === "dashboard" && <Dashboard onGoInbox={() => setSection("inbox")} />}
         {section === "inbox" && <Inbox_ isAdmin={isAdmin} reloadKey={reloadKey} />}
         {section === "signatures" && <SignaturesManager userName={userName} />}
+        {section === "new" && (
+          <NewTransaction userName={userName} onDone={() => { setSection("inbox"); setReloadKey((k) => k + 1); }} onCancel={() => setSection("inbox")} />
+        )}
       </div>
-
-      {creating && <CreateModal onClose={() => setCreating(false)} onDone={() => { setCreating(false); setSection("inbox"); setReloadKey((k) => k + 1); }} />}
     </div>
   );
 }
@@ -304,17 +307,27 @@ function MiniArrows({ steps, currentStep }: { steps: { status: StepStatus; name:
 
 /* ───────────────────────────── create ──────────────────────────────── */
 
-function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const [title, setTitle] = useState("");
+type ChainItem = Person & { directive: string };
+type Recipient = { name: string; ending: string };
+
+function NewTransaction({ userName, onDone, onCancel }: { userName: string; onDone: () => void; onCancel: () => void }) {
+  void userName;
+  const [tab, setTab] = useState<"data" | "attach" | "refer">("data");
   const [type, setType] = useState("خطاب");
+  const [title, setTitle] = useState("");
   const [secrecy, setSecrecy] = useState("عادي");
   const [importance, setImportance] = useState("عادي");
+  const [enclosures, setEnclosures] = useState("");
+  const [internalCopies, setInternalCopies] = useState("");
+  const [recipients, setRecipients] = useState<Recipient[]>([{ name: "", ending: "المحترم" }]);
   const [content, setContent] = useState("");
+  const [contentEnding, setContentEnding] = useState("وتقبلوا تحياتي،،،");
   const [signerName, setSignerName] = useState("");
   const [signerTitle, setSignerTitle] = useState("");
-  const [note, setNote] = useState("");
+  const [prepEntity, setPrepEntity] = useState("");
+  const [approvalEntity, setApprovalEntity] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [chain, setChain] = useState<Person[]>([]);
+  const [chain, setChain] = useState<ChainItem[]>([]);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Person[]>([]);
   const [busy, setBusy] = useState(false);
@@ -329,130 +342,198 @@ function CreateModal({ onClose, onDone }: { onClose: () => void; onDone: () => v
     return () => clearTimeout(id);
   }, [q]);
 
-  function add(p: Person) { if (!chain.some((c) => c.id === p.id)) setChain((c) => [...c, p]); }
+  function addSigner(p: Person) { if (!chain.some((c) => c.id === p.id)) setChain((c) => [...c, { ...p, directive: "للتوقيع" }]); }
   function removeAt(i: number) { setChain((c) => c.filter((_, idx) => idx !== i)); }
-  function move(i: number, dir: -1 | 1) {
-    setChain((c) => {
-      const j = i + dir; if (j < 0 || j >= c.length) return c;
-      const next = [...c]; [next[i], next[j]] = [next[j], next[i]]; return next;
-    });
-  }
-  function onDrop(to: number) {
-    const from = dragFrom.current; dragFrom.current = null;
-    if (from === null || from === to) return;
-    setChain((c) => { const next = [...c]; const [m] = next.splice(from, 1); next.splice(to, 0, m); return next; });
+  function setDirective(i: number, d: string) { setChain((c) => c.map((x, idx) => (idx === i ? { ...x, directive: d } : x))); }
+  function move(i: number, dir: -1 | 1) { setChain((c) => { const j = i + dir; if (j < 0 || j >= c.length) return c; const n = [...c]; [n[i], n[j]] = [n[j], n[i]]; return n; }); }
+  function onDrop(to: number) { const from = dragFrom.current; dragFrom.current = null; if (from === null || from === to) return; setChain((c) => { const n = [...c]; const [m] = n.splice(from, 1); n.splice(to, 0, m); return n; }); }
+
+  function addRecipient() { setRecipients((r) => [...r, { name: "", ending: "المحترم" }]); }
+  function setRecipient(i: number, patch: Partial<Recipient>) { setRecipients((r) => r.map((x, idx) => (idx === i ? { ...x, ...patch } : x))); }
+  function removeRecipient(i: number) { setRecipients((r) => r.filter((_, idx) => idx !== i)); }
+
+  function clearAll() {
+    setTitle(""); setEnclosures(""); setInternalCopies(""); setRecipients([{ name: "", ending: "المحترم" }]);
+    setContent(""); setContentEnding("وتقبلوا تحياتي،،،"); setSignerName(""); setSignerTitle("");
+    setPrepEntity(""); setApprovalEntity(""); setFile(null); setChain([]); setErr(null);
   }
 
   async function submit(draft: boolean) {
     setErr(null);
-    if (!title.trim()) return setErr("الموضوع مطلوب.");
-    if (!draft && chain.length === 0) return setErr("اختر موقّعًا واحدًا على الأقل للإرسال.");
+    if (!title.trim()) { setTab("data"); return setErr("الموضوع مطلوب."); }
+    if (!draft && chain.length === 0) { setTab("refer"); return setErr("أضف موقّعًا واحدًا على الأقل في الإحالة."); }
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.set("title", title.trim()); fd.set("type", type.trim()); fd.set("note", note.trim());
-      fd.set("secrecy", secrecy); fd.set("importance", importance);
-      fd.set("content", content.trim()); fd.set("signerName", signerName.trim()); fd.set("signerTitle", signerTitle.trim());
-      fd.set("approverIds", chain.map((c) => c.id).join(","));
+      fd.set("title", title.trim()); fd.set("type", type); fd.set("secrecy", secrecy); fd.set("importance", importance);
+      fd.set("enclosures", enclosures.trim()); fd.set("internalCopies", internalCopies.trim());
+      fd.set("content", content.trim()); fd.set("contentEnding", contentEnding.trim());
+      fd.set("signerName", signerName.trim()); fd.set("signerTitle", signerTitle.trim());
+      fd.set("prepEntity", prepEntity.trim()); fd.set("approvalEntity", approvalEntity.trim());
+      fd.set("recipients", JSON.stringify(recipients.filter((r) => r.name.trim())));
+      fd.set("approvers", JSON.stringify(chain.map((c) => ({ id: c.id, directive: c.directive }))));
       fd.set("draft", draft ? "1" : "0");
       if (file) fd.set("file", file);
       const res = await fetch("/api/transactions", { method: "POST", body: fd });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body?.error || "تعذّر الإنشاء.");
       onDone();
-    } catch (e2) { setErr(e2 instanceof Error ? e2.message : "خطأ"); setBusy(false); }
+    } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); setBusy(false); }
   }
 
+  const today = new Date().toLocaleDateString("ar-SA");
+  const fieldCls = "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal";
+  const lblCls = "block text-xs font-semibold text-slate-500";
+
   return (
-    <Shell title="معاملة جديدة" onClose={onClose}>
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-2">
-          <label className="col-span-2 block text-xs font-semibold text-slate-500">الموضوع *
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="موضوع المعاملة" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="block text-xs font-semibold text-slate-500">نوع المعاملة
-            <select value={type} onChange={(e) => setType(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal">
-              <option>خطاب</option><option>تعميم</option><option>مذكرة</option><option>طلب</option><option>أخرى</option>
-            </select>
-          </label>
-          <label className="block text-xs font-semibold text-slate-500">درجة السرية
-            <select value={secrecy} onChange={(e) => setSecrecy(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal">
-              <option>عادي</option><option>سري</option><option>سري للغاية</option>
-            </select>
-          </label>
-          <label className="block text-xs font-semibold text-slate-500">الأهمية
-            <select value={importance} onChange={(e) => setImportance(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal">
-              <option>عادي</option><option>عاجل</option><option>عاجل جدا</option>
-            </select>
-          </label>
-          <label className="block text-xs font-semibold text-slate-500">اسم صاحب التوقيع
-            <input value={signerName} onChange={(e) => setSignerName(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-          </label>
-          <label className="col-span-2 block text-xs font-semibold text-slate-500">منصب صاحب التوقيع
-            <input value={signerTitle} onChange={(e) => setSignerTitle(e.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-          </label>
+    <div className="mx-auto max-w-6xl">
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-xl font-bold text-slate-900">مسودة معاملة داخلية</h1>
+        <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-700">إلغاء</button>
+      </div>
+
+      <div className="mb-4 grid grid-cols-3 gap-2 text-sm font-semibold">
+        {([["data", "١. البيانات"], ["attach", "٢. المرفقات"], ["refer", "٣. الإحالة"]] as [typeof tab, string][]).map(([k, label]) => (
+          <button key={k} onClick={() => setTab(k)} className={`rounded-lg px-3 py-2 ${tab === k ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-500"}`}>{label}</button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="space-y-3">
+          {tab === "data" && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <label className={lblCls}>نوع المعاملة
+                  <select value={type} onChange={(e) => setType(e.target.value)} className={fieldCls}>
+                    <option>خطاب</option><option>تعميم</option><option>مذكرة</option><option>طلب</option><option>أخرى</option>
+                  </select>
+                </label>
+                <label className={lblCls}>درجة السرية *
+                  <select value={secrecy} onChange={(e) => setSecrecy(e.target.value)} className={fieldCls}><option>عادي</option><option>سري</option><option>سري للغاية</option></select>
+                </label>
+                <label className={lblCls}>الأهمية *
+                  <select value={importance} onChange={(e) => setImportance(e.target.value)} className={fieldCls}><option>عادي</option><option>عاجل</option><option>عاجل جدا</option></select>
+                </label>
+                <label className={lblCls}>المشفوعات
+                  <input value={enclosures} onChange={(e) => setEnclosures(e.target.value)} className={fieldCls} />
+                </label>
+                <label className={`${lblCls} col-span-2`}>الموضوع *
+                  <input value={title} onChange={(e) => setTitle(e.target.value)} className={fieldCls} placeholder="موضوع المعاملة" />
+                </label>
+                <label className={`${lblCls} col-span-2`}>نسخ داخلية
+                  <input value={internalCopies} onChange={(e) => setInternalCopies(e.target.value)} className={fieldCls} />
+                </label>
+              </div>
+
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <p className={lblCls}>الجهات المرسل إليها *</p>
+                  <button type="button" onClick={addRecipient} className="inline-flex items-center gap-1 text-xs text-[#1178b8]"><Plus className="size-3.5" /> إضافة جهة</button>
+                </div>
+                <div className="space-y-1">
+                  {recipients.map((r, i) => (
+                    <div key={i} className="flex gap-1">
+                      <input value={r.name} onChange={(e) => setRecipient(i, { name: e.target.value })} placeholder="اسم الجهة" className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
+                      <input value={r.ending} onChange={(e) => setRecipient(i, { ending: e.target.value })} placeholder="خاتمة" className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
+                      <button type="button" onClick={() => removeRecipient(i)} className="rounded p-1 text-slate-400 hover:text-red-600"><Trash2 className="size-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <label className={lblCls}>محتوى الخطاب *
+                <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={6} className={fieldCls} placeholder="اكتب نص الخطاب…" />
+              </label>
+              <label className={lblCls}>خاتمة محتوى الخطاب
+                <input value={contentEnding} onChange={(e) => setContentEnding(e.target.value)} className={fieldCls} />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className={lblCls}>اسم صاحب التوقيع *
+                  <input value={signerName} onChange={(e) => setSignerName(e.target.value)} className={fieldCls} />
+                </label>
+                <label className={lblCls}>منصب صاحب التوقيع *
+                  <input value={signerTitle} onChange={(e) => setSignerTitle(e.target.value)} className={fieldCls} />
+                </label>
+                <label className={lblCls}>جهة الإعداد
+                  <input value={prepEntity} onChange={(e) => setPrepEntity(e.target.value)} className={fieldCls} />
+                </label>
+                <label className={lblCls}>جهة صاحب الاعتماد
+                  <input value={approvalEntity} onChange={(e) => setApprovalEntity(e.target.value)} className={fieldCls} />
+                </label>
+              </div>
+            </>
+          )}
+
+          {tab === "attach" && (
+            <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 p-8 text-sm text-slate-600 hover:bg-slate-50">
+              <Paperclip className="size-6 text-slate-400" />
+              <span className="truncate">{file ? file.name : "أرفق ملفًا (اختياري، حتى 25MB)"}</span>
+              <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
+          )}
+
+          {tab === "refer" && (
+            <div>
+              <p className={`${lblCls} mb-1`}>الإحالة — سلسلة الموقّعين (الأول أسفل → الأعلى في الأخير)، اسحب لإعادة الترتيب</p>
+              {chain.length === 0 && <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">لم تختر موقّعين بعد.</p>}
+              <div className="mb-2 space-y-1">
+                {chain.map((p, i) => (
+                  <div key={p.id} draggable onDragStart={() => (dragFrom.current = i)} onDragOver={(e) => e.preventDefault()} onDrop={() => onDrop(i)} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2">
+                    <GripVertical className="size-4 cursor-grab text-slate-300" />
+                    <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#1178b8]/10 text-xs font-bold text-[#075d96]">{i + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm">{p.name}{p.jobTitle && <span className="text-slate-400"> — {p.jobTitle}</span>}</span>
+                    <select value={p.directive} onChange={(e) => setDirective(i, e.target.value)} className="rounded-lg border border-slate-300 px-1.5 py-1 text-xs"><option>للتوقيع</option><option>للاطلاع</option></select>
+                    <button type="button" onClick={() => move(i, -1)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronUp className="size-4" /></button>
+                    <button type="button" onClick={() => move(i, 1)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronDown className="size-4" /></button>
+                    <button type="button" onClick={() => removeAt(i)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 className="size-4" /></button>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-lg border border-slate-200">
+                <div className="flex items-center gap-2 border-b border-slate-100 px-2.5 py-1.5"><Search className="size-4 text-slate-400" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="اختر إدارة/موظف…" className="w-full text-sm outline-none" /></div>
+                <div className="max-h-40 overflow-y-auto">
+                  {results.filter((r) => !chain.some((c) => c.id === r.id)).map((r) => (
+                    <button type="button" key={r.id} onClick={() => addSigner(r)} className="flex w-full items-center justify-between px-3 py-2 text-right text-sm hover:bg-slate-50"><span>{r.name}{r.jobTitle && <span className="text-slate-400"> — {r.jobTitle}</span>}</span><Plus className="size-4 text-[#1178b8]" /></button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {err && <p className="text-sm text-red-600">{err}</p>}
+          <div className="flex flex-wrap gap-2 pt-2">
+            <button type="button" onClick={clearAll} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50">تفريغ الحقول</button>
+            <button type="button" disabled={busy} onClick={() => submit(true)} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">حفظ كمسودة</button>
+            <button type="button" disabled={busy} onClick={() => submit(false)} className="flex-1 rounded-xl bg-[#0f2b46] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">{busy ? "جارٍ…" : "إرسال المعاملة"}</button>
+          </div>
         </div>
 
-        <label className="block text-xs font-semibold text-slate-500">محتوى الخطاب
-          <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5} placeholder="اكتب نص الخطاب…" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
-        </label>
-        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-
-        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-3 text-sm text-slate-600 hover:bg-slate-50">
-          <Paperclip className="size-4" />
-          <span className="truncate">{file ? file.name : "أرفق ملفًا (اختياري، حتى 25MB)"}</span>
-          <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </label>
-
-        <div>
-          <p className="mb-1 text-xs font-semibold text-slate-500">الإحالة — سلسلة الموقّعين (الأول أسفل → الأعلى في الأخير)، اسحب لإعادة الترتيب</p>
-          {chain.length === 0 && <p className="mb-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">لم تختر موقّعين بعد (اختياري للمسودة).</p>}
-          <div className="mb-2 space-y-1">
-            {chain.map((p, i) => (
-              <div
-                key={p.id}
-                draggable
-                onDragStart={() => (dragFrom.current = i)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => onDrop(i)}
-                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2"
-              >
-                <GripVertical className="size-4 cursor-grab text-slate-300" />
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#1178b8]/10 text-xs font-bold text-[#075d96]">{i + 1}</span>
-                <span className="min-w-0 flex-1 truncate text-sm">{p.name}{p.jobTitle && <span className="text-slate-400"> — {p.jobTitle}</span>}</span>
-                <button type="button" onClick={() => move(i, -1)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronUp className="size-4" /></button>
-                <button type="button" onClick={() => move(i, 1)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronDown className="size-4" /></button>
-                <button type="button" onClick={() => removeAt(i)} className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-red-600"><Trash2 className="size-4" /></button>
-              </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm leading-8 text-[#12304a] shadow-sm">
+          <div className="mb-4 flex items-start justify-between border-b border-slate-100 pb-3">
+            <div className="text-xs text-slate-500">
+              <p>الرقم: —</p>
+              <p>التاريخ: {today}</p>
+              <p>المشفوعات: {enclosures || "—"}</p>
+            </div>
+            <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">M<span className="text-[#5aa6e0]">A</span>B</span>
+          </div>
+          {importance !== "عادي" && <p className="mb-2 text-center font-bold text-red-600">{importance}</p>}
+          <div className="mb-3">
+            {recipients.filter((r) => r.name.trim()).map((r, i) => (
+              <p key={i} className="font-bold">المكرم {r.name} <span className="font-normal text-slate-500">{r.ending}</span></p>
             ))}
           </div>
-          <div className="rounded-lg border border-slate-200">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-2.5 py-1.5">
-              <Search className="size-4 text-slate-400" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث عن موظف لإضافته…" className="w-full text-sm outline-none" />
-            </div>
-            <div className="max-h-40 overflow-y-auto">
-              {results.filter((r) => !chain.some((c) => c.id === r.id)).map((r) => (
-                <button type="button" key={r.id} onClick={() => add(r)} className="flex w-full items-center justify-between px-3 py-2 text-right text-sm hover:bg-slate-50">
-                  <span>{r.name}{r.jobTitle && <span className="text-slate-400"> — {r.jobTitle}</span>}</span>
-                  <Plus className="size-4 text-[#1178b8]" />
-                </button>
-              ))}
-            </div>
+          <p className="mb-2">السلام عليكم ورحمة الله وبركاته،</p>
+          {title && <p className="mb-2 font-semibold">الموضوع: {title}</p>}
+          <p className="whitespace-pre-wrap">{content || "…"}</p>
+          <p className="mt-4">{contentEnding}</p>
+          <div className="mt-6 text-center">
+            <p className="font-bold">{signerName || "اسم صاحب التوقيع"}</p>
+            <p className="text-slate-500">{signerTitle}</p>
           </div>
         </div>
-
-        {err && <p className="text-sm text-red-600">{err}</p>}
-        <div className="flex gap-2">
-          <button type="button" disabled={busy} onClick={() => submit(true)} className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-            حفظ كمسودة
-          </button>
-          <button type="button" disabled={busy} onClick={() => submit(false)} className="flex-1 rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
-            {busy ? "جارٍ…" : "إرسال المعاملة"}
-          </button>
-        </div>
       </div>
-    </Shell>
+    </div>
   );
 }
 
@@ -529,11 +610,11 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
 
   async function sendDraftNow() {
     if (!tx) return;
-    const ids = tx.steps.map((s) => s.approver.id);
-    if (ids.length === 0) { setErr("المسودة بلا موقّعين — أنشئ معاملة جديدة وحدّد الموقّعين."); return; }
+    const approvers = tx.steps.map((s) => ({ id: s.approver.id, directive: s.directive ?? "للتوقيع" }));
+    if (approvers.length === 0) { setErr("المسودة بلا موقّعين."); return; }
     setBusy(true); setErr(null);
     try {
-      const res = await fetch(`/api/transactions/${id}/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approverIds: ids }) });
+      const res = await fetch(`/api/transactions/${id}/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approvers }) });
       if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || "تعذّر الإرسال.");
       await load(); onChanged();
     } catch (e) { setErr(e instanceof Error ? e.message : "خطأ"); } finally { setBusy(false); }
@@ -552,10 +633,33 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
             {tx.importance && tx.importance !== "عادي" && <span className="rounded bg-red-50 px-2 py-0.5 text-xs text-red-700">{tx.importance}</span>}
             {tx.secrecy && tx.secrecy !== "عادي" && <span className="rounded bg-amber-50 px-2 py-0.5 text-xs text-amber-700">{tx.secrecy}</span>}
           </div>
-          {(tx.signerName || tx.signerTitle) && (
-            <p className="text-xs text-slate-500">صاحب التوقيع: <span className="font-medium text-slate-700">{tx.signerName}</span>{tx.signerTitle && ` — ${tx.signerTitle}`}</p>
+          {/* Letter preview (the document itself) */}
+          {(tx.content || (tx.recipients && tx.recipients.length) || tx.title) && (
+            <div className="rounded-xl border border-slate-200 bg-white p-5 text-sm leading-8 text-[#12304a]">
+              <div className="mb-3 flex items-start justify-between border-b border-slate-100 pb-2 text-xs text-slate-500">
+                <div>
+                  <p>الرقم: {tx.number ?? "—"}</p>
+                  <p>التاريخ: {new Date(tx.createdAt).toLocaleDateString("ar-SA")}</p>
+                  {tx.enclosures && <p>المشفوعات: {tx.enclosures}</p>}
+                </div>
+                <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">M<span className="text-[#5aa6e0]">A</span>B</span>
+              </div>
+              {tx.importance && tx.importance !== "عادي" && <p className="mb-2 text-center font-bold text-red-600">{tx.importance}</p>}
+              {tx.recipients?.filter((r) => r.name).map((r, i) => (
+                <p key={i} className="font-bold">المكرم {r.name} <span className="font-normal text-slate-500">{r.ending}</span></p>
+              ))}
+              <p className="mt-2">السلام عليكم ورحمة الله وبركاته،</p>
+              {tx.title && <p className="mt-1 font-semibold">الموضوع: {tx.title}</p>}
+              {tx.content && <p className="mt-1 whitespace-pre-wrap">{tx.content}</p>}
+              {tx.contentEnding && <p className="mt-3">{tx.contentEnding}</p>}
+              {(tx.signerName || tx.signerTitle) && (
+                <div className="mt-5 text-center">
+                  <p className="font-bold">{tx.signerName}</p>
+                  <p className="text-slate-500">{tx.signerTitle}</p>
+                </div>
+              )}
+            </div>
           )}
-          {tx.content && <div className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm leading-7 text-slate-700">{tx.content}</div>}
           {tx.note && <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">{tx.note}</p>}
 
           <div className="flex flex-wrap gap-2">
@@ -580,7 +684,7 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
                 <ChainNode
                   label={`${s.approver.name}${s.approver.jobTitle ? ` — ${s.approver.jobTitle}` : ""}`}
                   color={stepColor(s.status)}
-                  sub={s.status === "SIGNED" ? "وقّع" : s.status === "REJECTED" ? `أعاد: ${s.note ?? ""}` : i === tx.currentStep ? "بانتظاره الآن" : "بانتظار"}
+                  sub={`${s.directive ?? "للتوقيع"} · ${s.status === "SIGNED" ? "وقّع" : s.status === "REJECTED" ? `أعاد: ${s.note ?? ""}` : i === tx.currentStep ? "بانتظاره الآن" : "بانتظار"}`}
                   sig={s.signatureImg}
                 />
               </div>

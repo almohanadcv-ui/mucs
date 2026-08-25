@@ -29,9 +29,11 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
     const g = (k: string) => String(form.get(k) ?? "").trim();
+    const parseJson = <T,>(k: string, fb: T): T => { try { return JSON.parse(String(form.get(k) ?? "")) as T; } catch { return fb; } };
     const title = g("title");
     const draft = g("draft") === "1";
-    const approverIds = g("approverIds").split(",").map((s) => s.trim()).filter(Boolean);
+    const approvers = parseJson<{ id: string; directive?: string }[]>("approvers", []);
+    const recipients = parseJson<{ name: string; ending?: string }[]>("recipients", []);
     const file = form.get("file");
 
     if (!title) return NextResponse.json({ error: "الموضوع مطلوب." }, { status: 400 });
@@ -49,9 +51,12 @@ export async function POST(req: NextRequest) {
     const id = await createTransaction({
       initiatorId: session.sub,
       title, type: g("type"), note: g("note"),
-      secrecy: g("secrecy"), importance: g("importance"), content: g("content"),
+      secrecy: g("secrecy"), importance: g("importance"),
+      content: g("content"), contentEnding: g("contentEnding"),
       signerName: g("signerName"), signerTitle: g("signerTitle"),
-      approverIds, draft,
+      enclosures: g("enclosures"), internalCopies: g("internalCopies"),
+      prepEntity: g("prepEntity"), approvalEntity: g("approvalEntity"),
+      recipients, approvers, draft,
       originalFile: stored, originalName, mimeType,
     });
     return NextResponse.json({ id }, { status: 201 });

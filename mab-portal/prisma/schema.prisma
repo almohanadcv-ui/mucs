@@ -295,8 +295,14 @@ model Transaction {
   secrecy      String?  @default("عادي") // درجة السرية
   importance   String?  @default("عادي") // الأهمية
   content      String?  // محتوى الخطاب
+  contentEnding String? // خاتمة محتوى الخطاب
   signerName   String?  // اسم صاحب التوقيع
   signerTitle  String?  // منصب صاحب التوقيع
+  enclosures   String?  // المشفوعات
+  internalCopies String? // نسخ داخلية
+  prepEntity   String?  // جهة الإعداد
+  approvalEntity String? // جهة صاحب الاعتماد
+  recipients   Json?    // الجهات المرسل إليها: [{ name, ending }]
   /// DRAFT | IN_PROGRESS | COMPLETED | REJECTED | RETURNED | CANCELLED
   status       String   @default("IN_PROGRESS")
   /// Order index of the active step (0-based); equals step count when finished.
@@ -326,6 +332,8 @@ model TransactionStep {
   approverId    String    @db.Uuid
   /// PENDING | SIGNED | REJECTED | RETURNED
   status        String    @default("PENDING")
+  /// التوجيه: للتوقيع | للاطلاع
+  directive     String?   @default("للتوقيع")
   note          String?
   /// The drawn signature/stamp as a data URL (small PNG).
   signatureImg  String?

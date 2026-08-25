@@ -32,6 +32,8 @@ export class TxError extends Error {
 
 /* ────────────────────────────── create ─────────────────────────────── */
 
+export interface ApproverInput { id: string; directive?: string }
+
 export async function createTransaction(input: {
   initiatorId: string;
   title: string;
@@ -40,15 +42,22 @@ export async function createTransaction(input: {
   secrecy?: string | null;
   importance?: string | null;
   content?: string | null;
+  contentEnding?: string | null;
   signerName?: string | null;
   signerTitle?: string | null;
-  approverIds: string[]; // ordered, top of the chain LAST
+  enclosures?: string | null;
+  internalCopies?: string | null;
+  prepEntity?: string | null;
+  approvalEntity?: string | null;
+  recipients?: { name: string; ending?: string }[];
+  approvers: ApproverInput[]; // ordered, top of the chain LAST
   originalFile?: string | null;
   originalName?: string | null;
   mimeType?: string | null;
   draft?: boolean; // save without sending
 }) {
-  const approverIds = input.approverIds.filter(Boolean);
+  const approvers = input.approvers.filter((a) => a.id);
+  const approverIds = approvers.map((a) => a.id);
   if (!input.draft && approverIds.length === 0) throw new TxError("اختر موقّعًا واحدًا على الأقل.");
 
   const byId = new Map<string, { id: string; name: string; email: string | null }>();
@@ -63,6 +72,9 @@ export async function createTransaction(input: {
 
   const status = input.draft ? "DRAFT" : "IN_PROGRESS";
   const number = `43${String(Date.now()).slice(-8)}`;
+  const recipients = (input.recipients ?? [])
+    .map((r) => ({ name: (r.name ?? "").trim(), ending: (r.ending ?? "").trim() }))
+    .filter((r) => r.name);
 
   const tx = await prisma.transaction.create({
     data: {
@@ -74,14 +86,20 @@ export async function createTransaction(input: {
       secrecy: input.secrecy?.trim() || "عادي",
       importance: input.importance?.trim() || "عادي",
       content: input.content?.trim() || null,
+      contentEnding: input.contentEnding?.trim() || null,
       signerName: input.signerName?.trim() || null,
       signerTitle: input.signerTitle?.trim() || null,
+      enclosures: input.enclosures?.trim() || null,
+      internalCopies: input.internalCopies?.trim() || null,
+      prepEntity: input.prepEntity?.trim() || null,
+      approvalEntity: input.approvalEntity?.trim() || null,
+      recipients: recipients.length ? recipients : undefined,
       originalFile: input.originalFile ?? null,
       originalName: input.originalName ?? null,
       mimeType: input.mimeType ?? null,
       currentStep: 0,
       status,
-      steps: { create: approverIds.map((approverId, order) => ({ approverId, order })) },
+      steps: { create: approvers.map((a, order) => ({ approverId: a.id, order, directive: a.directive || "للتوقيع" })) },
     },
     select: { id: true },
   });
@@ -99,8 +117,9 @@ export async function createTransaction(input: {
 }
 
 /** Send a DRAFT: (re)set the ordered signers, start the flow, notify signer 1. */
-export async function sendDraft(id: string, userId: string, approverIds: string[]) {
-  approverIds = approverIds.filter(Boolean);
+export async function sendDraft(id: string, userId: string, approvers: ApproverInput[]) {
+  approvers = approvers.filter((a) => a.id);
+  const approverIds = approvers.map((a) => a.id);
   if (approverIds.length === 0) throw new TxError("اختر موقّعًا واحدًا على الأقل.");
   const t = await prisma.transaction.findUnique({ where: { id }, select: { id: true, initiatorId: true, status: true, title: true } });
   if (!t) throw new TxError("المعاملة غير موجودة.", 404);
@@ -112,7 +131,7 @@ export async function sendDraft(id: string, userId: string, approverIds: string[
 
   await prisma.$transaction([
     prisma.transactionStep.deleteMany({ where: { transactionId: id } }),
-    prisma.transactionStep.createMany({ data: approverIds.map((approverId, order) => ({ transactionId: id, approverId, order })) }),
+    prisma.transactionStep.createMany({ data: approvers.map((a, order) => ({ transactionId: id, approverId: a.id, order, directive: a.directive || "للتوقيع" })) }),
     prisma.transaction.update({ where: { id }, data: { status: "IN_PROGRESS", currentStep: 0, version: { increment: 1 } } }),
   ]);
   const first = byId.get(approverIds[0])!;
@@ -122,7 +141,7 @@ export async function sendDraft(id: string, userId: string, approverIds: string[
 /* ────────────────────────────── read ───────────────────────────────── */
 
 const STEP_SELECT = {
-  id: true, order: true, status: true, note: true, signatureImg: true, actedAt: true,
+  id: true, order: true, status: true, directive: true, note: true, signatureImg: true, actedAt: true,
   approver: { select: { id: true, name: true, jobTitle: true } },
 } as const;
 
@@ -131,7 +150,8 @@ export async function getTransaction(id: string, userId: string, isAdmin: boolea
     where: { id },
     select: {
       id: true, number: true, title: true, type: true, note: true, status: true, currentStep: true,
-      secrecy: true, importance: true, content: true, signerName: true, signerTitle: true,
+      secrecy: true, importance: true, content: true, contentEnding: true, signerName: true, signerTitle: true,
+      enclosures: true, internalCopies: true, prepEntity: true, approvalEntity: true, recipients: true,
       version: true, originalFile: true, originalName: true, mimeType: true, signedFile: true, createdAt: true,
       initiator: { select: { id: true, name: true } },
       steps: { orderBy: { order: "asc" }, select: STEP_SELECT },
