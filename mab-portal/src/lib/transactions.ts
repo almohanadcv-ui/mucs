@@ -5,14 +5,30 @@ import { readUpload, writeGenerated } from "./uploads";
 import { buildSignedPdf } from "./signed-pdf";
 import { sha256, safeEqual } from "./crypto";
 
-/** Set/clear the current user's signing PIN (كلمة السر). */
+/** Set/clear the current user's signing PIN (كلمة السر) — 4 digits. */
 export async function setSignPin(userId: string, pin: string | null) {
-  const hash = pin && pin.trim().length >= 4 ? sha256(pin.trim()) : null;
-  await prisma.portalUser.update({ where: { id: userId }, data: { signPinHash: hash } });
+  const clean = (pin ?? "").trim();
+  if (clean && !/^\d{4}$/.test(clean)) throw new TxError("الرمز يجب أن يكون ٤ أرقام.");
+  await prisma.portalUser.update({ where: { id: userId }, data: { signPinHash: clean ? sha256(clean) : null } });
 }
 export async function hasSignPin(userId: string): Promise<boolean> {
   const u = await prisma.portalUser.findUnique({ where: { id: userId }, select: { signPinHash: true } });
   return !!u?.signPinHash;
+}
+
+/** Forgotten PIN: generate a new 4-digit code, set it, and email it to the user
+ *  (or to a target user when reset by IT). */
+export async function resetSignPin(targetUserId: string) {
+  const u = await prisma.portalUser.findUnique({ where: { id: targetUserId }, select: { name: true, email: true } });
+  if (!u) throw new TxError("المستخدم غير موجود.", 404);
+  const code = String(Math.floor(1000 + Math.random() * 9000)); // 4 digits
+  await prisma.portalUser.update({ where: { id: targetUserId }, data: { signPinHash: sha256(code) } });
+  await notifyUser({
+    userId: targetUserId, toEmail: u.email, type: "SYSTEM",
+    title: "رمز التوقيع الجديد",
+    body: `رمز التوقيع الجديد الخاص بك هو: ${code} — يمكنك تغييره من «إدارة التواقيع».`,
+    email: true, accent: "#1178b8",
+  });
 }
 
 const APP_URL = process.env.APP_URL || "https://portal.mucs.online";

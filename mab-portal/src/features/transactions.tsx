@@ -60,11 +60,12 @@ function composeSignature(sigDataUrl: string, name: string, jobTitle: string | n
       ctx.drawImage(img, (W - w) / 2, 10, w, h);
       // Meta below, right-aligned RTL.
       ctx.direction = "rtl"; ctx.textAlign = "right";
+      // Name + title only — NO date/time (a document may already have a signing
+      // spot; the signer just places their signature + name).
+      void dateStr;
       ctx.fillStyle = "#0f2b46"; ctx.font = "bold 22px system-ui, sans-serif";
-      ctx.fillText(name, W - 20, 150);
-      ctx.fillStyle = "#64748b"; ctx.font = "16px system-ui, sans-serif";
-      if (jobTitle) ctx.fillText(jobTitle, W - 20, 174);
-      ctx.fillText(dateStr, W - 20, 194);
+      ctx.fillText(name, W - 20, 160);
+      if (jobTitle) { ctx.fillStyle = "#64748b"; ctx.font = "16px system-ui, sans-serif"; ctx.fillText(jobTitle, W - 20, 186); }
       resolve(canvas.toDataURL("image/png"));
     };
     img.onerror = () => resolve(sigDataUrl);
@@ -217,7 +218,7 @@ function SignaturesManager({ userName }: { userName: string }) {
   async function savePin() {
     setPinMsg(null);
     const r = await fetch("/api/signatures/pin", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }) });
-    if (r.ok) { setHasPin(pin.trim().length >= 4); setPin(""); setPinMsg("تم حفظ كلمة السر."); }
+    if (r.ok) { setHasPin(pin.trim().length === 4); setPin(""); setPinMsg("تم حفظ رمز التوقيع."); }
     else setPinMsg((await r.json().catch(() => ({})))?.error || "تعذّر الحفظ.");
   }
 
@@ -249,10 +250,13 @@ function SignaturesManager({ userName }: { userName: string }) {
       <p className="mb-4 text-sm text-slate-500">الاسم يُسجّل تلقائيًا: <span className="font-semibold text-slate-700">{userName}</span></p>
 
       <div className="mb-5 flex flex-wrap items-end gap-2 rounded-2xl border border-slate-200 bg-white p-4">
-        <label className="flex-1 text-xs font-semibold text-slate-500">كلمة السر للتوقيع {hasPin && <span className="text-emerald-600">(مضبوطة)</span>}
-          <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder={hasPin ? "لتغييرها…" : "٤ خانات على الأقل"} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal" />
+        <label className="flex-1 text-xs font-semibold text-slate-500">رمز التوقيع (٤ أرقام) {hasPin && <span className="text-emerald-600">(مضبوط)</span>}
+          <input type="password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder={hasPin ? "لتغييره…" : "٤ أرقام"} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-normal tracking-widest" />
         </label>
         <button onClick={savePin} className="rounded-lg bg-[#0f2b46] px-4 py-2 text-sm font-semibold text-white hover:bg-[#173a5e]">حفظ</button>
+        {hasPin && (
+          <button onClick={async () => { const r = await fetch("/api/signatures/pin", { method: "PUT" }); setPinMsg(r.ok ? "أُرسل رمز جديد إلى بريدك." : "تعذّر الإرسال."); }} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">نسيت الرمز؟ أرسله لبريدي</button>
+        )}
         {pinMsg && <p className="w-full text-xs text-slate-500">{pinMsg}</p>}
       </div>
 
@@ -330,6 +334,7 @@ function NewTransaction({ userName, onDone, onCancel }: { userName: string; onDo
   const [chain, setChain] = useState<ChainItem[]>([]);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<Person[]>([]);
+  const [depts, setDepts] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const dragFrom = useRef<number | null>(null);
@@ -341,6 +346,13 @@ function NewTransaction({ userName, onDone, onCancel }: { userName: string; onDo
     }, 250);
     return () => clearTimeout(id);
   }, [q]);
+
+  useEffect(() => {
+    (async () => {
+      const r = await fetch("/api/departments", { cache: "no-store" });
+      if (r.ok) setDepts(((await r.json()).rows ?? []).map((d: { name: string }) => d.name));
+    })();
+  }, []);
 
   function addSigner(p: Person) { if (!chain.some((c) => c.id === p.id)) setChain((c) => [...c, { ...p, directive: "للتوقيع" }]); }
   function removeAt(i: number) { setChain((c) => c.filter((_, idx) => idx !== i)); }
@@ -387,6 +399,7 @@ function NewTransaction({ userName, onDone, onCancel }: { userName: string; onDo
 
   return (
     <div className="mx-auto max-w-6xl">
+      <datalist id="tx-depts">{depts.map((d) => <option key={d} value={d} />)}</datalist>
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-xl font-bold text-slate-900">مسودة معاملة داخلية</h1>
         <button onClick={onCancel} className="text-sm text-slate-400 hover:text-slate-700">إلغاء</button>
@@ -433,7 +446,7 @@ function NewTransaction({ userName, onDone, onCancel }: { userName: string; onDo
                 <div className="space-y-1">
                   {recipients.map((r, i) => (
                     <div key={i} className="flex gap-1">
-                      <input value={r.name} onChange={(e) => setRecipient(i, { name: e.target.value })} placeholder="اسم الجهة" className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
+                      <input list="tx-depts" value={r.name} onChange={(e) => setRecipient(i, { name: e.target.value })} placeholder="اسم الجهة" className="flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
                       <input value={r.ending} onChange={(e) => setRecipient(i, { ending: e.target.value })} placeholder="خاتمة" className="w-28 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm" />
                       <button type="button" onClick={() => removeRecipient(i)} className="rounded p-1 text-slate-400 hover:text-red-600"><Trash2 className="size-4" /></button>
                     </div>
@@ -515,7 +528,8 @@ function NewTransaction({ userName, onDone, onCancel }: { userName: string; onDo
               <p>التاريخ: {today}</p>
               <p>المشفوعات: {enclosures || "—"}</p>
             </div>
-            <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">M<span className="text-[#5aa6e0]">A</span>B</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/mab-logo.jpg" alt="MAB" className="h-12 w-auto object-contain" />
           </div>
           {importance !== "عادي" && <p className="mb-2 text-center font-bold text-red-600">{importance}</p>}
           <div className="mb-3">
@@ -550,6 +564,20 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
   const [chosenSig, setChosenSig] = useState<string | null>(null); // data URL of a saved signature
   const [pin, setPin] = useState("");
   const [hasPin, setHasPin] = useState(false);
+  const [showFile, setShowFile] = useState(false);
+  // Draft: pick/reorder signers before sending.
+  const [draftChain, setDraftChain] = useState<ChainItem[]>([]);
+  const [dq, setDq] = useState("");
+  const [dResults, setDResults] = useState<Person[]>([]);
+
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      if (tx?.status !== "DRAFT") return;
+      const r = await fetch(`/api/users/search?q=${encodeURIComponent(dq)}`);
+      if (r.ok) setDResults((await r.json()).rows ?? []);
+    }, 250);
+    return () => clearTimeout(id);
+  }, [dq, tx?.status]);
 
   useEffect(() => {
     if (mode !== "sign") return;
@@ -571,8 +599,12 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
   const load = useCallback(async () => {
     const res = await fetch(`/api/transactions/${id}`, { cache: "no-store" });
     const body = await res.json().catch(() => ({}));
-    if (res.ok) setTx(body.tx);
-    else setErr(body?.error || "تعذّر التحميل.");
+    if (res.ok) {
+      const t = body.tx as Detail;
+      setTx(t);
+      if (t.status === "DRAFT")
+        setDraftChain(t.steps.map((s) => ({ id: s.approver.id, name: s.approver.name, jobTitle: s.approver.jobTitle, directive: s.directive ?? "للتوقيع" })));
+    } else setErr(body?.error || "تعذّر التحميل.");
   }, [id]);
   useEffect(() => { void load(); }, [load]);
 
@@ -610,8 +642,8 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
 
   async function sendDraftNow() {
     if (!tx) return;
-    const approvers = tx.steps.map((s) => ({ id: s.approver.id, directive: s.directive ?? "للتوقيع" }));
-    if (approvers.length === 0) { setErr("المسودة بلا موقّعين."); return; }
+    const approvers = draftChain.map((c) => ({ id: c.id, directive: c.directive }));
+    if (approvers.length === 0) { setErr("أضف موقّعًا واحدًا على الأقل."); return; }
     setBusy(true); setErr(null);
     try {
       const res = await fetch(`/api/transactions/${id}/send`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ approvers }) });
@@ -642,7 +674,8 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
                   <p>التاريخ: {new Date(tx.createdAt).toLocaleDateString("ar-SA")}</p>
                   {tx.enclosures && <p>المشفوعات: {tx.enclosures}</p>}
                 </div>
-                <span className="rounded-lg bg-[#0f2b46] px-2.5 py-1 text-base font-black text-white">M<span className="text-[#5aa6e0]">A</span>B</span>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/mab-logo.jpg" alt="MAB" className="h-12 w-auto object-contain" />
               </div>
               {tx.importance && tx.importance !== "عادي" && <p className="mb-2 text-center font-bold text-red-600">{tx.importance}</p>}
               {tx.recipients?.filter((r) => r.name).map((r, i) => (
@@ -664,9 +697,9 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
 
           <div className="flex flex-wrap gap-2">
             {tx.originalName && (
-              <a href={`/api/transactions/${id}/file`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#075d96] hover:bg-slate-50">
-                <Paperclip className="size-4" /> {tx.originalName}
-              </a>
+              <button onClick={() => setShowFile((v) => !v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-[#075d96] hover:bg-slate-50">
+                <Paperclip className="size-4" /> {showFile ? "إخفاء المرفق" : tx.originalName}
+              </button>
             )}
             {tx.status === "COMPLETED" && tx.signedFile && (
               <a href={`/api/transactions/${id}/signed`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700">
@@ -674,6 +707,10 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
               </a>
             )}
           </div>
+
+          {showFile && tx.originalName && (
+            <iframe title="المرفق" src={`/api/transactions/${id}/file`} className="h-96 w-full rounded-lg border border-slate-200" />
+          )}
 
           {/* Vertical chain of arrows */}
           <div className="space-y-0">
@@ -721,7 +758,7 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
               <SignaturePad ref={sigRef} />
               <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="ملاحظة (اختياري)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               {hasPin && (
-                <input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="الرمز السري للتوقيع *" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                <input type="password" inputMode="numeric" maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="رمز التوقيع (٤ أرقام) *" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm tracking-widest" />
               )}
               <div className="flex gap-2">
                 <button disabled={busy} onClick={() => act("sign")} className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"><Check className="mr-1 inline size-4" /> اعتماد</button>
@@ -744,9 +781,30 @@ function DetailModal({ id, onClose, onChanged }: { id: string; onClose: () => vo
             </button>
           )}
           {tx.status === "DRAFT" && (
-            <button disabled={busy} onClick={sendDraftNow} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
-              <ArrowLeft className="size-4" /> إرسال المسودة للموقّعين
-            </button>
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <p className="text-xs font-semibold text-slate-600">الإحالة — حدّد الموقّعين (اسحب للترتيب)</p>
+              {draftChain.map((p, i) => (
+                <div key={p.id} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#1178b8]/10 text-xs font-bold text-[#075d96]">{i + 1}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{p.name}{p.jobTitle && <span className="text-slate-400"> — {p.jobTitle}</span>}</span>
+                  <select value={p.directive} onChange={(e) => setDraftChain((c) => c.map((x, idx) => idx === i ? { ...x, directive: e.target.value } : x))} className="rounded-lg border border-slate-300 px-1.5 py-1 text-xs"><option>للتوقيع</option><option>للاطلاع</option></select>
+                  <button onClick={() => setDraftChain((c) => { const n = [...c]; if (i > 0) [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; })} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronUp className="size-4" /></button>
+                  <button onClick={() => setDraftChain((c) => { const n = [...c]; if (i < n.length - 1) [n[i + 1], n[i]] = [n[i], n[i + 1]]; return n; })} className="rounded p-0.5 text-slate-400 hover:bg-slate-100"><ChevronDown className="size-4" /></button>
+                  <button onClick={() => setDraftChain((c) => c.filter((_, idx) => idx !== i))} className="rounded p-0.5 text-slate-400 hover:text-red-600"><Trash2 className="size-4" /></button>
+                </div>
+              ))}
+              <div className="rounded-lg border border-slate-200 bg-white">
+                <div className="flex items-center gap-2 border-b border-slate-100 px-2.5 py-1.5"><Search className="size-4 text-slate-400" /><input value={dq} onChange={(e) => setDq(e.target.value)} placeholder="ابحث عن موقّع لإضافته…" className="w-full text-sm outline-none" /></div>
+                <div className="max-h-36 overflow-y-auto">
+                  {dResults.filter((r) => !draftChain.some((c) => c.id === r.id)).map((r) => (
+                    <button key={r.id} onClick={() => setDraftChain((c) => [...c, { ...r, directive: "للتوقيع" }])} className="flex w-full items-center justify-between px-3 py-2 text-right text-sm hover:bg-slate-50"><span>{r.name}{r.jobTitle && <span className="text-slate-400"> — {r.jobTitle}</span>}</span><Plus className="size-4 text-[#1178b8]" /></button>
+                  ))}
+                </div>
+              </div>
+              <button disabled={busy} onClick={sendDraftNow} className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[#0f2b46] px-4 py-2.5 font-semibold text-white hover:bg-[#173a5e] disabled:opacity-60">
+                <ArrowLeft className="size-4" /> إرسال للموقّعين
+              </button>
+            </div>
           )}
         </div>
       )}
@@ -774,17 +832,24 @@ function Connector({ color, active }: { color: string; active: boolean }) {
 
 type SignatureHandle = { dataUrl: () => string | null; clear: () => void };
 
+const PEN_COLORS = ["#0f2b46", "#1d4ed8", "#dc2626", "#000000", "#047857"];
+const PEN_SIZES = [1.5, 2.5, 4, 6];
+
 const SignaturePad = forwardRef<SignatureHandle>(function SignaturePad(_props, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const dirty = useRef(false);
+  const [color, setColor] = useState(PEN_COLORS[0]);
+  const [size, setSize] = useState(PEN_SIZES[1]);
+  const [eraser, setEraser] = useState(false);
 
+  const doClear = () => {
+    const c = canvasRef.current; const ctx = c?.getContext("2d");
+    if (c && ctx) { ctx.clearRect(0, 0, c.width, c.height); dirty.current = false; }
+  };
   useImperativeHandle(ref, () => ({
     dataUrl: () => (dirty.current ? canvasRef.current?.toDataURL("image/png") ?? null : null),
-    clear: () => {
-      const c = canvasRef.current; const ctx = c?.getContext("2d");
-      if (c && ctx) { ctx.clearRect(0, 0, c.width, c.height); dirty.current = false; }
-    },
+    clear: doClear,
   }));
 
   function pos(e: React.PointerEvent) {
@@ -795,19 +860,34 @@ const SignaturePad = forwardRef<SignatureHandle>(function SignaturePad(_props, r
   function moveP(e: React.PointerEvent) {
     if (!drawing.current) return;
     const ctx = canvasRef.current!.getContext("2d")!; const p = pos(e);
-    ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.strokeStyle = "#0f2b46";
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (eraser) { ctx.globalCompositeOperation = "destination-out"; ctx.lineWidth = size * 6; }
+    else { ctx.globalCompositeOperation = "source-over"; ctx.lineWidth = size; ctx.strokeStyle = color; }
     ctx.lineTo(p.x, p.y); ctx.stroke(); dirty.current = true;
   }
   function up() { drawing.current = false; }
 
   return (
     <div>
+      <div className="mb-1 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-1.5">
+        {PEN_COLORS.map((c) => (
+          <button key={c} type="button" onClick={() => { setColor(c); setEraser(false); }} className={`size-5 rounded-full border-2 ${!eraser && color === c ? "border-slate-700" : "border-white"}`} style={{ backgroundColor: c }} />
+        ))}
+        <span className="mx-1 h-4 w-px bg-slate-200" />
+        {PEN_SIZES.map((s, i) => (
+          <button key={s} type="button" onClick={() => { setSize(s); setEraser(false); }} title={`حجم ${i + 1}`} className={`flex size-6 items-center justify-center rounded ${!eraser && size === s ? "bg-slate-200" : "hover:bg-slate-100"}`}>
+            <span className="rounded-full bg-slate-700" style={{ width: s + 2, height: s + 2 }} />
+          </button>
+        ))}
+        <span className="mx-1 h-4 w-px bg-slate-200" />
+        <button type="button" onClick={() => setEraser((v) => !v)} className={`rounded px-2 py-1 text-xs ${eraser ? "bg-amber-100 text-amber-800" : "text-slate-500 hover:bg-slate-100"}`}>ممحاة</button>
+        <button type="button" onClick={doClear} className="rounded px-2 py-1 text-xs text-slate-500 hover:bg-slate-100">مسح الكل</button>
+      </div>
       <canvas
-        ref={canvasRef} width={520} height={160}
+        ref={canvasRef} width={520} height={180}
         onPointerDown={down} onPointerMove={moveP} onPointerUp={up} onPointerLeave={up}
-        className="h-40 w-full touch-none rounded-lg border border-slate-300 bg-white"
+        className="h-44 w-full touch-none rounded-lg border border-slate-300 bg-white"
       />
-      <button type="button" onClick={() => ref && typeof ref !== "function" && ref.current?.clear()} className="mt-1 text-xs text-slate-400 hover:text-slate-700">مسح التوقيع</button>
     </div>
   );
 });
