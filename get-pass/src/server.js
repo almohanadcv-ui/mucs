@@ -18,6 +18,7 @@ import auditRoutes from './routes/audit.js';
 import reportRoutes from './routes/reports.js';
 import verifyRoutes from './routes/verify.js';
 import notificationRoutes from './routes/notifications.js';
+import ssoRoutes from './routes/sso.js'; // تسجيل دخول موحّد من بوّابة MAB (مشروط بالبيئة)
 import testMatchRoutes from './routes/testMatch.js'; // PoC: اختبار مطابقة التصاريح (قراءة فقط)
 import waAdminRoutes from './routes/wa-admin.js'; // إدارة منصّة واتساب (دعم فقط)
 import { startWhatsAppAgent } from './services/whatsappAgent.js'; // وكيل واتساب (مُطفأ افتراضياً)
@@ -39,9 +40,14 @@ const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 
+// عند التضمين داخل بوّابة MAB: نسمح لأصل البوّابة بتأطير هذا النظام، ونُلغي
+// X-Frame-Options (لا يدعم قائمة سماح). مُطفأ افتراضياً، فالنظام المستقل كما هو.
+const embedOrigin = process.env.PORTAL_EMBED_ORIGIN || '';
+
 // الأمان والوسطاء العامة (Helmet + CSP + HSTS)
 app.use(helmet({
   hsts: config.env === 'production' ? { maxAge: 15552000, includeSubDomains: true } : false,
+  frameguard: embedOrigin ? false : undefined, // إزالة X-Frame-Options عند التضمين
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -51,6 +57,8 @@ app.use(helmet({
       fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
       imgSrc: ["'self'", 'data:', 'blob:'],
       frameSrc: ["'self'"],
+      // من يُسمح له بتأطيرنا: أنفسنا فقط، أو أصل البوّابة عند التضمين.
+      frameAncestors: embedOrigin ? ["'self'", embedOrigin] : ["'self'"],
       objectSrc: ["'self'"],
       connectSrc: ["'self'"],
       // لا نُجبر ترقية الطلبات إلى HTTPS تلقائياً (يكسر التحميل عند الوصول عبر http/IP).
@@ -84,6 +92,9 @@ app.use('/api/test-permit-match', testMatchRoutes); // PoC (قراءة فقط)
 app.use('/api/wa', waAdminRoutes); // إدارة منصّة واتساب (دعم فقط)
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+// تسجيل الدخول الموحّد من بوّابة MAB (قبل الملفات الثابتة)
+app.use('/sso', ssoRoutes);
 
 // الواجهة الأمامية الثابتة
 app.use(express.static(config.paths.public));

@@ -41,15 +41,22 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
   const features = session.admin ? [] : grant?.features ?? [];
 
   const nextPath = sanitizeNext(req.nextUrl.searchParams.get("next"));
-  // Same-origin proxied prefix so the system renders inside the portal (iframe).
-  const mount = `/apps/${system.key}`;
 
-  // No SSO endpoint → plain same-origin deep link.
+  // Two embed modes:
+  //  • SUBDOMAIN: baseUrl is an absolute external origin (e.g.
+  //    https://gatepass.mucs.online) — a system whose client uses absolute
+  //    paths (a non-Next SPA). We redirect the iframe to that origin directly;
+  //    its own /sso sets a first-party (same-site under mucs.online) cookie.
+  //  • PROXY: baseUrl is empty/relative — served same-origin under /apps/<key>
+  //    via the Next rewrite (basePath apps like evaluation).
+  const isAbsolute = /^https?:\/\//i.test(system.baseUrl || "");
+  const originBase = isAbsolute ? system.baseUrl.replace(/\/$/, "") : `/apps/${system.key}`;
+
+  // No SSO endpoint → plain deep link.
   if (!system.ssoPath) {
-    return redirect(`${mount}${nextPath}`);
+    return redirect(`${originBase}${nextPath}`);
   }
 
-  // Hand off through the proxied /sso path; the token carries the target page.
   const token = await signSsoToken({
     email: session.email,
     name: session.name,
@@ -58,7 +65,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
     role,
     features,
   });
-  return redirect(`${mount}${system.ssoPath}?token=${encodeURIComponent(token)}`);
+  return redirect(`${originBase}${system.ssoPath}?token=${encodeURIComponent(token)}`);
 }
 
 /** Only allow same-site relative paths as the post-login target. */
