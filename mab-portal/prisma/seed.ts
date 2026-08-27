@@ -30,6 +30,7 @@ const SYSTEMS = [
     icon: "ShieldCheck",
     color: "#0f766e",
     baseUrl: url("SYS_GATEPASS_URL", "https://getpass.mucs.online"),
+    embedMode: "subdomain",
     order: 2,
     isActive: true,
     links: [
@@ -45,6 +46,7 @@ const SYSTEMS = [
     icon: "Car",
     color: "#b45309",
     baseUrl: url("SYS_MICA_URL", "https://mica.mucs.online"),
+    embedMode: "subdomain",
     order: 3,
     isActive: true,
     links: [
@@ -60,6 +62,7 @@ const SYSTEMS = [
     icon: "ListTodo",
     color: "#6d28d9",
     baseUrl: url("SYS_TASKS_URL", "https://tasks.mucs.online"),
+    embedMode: "subdomain",
     order: 4,
     isActive: true,
     links: [],
@@ -72,6 +75,7 @@ const SYSTEMS = [
     icon: "Headset",
     color: "#be123c",
     baseUrl: url("SYS_TICKETS_URL", "https://support.mucs.online"),
+    embedMode: "subdomain",
     order: 5,
     isActive: false, // not deployed yet
     links: [],

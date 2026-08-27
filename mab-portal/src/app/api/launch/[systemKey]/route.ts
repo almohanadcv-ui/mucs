@@ -25,7 +25,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
   const { systemKey } = await ctx.params;
   const system = await prisma.system.findFirst({
     where: { key: systemKey, isActive: true },
-    select: { id: true, key: true, baseUrl: true, ssoPath: true },
+    select: { id: true, key: true, baseUrl: true, ssoPath: true, embedMode: true },
   });
   if (!system) return redirect("/");
 
@@ -42,15 +42,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ systemKey: 
 
   const nextPath = sanitizeNext(req.nextUrl.searchParams.get("next"));
 
-  // Two embed modes:
-  //  • SUBDOMAIN: baseUrl is an absolute external origin (e.g.
-  //    https://gatepass.mucs.online) — a system whose client uses absolute
-  //    paths (a non-Next SPA). We redirect the iframe to that origin directly;
-  //    its own /sso sets a first-party (same-site under mucs.online) cookie.
-  //  • PROXY: baseUrl is empty/relative — served same-origin under /apps/<key>
-  //    via the Next rewrite (basePath apps like evaluation).
-  const isAbsolute = /^https?:\/\//i.test(system.baseUrl || "");
-  const originBase = isAbsolute ? system.baseUrl.replace(/\/$/, "") : `/apps/${system.key}`;
+  // Two embed modes (explicit, not inferred from baseUrl — a proxy app can still
+  // have an absolute internal baseUrl used only by the Next rewrite):
+  //  • subdomain: redirect the iframe to the system's own origin (…/sso?token=);
+  //    its /sso sets a first-party (same-site under mucs.online) cookie.
+  //  • proxy: served same-origin under /apps/<key> via the Next rewrite.
+  const subdomain = system.embedMode === "subdomain" && /^https?:\/\//i.test(system.baseUrl || "");
+  const originBase = subdomain ? system.baseUrl.replace(/\/$/, "") : `/apps/${system.key}`;
 
   // No SSO endpoint → plain deep link.
   if (!system.ssoPath) {

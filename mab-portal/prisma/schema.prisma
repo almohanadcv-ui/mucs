@@ -153,6 +153,10 @@ model System {
   baseUrl     String
   /// The SSO handoff path added to each system (e.g. "/sso"). Empty = link only.
   ssoPath     String  @default("/sso")
+  /// How the system is embedded: "proxy" = served same-origin under /apps/<key>
+  /// via the Next rewrite (base-path apps like evaluation); "subdomain" = its own
+  /// origin in baseUrl (SPAs with absolute paths like gatepass).
+  embedMode   String  @default("proxy")
   order       Int     @default(0)
   isActive    Boolean @default(true)
 
