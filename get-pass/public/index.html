@@ -2,18 +2,23 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
+  <!-- Base path: the server injects __BASE__ ("" standalone, "/apps/gatepass"
+       when embedded in the MAB portal). <base> makes relative asset URLs resolve
+       correctly under either; window.__BASE__ is used by app.js for /api calls. -->
+  <base href="__BASE__/" />
+  <script>window.__BASE__ = "__BASE__";</script>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#2563eb" />
   <title>نظام إدارة التصاريح والموافقات — MAB</title>
-  <link rel="icon" type="image/png" href="/assets/logo.png?v=1" />
-  <link rel="shortcut icon" type="image/png" href="/assets/logo.png?v=1" />
-  <link rel="apple-touch-icon" href="/assets/logo.png?v=1" />
+  <link rel="icon" type="image/png" href="assets/logo.png?v=1" />
+  <link rel="shortcut icon" type="image/png" href="assets/logo.png?v=1" />
+  <link rel="apple-touch-icon" href="assets/logo.png?v=1" />
   <meta property="og:title" content="نظام التصاريح والموافقات — MAB" />
   <meta property="og:image" content="/assets/logo.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/styles.css?v=58" />
+  <link rel="stylesheet" href="styles.css?v=58" />
 </head>
 <body class="dark">
   <div id="toasts"></div>
@@ -57,9 +62,9 @@
     </div>
     <div class="fx-clock" aria-hidden="true"><div class="c-time">--:--</div><div class="c-date"></div></div>
     <div class="auth-topbar">
-      <span class="auth-logo-wrap" title="MAB"><img src="/assets/logo.png" onerror="this.onerror=null;this.src='/assets/mab-logo.svg'" alt="MAB" /><span class="logo-sweep"></span></span>
+      <span class="auth-logo-wrap" title="MAB"><img src="assets/logo.png" onerror="this.onerror=null;this.src='assets/mab-logo.svg'" alt="MAB" /><span class="logo-sweep"></span></span>
       <span class="auth-topbar-div"></span>
-      <img src="/assets/qiddiya.svg?v=1" alt="Qiddiya" class="auth-topbar-q-img" />
+      <img src="assets/qiddiya.svg?v=1" alt="Qiddiya" class="auth-topbar-q-img" />
     </div>
 
     <div class="auth-main">
@@ -100,7 +105,7 @@
     <div id="backdrop" class="backdrop" onclick="App.toggleNav(false)"></div>
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <img src="/assets/logo.png" onerror="this.onerror=null;this.src='/assets/mab-logo.svg'" alt="MAB" class="brand-logo" />
+        <img src="assets/logo.png" onerror="this.onerror=null;this.src='assets/mab-logo.svg'" alt="MAB" class="brand-logo" />
         <div class="brand-text"><span class="brand-name">نظام التصاريح</span><small>والموافقات</small></div>
       </div>
       <nav class="nav" id="nav"></nav>
@@ -134,7 +139,7 @@
   </div>
 
   <div id="modal-root"></div>
-  <script src="/app.js?v=68"></script>
-  <script src="/login-fx.js?v=49"></script>
+  <script src="app.js?v=68"></script>
+  <script src="login-fx.js?v=49"></script>
 </body>
 </html>

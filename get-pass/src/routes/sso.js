@@ -18,21 +18,22 @@ const findByEmail = db.prepare(
 );
 
 router.get('/', (req, res) => {
+  const base = req.gpBase || ''; // "/apps/gatepass" when embedded (same-origin proxy)
   const token = req.query.token;
   const secret = process.env.PORTAL_SSO_SECRET;
-  if (!token || !secret) return res.redirect('/');
+  if (!token || !secret) return res.redirect(base + '/');
 
   let email = '';
   try {
     const payload = jwt.verify(String(token), secret, { issuer: 'mab-portal', audience: 'gatepass' });
     email = String(payload.email || '').trim().toLowerCase();
   } catch {
-    return res.redirect('/?sso=invalid');
+    return res.redirect(base + '/?sso=invalid');
   }
-  if (!email) return res.redirect('/');
+  if (!email) return res.redirect(base + '/');
 
   const user = findByEmail.get(email);
-  if (!user || !user.is_active) return res.redirect('/?sso=nouser');
+  if (!user || !user.is_active) return res.redirect(base + '/?sso=nouser');
 
   // Open a session (single active session, same as a normal login).
   const sid = randomUUID();
@@ -46,7 +47,7 @@ router.get('/', (req, res) => {
     secure: !!req.secure,
     maxAge: 8 * 60 * 60 * 1000,
   });
-  res.redirect('/');
+  res.redirect(base + '/');
 });
 
 export default router;

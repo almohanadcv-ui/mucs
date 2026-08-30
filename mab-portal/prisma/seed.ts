@@ -29,8 +29,8 @@ const SYSTEMS = [
     description: "تصاريح الدخول والموافقات",
     icon: "ShieldCheck",
     color: "#0f766e",
-    baseUrl: url("SYS_GATEPASS_URL", "https://getpass.mucs.online"),
-    embedMode: "subdomain",
+    baseUrl: url("SYS_GATEPASS_URL", "http://127.0.0.1:3001"),
+    embedMode: "proxy",
     order: 2,
     isActive: true,
     links: [

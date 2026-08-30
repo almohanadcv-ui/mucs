@@ -1,6 +1,8 @@
 import express from 'express';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { db } from './db/index.js';
@@ -74,6 +76,15 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// عند التضمين في المنصّة، يُمرَّر الطلب تحت /apps/gatepass (بروكسي same-origin مثل
+// التقييم). نجرّد البادئة هنا فتعمل كل المسارات كما هي، ونحفظ القاعدة للحقن في index.
+app.use((req, res, next) => {
+  const m = req.url.match(/^\/apps\/gatepass(\/.*)?$/);
+  if (m) { req.gpBase = '/apps/gatepass'; req.url = m[1] || '/'; }
+  else req.gpBase = '';
+  next();
+});
+
 // تحديد معدّل الطلبات على المصادقة (حماية من التخمين)
 app.use('/api/auth/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 10, standardHeaders: true, legacyHeaders: false,
   message: { error: 'محاولات دخول كثيرة. حاول بعد قليل.' } }));
@@ -96,7 +107,19 @@ app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISO
 // تسجيل الدخول الموحّد من بوّابة MAB (قبل الملفات الثابتة)
 app.use('/sso', ssoRoutes);
 
-// الواجهة الأمامية الثابتة
+// صفحة التطبيق: نحقن قاعدة المسار (__BASE__) حتى تعمل الأصول و /api تحت البروكسي.
+const INDEX_HTML = path.join(config.paths.public, 'index.html');
+function sendIndex(req, res) {
+  try {
+    const base = req.gpBase || '';
+    res.set('Content-Type', 'text/html; charset=utf-8')
+       .send(readFileSync(INDEX_HTML, 'utf8').replaceAll('__BASE__', base));
+  } catch { res.status(500).send('index error'); }
+}
+app.get('/', sendIndex);
+app.get('/index.html', sendIndex);
+
+// الواجهة الأمامية الثابتة (الأصول: app.js, styles.css, assets/…)
 app.use(express.static(config.paths.public));
 
 // معالج الأخطاء (يجب أن يكون أخيراً)

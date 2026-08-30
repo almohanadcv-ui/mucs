@@ -2,6 +2,9 @@
    تطبيق الواجهة (SPA ديناميكي بلا أطر)
    ============================================================ */
 const App = (() => {
+  // Base path: "" standalone, "/apps/gatepass" when embedded in the MAB portal.
+  // All /api calls and full-page navigations are prefixed with it.
+  const BASE = (window.__BASE__ && window.__BASE__ !== "__BASE__") ? window.__BASE__ : "";
   let user = null;
   let prefillNid = null;        // لتعبئة نموذج الطلب من لافتة التجديد
   let pollTimer = null;
@@ -60,10 +63,10 @@ const App = (() => {
     const opts = { method, credentials: 'same-origin', headers: {} };
     if (form) opts.body = form;
     else if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
-    const res = await fetch('/api' + path, opts);
+    const res = await fetch(BASE + '/api' + path, opts);
     const data = await res.json().catch(() => ({}));
     // جلسة منتهية أثناء الاستخدام (دخول من مكان آخر) → عودة لشاشة الدخول
-    if (res.status === 401 && user) { sessionStorage.removeItem('pams-tab'); toast(data.error || 'انتهت الجلسة، يُرجى تسجيل الدخول.', 'error'); setTimeout(() => location.replace('/'), 1300); throw new Error(data.error || 'انتهت الجلسة'); }
+    if (res.status === 401 && user) { sessionStorage.removeItem('pams-tab'); toast(data.error || 'انتهت الجلسة، يُرجى تسجيل الدخول.', 'error'); setTimeout(() => location.replace(BASE + '/'), 1300); throw new Error(data.error || 'انتهت الجلسة'); }
     if (!res.ok) throw new Error(data.error || 'حدث خطأ.');
     return data;
   }
@@ -567,7 +570,7 @@ const App = (() => {
     const name = r.undertaking_name || r.full_name;
     const date = (r.undertaking_accepted_at || '').slice(0, 10);
     const body = esc(txt.body || '').replace(/\{name\}/g, esc(name)).split(/\n{1,}/).map((p) => p.trim()).filter(Boolean).map((p) => `<p>${p}</p>`).join('');
-    const logo = `${location.origin}/assets/logo.png`;
+    const logo = `/assets/logo.png`;
     const w = window.open('', '_blank');
     w.document.write(`<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${esc(txt.title || 'تعهّد')} - ${esc(name)}</title>
       <style>
@@ -1140,11 +1143,11 @@ const App = (() => {
     const base = { ...(mode === 'full' && { mode: 'full' }) };
     if (selectedRequests.size) {
       const p = new URLSearchParams({ ...base, ids: [...selectedRequests].join(',') });
-      window.location.href = '/api/requests/export.xlsx?' + p; return;
+      window.location.href = BASE + '/api/requests/export.xlsx?' + p; return;
     }
     const q = $('#f-q')?.value, status = $('#f-status')?.value;
     const params = new URLSearchParams({ ...base, ...(q && { q }), ...(status && { status }) });
-    window.location.href = '/api/requests/export.xlsx?' + params;
+    window.location.href = BASE + '/api/requests/export.xlsx?' + params;
   }
 
   // ============================================================
@@ -1197,8 +1200,8 @@ const App = (() => {
           <div><div class="k">حتى</div><div class="vv">${fmtDate(permit.valid_to)}</div></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <a class="btn sm" href="/api/permits/${permit.id}/document" target="_blank">عرض ملف التصريح</a>
-          <a class="btn sm ghost" href="/api/permits/${permit.id}/document?download=1">⬇ تحميل</a>
+          <a class="btn sm" href="${BASE}/api/permits/${permit.id}/document" target="_blank">عرض ملف التصريح</a>
+          <a class="btn sm ghost" href="${BASE}/api/permits/${permit.id}/document?download=1">⬇ تحميل</a>
           ${isReviewer && permit.status === 'active' ? `<button class="btn danger sm" onclick="App.cancelPermit('${permit.id}','${id}')">إلغاء التصريح</button>` : ''}
         </div></div>`;
     }
@@ -1419,7 +1422,7 @@ const App = (() => {
         <td><b>${esc(p.permit_number)}</b></td><td>${esc(p.holder_name)}</td><td>${esc(p.national_id)}</td>
         <td>${badge(p.status)}</td><td>${fmtDate(p.valid_from)}</td>
         <td>${fmtDate(p.valid_to)}${expiryInfo(p)}</td>
-        <td class="row-actions"><a class="btn sm ghost" href="/api/permits/${p.id}/document" target="_blank" onclick="event.stopPropagation()">وثيقة</a>${canRenewPermit(p) ? `<button class="btn sm success" onclick="event.stopPropagation();App.renewPermit('${esc(p.national_id)}')">🔄 تجديد</button>` : ''}${(user.role === 'reviewer' || user.role === 'support') ? `<button class="btn sm danger" onclick="event.stopPropagation();App.deletePermit('${p.id}','${esc(p.permit_number)}','${esc(p.national_id)}')">حذف</button>` : ''}</td></tr>`);
+        <td class="row-actions"><a class="btn sm ghost" href="${BASE}/api/permits/${p.id}/document" target="_blank" onclick="event.stopPropagation()">وثيقة</a>${canRenewPermit(p) ? `<button class="btn sm success" onclick="event.stopPropagation();App.renewPermit('${esc(p.national_id)}')">🔄 تجديد</button>` : ''}${(user.role === 'reviewer' || user.role === 'support') ? `<button class="btn sm danger" onclick="event.stopPropagation();App.deletePermit('${p.id}','${esc(p.permit_number)}','${esc(p.national_id)}')">حذف</button>` : ''}</td></tr>`);
       tr.onclick = (e) => { if (e.target.closest('.sel-cell') || e.target.closest('a')) return; openPermit(p.id); };
       tb.appendChild(tr);
     });
@@ -1470,12 +1473,12 @@ const App = (() => {
   }
   function exportPermits() {
     if (selectedPermits.size) {
-      window.location.href = '/api/permits/export.xlsx?ids=' + encodeURIComponent([...selectedPermits].join(','));
+      window.location.href = BASE + '/api/permits/export.xlsx?ids=' + encodeURIComponent([...selectedPermits].join(','));
       return;
     }
     const q = $('#pf-q')?.value, status = $('#pf-status')?.value;
     const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }) });
-    window.location.href = '/api/permits/export.xlsx?' + params;
+    window.location.href = BASE + '/api/permits/export.xlsx?' + params;
   }
   const viewPermits = () => permitsView('التصاريح');
   const viewMyPermits = () => permitsView('تصاريحي');
@@ -1522,7 +1525,7 @@ const App = (() => {
 
   async function viewManagement() {
     $('#page-title').textContent = 'الإدارة العامة';
-    $('#page-actions').innerHTML = '<button class="btn ghost" onclick="window.location.href=\'/api/requests/export.xlsx?mode=full\'">تصدير Excel</button>';
+    $('#page-actions').innerHTML = `<button class="btn ghost" onclick="window.location.href='${BASE}/api/requests/export.xlsx?mode=full'">تصدير Excel</button>`;
     const c = $('#content'); c.innerHTML = '<div class="skeleton-grid"><div></div><div></div><div></div></div>';
     const render = async () => {
       const d = await api('/reports/enterprise');
