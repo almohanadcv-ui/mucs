@@ -21,6 +21,7 @@ import { VehiclePhotoRequests } from "@/features/photo-requests/vehicle-photo-re
 import { VehicleEditDialog } from "@/features/vehicles/vehicle-edit-dialog";
 import { VehicleDeleteButton } from "@/features/vehicles/vehicle-delete-button";
 import { VehicleTimeline } from "@/features/vehicles/vehicle-timeline";
+import { VehicleMaintenanceCosts } from "@/features/vehicles/vehicle-maintenance-costs";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { FileBarChart } from "lucide-react";
@@ -156,21 +157,8 @@ export default function VehicleDetailPage() {
               <Field label={t("vin")} value={vehicle.vin} />
               <Field label={t("color")} value={vehicle.color ?? undefined} />
               <Field label={t("odometer")} value={`${vehicle.odometer.toLocaleString()} km`} />
-              <Field
-                label={t("oilMeter")}
-                value={vehicle.oilMeter != null ? `${vehicle.oilMeter.toLocaleString()} km` : undefined}
-              />
-              <Field label="تاريخ آخر تغيير زيت" value={formatDate(vehicle.lastOilChangeAt)} />
-              <Field
-                label="العداد عند تغيير الزيت"
-                value={
-                  vehicle.oilChangeOdometer != null
-                    ? `${vehicle.oilChangeOdometer.toLocaleString()} km`
-                    : undefined
-                }
-              />
-              <Field label={t("oilChangeDue")} value={formatDate(vehicle.oilChangeDueAt)} />
-              <Field label={t("nextMaintenance")} value={formatDate(vehicle.nextMaintenanceAt)} />
+              {/* «الصيانة المستحقة» replaces the oil-change fields per request. */}
+              <Field label="الصيانة المستحقة" value={formatDate(vehicle.nextMaintenanceAt)} />
               <Field label="موعد الفحص/التشييك القادم" value={formatDate(vehicle.nextInspectionAt)} />
               <Field label={t("receiver")} value={vehicle.receiverName ?? undefined} />
               <Field label={t("party")} value={vehicle.party ?? undefined} />
@@ -185,6 +173,9 @@ export default function VehicleDetailPage() {
               <Field label={t("added")} value={new Date(vehicle.createdAt).toLocaleDateString()} />
             </CardContent>
           </Card>
+          <div className="mt-4">
+            <VehicleMaintenanceCosts vehicleId={vehicle.id} />
+          </div>
         </TabsContent>
 
         <TabsContent value="media">

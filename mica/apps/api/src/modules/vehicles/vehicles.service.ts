@@ -419,6 +419,46 @@ export class VehiclesService {
     return items;
   }
 
+  /**
+   * Maintenance cost of a vehicle, grouped by month, each month drillable to its
+   * accepted invoices. Powers the «الصيانة المستحقة» breakdown (all months →
+   * month → invoices).
+   */
+  async maintenanceCosts(id: string) {
+    await this.findById(id);
+    const invoices = await this.prisma.invoice.findMany({
+      where: { vehicleId: id, deletedAt: null, status: "ACCEPTED" },
+      orderBy: [{ invoiceDate: "desc" }, { createdAt: "desc" }],
+      select: {
+        id: true, invoiceNumber: true, amount: true, workshopName: true,
+        description: true, invoiceDate: true, createdAt: true,
+      },
+    });
+    const byMonth = new Map<
+      string,
+      { month: string; total: number; invoices: Array<Record<string, unknown>> }
+    >();
+    for (const inv of invoices) {
+      const d = inv.invoiceDate ?? inv.createdAt;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const amt = Number(inv.amount);
+      const g = byMonth.get(key) ?? { month: key, total: 0, invoices: [] };
+      g.total += amt;
+      g.invoices.push({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        amount: amt,
+        workshopName: inv.workshopName,
+        description: inv.description,
+        date: d,
+      });
+      byMonth.set(key, g);
+    }
+    const months = [...byMonth.values()].sort((a, b) => b.month.localeCompare(a.month));
+    const grandTotal = months.reduce((s, m) => s + m.total, 0);
+    return { grandTotal, months };
+  }
+
   /** Single-workshop default: the primary (oldest) branch, so vehicle intake needn't pick one. */
   private async defaultBranchId(): Promise<string> {
     const branch = await this.prisma.branch.findFirst({

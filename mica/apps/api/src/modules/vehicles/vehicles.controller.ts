@@ -60,6 +60,12 @@ export class VehiclesController {
     return this.service.timeline(id);
   }
 
+  @Get(":id/maintenance-costs")
+  @Permissions("vehicles:view")
+  maintenanceCosts(@Param("id") id: string) {
+    return this.service.maintenanceCosts(id);
+  }
+
   @Post()
   @Permissions("vehicles:create")
   create(

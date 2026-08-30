@@ -62,7 +62,7 @@ export async function updateVehicle(id: string, input: UpdateVehicleInput) {
 
 export interface TimelineItem {
   at: string;
-  kind: "maintenance" | "inspection" | "appointment" | "audit";
+  kind: "maintenance" | "inspection" | "appointment" | "audit" | "handover";
   title: string;
   detail: string;
   status: string | null;
@@ -71,6 +71,28 @@ export interface TimelineItem {
 
 export async function getVehicleTimeline(id: string) {
   const { data } = await apiClient.get<TimelineItem[]>(`/vehicles/${id}/timeline`);
+  return data;
+}
+
+export interface MaintenanceCostInvoice {
+  id: string;
+  invoiceNumber: string;
+  amount: number;
+  workshopName: string | null;
+  description: string | null;
+  date: string;
+}
+export interface MaintenanceCostMonth {
+  month: string; // YYYY-MM
+  total: number;
+  invoices: MaintenanceCostInvoice[];
+}
+export interface MaintenanceCosts {
+  grandTotal: number;
+  months: MaintenanceCostMonth[];
+}
+export async function getMaintenanceCosts(id: string) {
+  const { data } = await apiClient.get<MaintenanceCosts>(`/vehicles/${id}/maintenance-costs`);
   return data;
 }
 

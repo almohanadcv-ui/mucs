@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Wrench, ClipboardCheck, CalendarClock, History } from "lucide-react";
+import { Wrench, ClipboardCheck, CalendarClock, History, ArrowLeftRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { getVehicleTimeline, type TimelineItem } from "./api";
 
@@ -10,6 +10,7 @@ const KIND_ICON = {
   inspection: ClipboardCheck,
   appointment: CalendarClock,
   audit: History,
+  handover: ArrowLeftRight,
 } as const;
 
 const STATUS_LABEL: Record<string, string> = {
@@ -18,6 +19,8 @@ const STATUS_LABEL: Record<string, string> = {
   COMPLETED: "منجز",
   CANCELLED: "ملغي",
   NO_SHOW: "لم يحضر",
+  active: "قائم",
+  returned: "أُعيدت",
 };
 
 export function VehicleTimeline({ vehicleId }: { vehicleId: string }) {
