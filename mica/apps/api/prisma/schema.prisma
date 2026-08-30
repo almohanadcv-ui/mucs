@@ -385,6 +385,7 @@ model Vehicle {
   maintenanceRequests MaintenanceRequest[]
   appointments        Appointment[]
   invoices            Invoice[]
+  handovers           VehicleHandover[]
 
   @@index([branchId, status])
   // Trigram GIN indexes back the fuzzy global search (SearchService raw SQL) —
@@ -499,6 +500,7 @@ model Driver {
   branch          Branch        @relation(fields: [branchId], references: [id])
   appointments    Appointment[]
   currentVehicles Vehicle[]
+  handovers       VehicleHandover[]
 
   @@index([branchId, status])
   @@index([firstName(ops: raw("gin_trgm_ops"))], type: Gin, map: "drivers_firstName_trgm_idx")
@@ -514,6 +516,34 @@ enum EntityType {
   MAINTENANCE_REQUEST
   APPOINTMENT
   DRIVER_PHOTO_REQUEST
+  VEHICLE_HANDOVER
+}
+
+/// A recorded custody period: the vehicle was handed to a driver, and later
+/// taken back. Each row preserves that driver's inspection report (photos are
+/// Attachments with entityType=VEHICLE_HANDOVER, entityId=this.id) under their
+/// name, so reassigning to a new driver never overwrites the old report.
+model VehicleHandover {
+  id             String     @id @default(cuid())
+  vehicleId      String
+  driverId       String
+  driverName     String     // snapshot at handover time
+  assignedAt     DateTime   @default(now())
+  assignedByName String?
+  returnedAt     DateTime?
+  returnedByName String?
+  // Inspection captured at handover.
+  odometer       Int?
+  fuelLevel      FuelLevel?
+  notes          String?
+  createdAt      DateTime   @default(now())
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver  Driver  @relation(fields: [driverId], references: [id])
+
+  @@index([vehicleId, assignedAt])
+  @@index([driverId])
+  @@map("vehicle_handovers")
 }
 
 enum AttachmentKind {

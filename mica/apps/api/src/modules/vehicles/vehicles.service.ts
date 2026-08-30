@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { CreateVehicleInput, PaginationQuery, UpdateVehicleInput } from "@mica-mab/shared-types";
-import { NotificationChannel } from "@prisma/client";
+import { NotificationChannel, type FuelLevel } from "@prisma/client";
 import { PrismaService } from "@/database/prisma/prisma.service";
 import { WebhooksService } from "@/modules/webhooks/webhooks.service";
 import { NotificationsService } from "@/modules/notifications/notifications.service";
@@ -33,6 +33,55 @@ export class VehiclesService {
       payload: { plateNumber },
       channels: [NotificationChannel.IN_APP],
     });
+  }
+
+  /** Display name for the acting user (for handover audit snapshots). */
+  private async actorName(userId: string): Promise<string | undefined> {
+    const u = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, email: true },
+    });
+    return u ? [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email : undefined;
+  }
+
+  /**
+   * Record a custody transition. Closes the previous driver's OPEN handover
+   * (returnedAt/By) — which archives their inspection report under their name —
+   * and opens a new handover for the incoming driver, capturing the handover
+   * inspection (odometer/fuel/notes). No-op when the driver didn't change.
+   */
+  private async recordHandoverTransition(opts: {
+    vehicleId: string;
+    oldDriverId: string | null | undefined;
+    newDriverId: string | null | undefined;
+    actingUserId: string;
+    inspection?: { odometer?: number | null; fuelLevel?: FuelLevel | null; notes?: string | null };
+  }): Promise<void> {
+    if ((opts.oldDriverId ?? null) === (opts.newDriverId ?? null)) return;
+    const byName = await this.actorName(opts.actingUserId);
+    // Close any open custody period (previous driver's report stays under their name).
+    await this.prisma.vehicleHandover.updateMany({
+      where: { vehicleId: opts.vehicleId, returnedAt: null },
+      data: { returnedAt: new Date(), returnedByName: byName },
+    });
+    if (opts.newDriverId) {
+      const d = await this.prisma.driver.findUnique({
+        where: { id: opts.newDriverId },
+        select: { firstName: true, lastName: true },
+      });
+      const driverName = d ? `${d.firstName} ${d.lastName}`.trim() : opts.newDriverId;
+      await this.prisma.vehicleHandover.create({
+        data: {
+          vehicleId: opts.vehicleId,
+          driverId: opts.newDriverId,
+          driverName,
+          assignedByName: byName,
+          odometer: opts.inspection?.odometer ?? undefined,
+          fuelLevel: opts.inspection?.fuelLevel ?? undefined,
+          notes: opts.inspection?.notes ?? undefined,
+        },
+      });
+    }
   }
 
   /**
@@ -196,7 +245,16 @@ export class VehiclesService {
       branchId: vehicle.branchId,
     });
 
-    // If handed to a driver at intake, notify them right away.
+    // If handed to a driver at intake, open a handover record + notify them.
+    if (vehicle.currentDriverId) {
+      await this.recordHandoverTransition({
+        vehicleId: vehicle.id,
+        oldDriverId: null,
+        newDriverId: vehicle.currentDriverId,
+        actingUserId,
+        inspection: { odometer: vehicle.odometer, fuelLevel: vehicle.fuelLevel, notes: vehicle.notes },
+      });
+    }
     await this.notifyDriverHandover(vehicle.currentDriverId, vehicle.plateNumber);
     await this.syncScheduleAppointment(vehicle, "MAINTENANCE", vehicle.nextMaintenanceAt, actingUserId);
     await this.syncScheduleAppointment(vehicle, "INSPECTION", vehicle.nextInspectionAt, actingUserId);
@@ -235,13 +293,17 @@ export class VehiclesService {
       },
     });
 
-    // Notify the driver only when the vehicle is (re)assigned to a new one.
-    if (
-      dto.currentDriverId !== undefined &&
-      dto.currentDriverId &&
-      dto.currentDriverId !== before.currentDriverId
-    ) {
-      await this.notifyDriverHandover(dto.currentDriverId, vehicle.plateNumber);
+    // Custody change: archive the previous driver's report and open a new
+    // handover for the incoming driver, then notify the new driver.
+    if (dto.currentDriverId !== undefined && dto.currentDriverId !== before.currentDriverId) {
+      await this.recordHandoverTransition({
+        vehicleId: id,
+        oldDriverId: before.currentDriverId,
+        newDriverId: dto.currentDriverId,
+        actingUserId,
+        inspection: { odometer: dto.odometer, fuelLevel: dto.fuelLevel, notes: dto.notes },
+      });
+      if (dto.currentDriverId) await this.notifyDriverHandover(dto.currentDriverId, vehicle.plateNumber);
     }
 
     // Reschedule calendar appointments when the due dates change.
@@ -261,6 +323,10 @@ export class VehiclesService {
    */
   async timeline(id: string) {
     await this.findById(id);
+    const handovers = await this.prisma.vehicleHandover.findMany({
+      where: { vehicleId: id },
+      orderBy: { assignedAt: "desc" },
+    });
     const [maintenance, appointments, audits] = await Promise.all([
       this.prisma.maintenanceRequest.findMany({
         where: { vehicleId: id },
@@ -329,6 +395,25 @@ export class VehiclesService {
         status: null as string | null,
         actor: a.userId ? (nameById.get(a.userId) ?? null) : null,
       })),
+      // Custody handovers — one event when handed over, one when returned.
+      ...handovers.map((h) => ({
+        at: h.assignedAt,
+        kind: "handover" as const,
+        title: "تسليم المركبة للسائق",
+        detail: `السائق: ${h.driverName}${h.odometer != null ? ` · العداد ${h.odometer}` : ""}`,
+        status: h.returnedAt ? "returned" : "active",
+        actor: h.assignedByName ?? null,
+      })),
+      ...handovers
+        .filter((h) => h.returnedAt)
+        .map((h) => ({
+          at: h.returnedAt as Date,
+          kind: "handover" as const,
+          title: "استلام المركبة من السائق",
+          detail: `السائق: ${h.driverName}`,
+          status: "returned",
+          actor: h.returnedByName ?? null,
+        })),
     ].sort((x, y) => y.at.getTime() - x.at.getTime());
 
     return items;
