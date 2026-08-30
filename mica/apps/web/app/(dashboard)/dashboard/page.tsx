@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { AlertTriangle, Calendar, Car, Droplet, FileText, DollarSign, Wrench } from "lucide-react";
+import { AlertTriangle, Calendar, Car, FileText, DollarSign, Wrench } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -120,12 +120,6 @@ export default function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <KpiCard icon={FileText} label={t("acceptedInvoices")} value={data?.acceptedInvoices ?? 0} />
             <KpiCard icon={FileText} label={t("rejectedInvoices")} value={data?.rejectedInvoices ?? 0} />
-            <KpiCard
-              icon={Droplet}
-              label={t("oilChangeDue")}
-              value={data?.oilChangeDueSoon ?? 0}
-              highlight={(data?.oilChangeDueSoon ?? 0) > 0}
-            />
             <KpiCard
               icon={Wrench}
               label={t("maintenanceDue")}
