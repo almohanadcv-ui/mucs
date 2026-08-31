@@ -59,10 +59,12 @@ export class VehiclesService {
   }): Promise<void> {
     if ((opts.oldDriverId ?? null) === (opts.newDriverId ?? null)) return;
     const byName = await this.actorName(opts.actingUserId);
-    // Close any open custody period (previous driver's report stays under their name).
+    // ONE timestamp: the previous driver is "returned" at the exact moment the
+    // new driver is "assigned", so old.returnedAt === new.assignedAt.
+    const now = new Date();
     await this.prisma.vehicleHandover.updateMany({
       where: { vehicleId: opts.vehicleId, returnedAt: null },
-      data: { returnedAt: new Date(), returnedByName: byName },
+      data: { returnedAt: now, returnedByName: byName },
     });
     if (opts.newDriverId) {
       const d = await this.prisma.driver.findUnique({
@@ -75,6 +77,7 @@ export class VehiclesService {
           vehicleId: opts.vehicleId,
           driverId: opts.newDriverId,
           driverName,
+          assignedAt: now,
           assignedByName: byName,
           odometer: opts.inspection?.odometer ?? undefined,
           fuelLevel: opts.inspection?.fuelLevel ?? undefined,

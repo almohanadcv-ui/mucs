@@ -28,18 +28,24 @@ export function VehicleHandoverReports({ vehicleId }: { vehicleId: string }) {
     return <p className="text-sm text-muted-foreground">لا يوجد سجل تسليم لسائقين بعد.</p>;
 
   return (
-    <div className="space-y-3">
+    <div className="relative space-y-0">
       {data.map((h, i) => {
         const prev = data[i + 1]; // older period (list is newest-first)
         return (
-          <div key={h.id} className="space-y-3">
+          <div key={h.id}>
+            <HandoverReport h={h} prevDriverName={prev?.driverName ?? null} />
             {prev && (
-              <div className="flex items-center justify-center gap-2 text-xs font-medium text-primary">
-                <ArrowLeftRight className="size-4" />
-                تم تغيير السائق من {prev.driverName} إلى {h.driverName}
+              // Visual connector: a line + arrow from the OLD driver (below) up to
+              // the NEW driver (above), with the change label.
+              <div className="flex flex-col items-center py-1 text-primary">
+                <span className="h-3 w-px bg-primary/40" />
+                <span className="flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium">
+                  <ArrowLeftRight className="size-3.5" />
+                  من {prev.driverName} ← إلى {h.driverName}
+                </span>
+                <span className="h-3 w-px bg-primary/40" />
               </div>
             )}
-            <HandoverReport h={h} />
           </div>
         );
       })}
@@ -47,7 +53,7 @@ export function VehicleHandoverReports({ vehicleId }: { vehicleId: string }) {
   );
 }
 
-function HandoverReport({ h }: { h: VehicleHandover }) {
+function HandoverReport({ h, prevDriverName }: { h: VehicleHandover; prevDriverName: string | null }) {
   function print() {
     const w = window.open("", "_blank", "width=800,height=900");
     if (!w) return;
@@ -57,6 +63,7 @@ function HandoverReport({ h }: { h: VehicleHandover }) {
       h1{font-size:20px} .row{margin:8px 0} .lbl{color:#64748b;font-size:13px} .val{font-weight:600}</style>
       </head><body>
       <h1>تقرير تسليم المركبة</h1>
+      ${prevDriverName ? `<div class="row" style="color:#1d4ed8"><span class="lbl">تغيير السائق:</span> <span class="val">من ${prevDriverName} ← إلى ${h.driverName}</span></div>` : ""}
       <div class="row"><span class="lbl">السائق:</span> <span class="val">${h.driverName}</span></div>
       <div class="row"><span class="lbl">تاريخ التسليم:</span> <span class="val">${fmt(h.assignedAt)}</span></div>
       <div class="row"><span class="lbl">سلّمها:</span> <span class="val">${h.assignedByName ?? "—"}</span></div>
