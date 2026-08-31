@@ -66,6 +66,12 @@ export class VehiclesController {
     return this.service.maintenanceCosts(id);
   }
 
+  @Get(":id/handovers")
+  @Permissions("vehicles:view")
+  handovers(@Param("id") id: string) {
+    return this.service.handovers(id);
+  }
+
   @Post()
   @Permissions("vehicles:create")
   create(

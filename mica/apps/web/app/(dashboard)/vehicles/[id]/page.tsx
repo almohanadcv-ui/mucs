@@ -22,6 +22,8 @@ import { VehicleEditDialog } from "@/features/vehicles/vehicle-edit-dialog";
 import { VehicleDeleteButton } from "@/features/vehicles/vehicle-delete-button";
 import { VehicleTimeline } from "@/features/vehicles/vehicle-timeline";
 import { VehicleMaintenanceCosts } from "@/features/vehicles/vehicle-maintenance-costs";
+import { ChangeDriverDialog } from "@/features/vehicles/change-driver-dialog";
+import { VehicleHandoverReports } from "@/features/vehicles/vehicle-handover-reports";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { FileBarChart } from "lucide-react";
@@ -84,6 +86,7 @@ export default function VehicleDetailPage() {
               </Button>
               <RequestPhotosButton vehicleId={vehicle.id} />
               <BookAppointmentButton vehicleId={vehicle.id} />
+              <ChangeDriverDialog vehicleId={vehicle.id} currentDriverId={vehicle.currentDriverId} />
               {canDelete && (
                 <VehicleDeleteButton vehicleId={vehicle.id} plateNumber={vehicle.plateNumber} />
               )}
@@ -144,7 +147,11 @@ export default function VehicleDetailPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="reports">
+        <TabsContent value="reports" className="space-y-4">
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-muted-foreground">تقارير السائقين (تسليم/استلام)</h3>
+            <VehicleHandoverReports vehicleId={vehicle.id} />
+          </div>
           <VehicleReports vehicleId={vehicle.id} canManage={canUpload} />
         </TabsContent>
 

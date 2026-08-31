@@ -419,6 +419,16 @@ export class VehiclesService {
     return items;
   }
 
+  /** Custody handover history for a vehicle — one report per driver period,
+   *  newest first. Powers the per-driver reports + "من X إلى Y" change log. */
+  async handovers(id: string) {
+    await this.findById(id);
+    return this.prisma.vehicleHandover.findMany({
+      where: { vehicleId: id },
+      orderBy: { assignedAt: "desc" },
+    });
+  }
+
   /**
    * Maintenance cost of a vehicle, grouped by month, each month drillable to its
    * accepted invoices. Powers the «الصيانة المستحقة» breakdown (all months →

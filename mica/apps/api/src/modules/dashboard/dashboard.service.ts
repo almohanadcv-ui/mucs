@@ -163,6 +163,12 @@ export class DashboardService {
     const invoiceCount = (status: string) =>
       invoicesByStatus.find((i) => i.status === status)?._count ?? 0;
 
+    // All-time maintenance spend = every accepted invoice, across all months.
+    const totalInvoiceCost = await this.prisma.invoice.aggregate({
+      where: { deletedAt: null, status: "ACCEPTED" },
+      _sum: { amount: true },
+    });
+
     return {
       totalVehicles,
       totalDrivers,
@@ -179,6 +185,7 @@ export class DashboardService {
       maintenanceDueSoon,
       monthlyMaintenanceCost: monthlyCost._sum.actualCost ?? 0,
       monthlyApprovedInvoiceCost: monthlyInvoiceCost._sum.amount ?? 0,
+      totalApprovedInvoiceCost: totalInvoiceCost._sum.amount ?? 0,
     };
   }
 }

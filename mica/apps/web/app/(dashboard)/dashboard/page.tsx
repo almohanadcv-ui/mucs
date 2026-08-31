@@ -115,6 +115,11 @@ export default function DashboardPage() {
                 isManager ? data?.monthlyApprovedInvoiceCost : data?.monthlyMaintenanceCost,
               )}
             />
+            <KpiCard
+              icon={DollarSign}
+              label="تكلفة الصيانة (كل الأشهر)"
+              value={formatSAR(data?.totalApprovedInvoiceCost)}
+            />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

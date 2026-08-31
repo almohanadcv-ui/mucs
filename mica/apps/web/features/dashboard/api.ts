@@ -16,6 +16,7 @@ export interface DashboardKpis {
   maintenanceDueSoon: number;
   monthlyMaintenanceCost: number;
   monthlyApprovedInvoiceCost: number;
+  totalApprovedInvoiceCost: number;
 }
 
 export async function getDashboardKpis(branchId?: string) {

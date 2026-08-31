@@ -96,6 +96,22 @@ export async function getMaintenanceCosts(id: string) {
   return data;
 }
 
+export interface VehicleHandover {
+  id: string;
+  driverName: string;
+  assignedAt: string;
+  assignedByName: string | null;
+  returnedAt: string | null;
+  returnedByName: string | null;
+  odometer: number | null;
+  fuelLevel: string | null;
+  notes: string | null;
+}
+export async function getVehicleHandovers(id: string) {
+  const { data } = await apiClient.get<VehicleHandover[]>(`/vehicles/${id}/handovers`);
+  return data;
+}
+
 export async function deleteVehicle(id: string) {
   await apiClient.delete(`/vehicles/${id}`);
 }
