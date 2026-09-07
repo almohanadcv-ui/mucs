@@ -100,11 +100,23 @@ export type RecommendationKey = (typeof RECOMMENDATION_OPTIONS)[number]["key"];
 /** Star rating scale labels (Arabic), 1..5. */
 export const STAR_RATING_LABELS: Record<number, string> = {
   1: "ضعيف",
-  2: "يحتاج تحسين",
+  2: "مقبول",
   3: "جيد",
   4: "جيد جداً",
   5: "ممتاز",
 };
+
+/**
+ * Map a final 0..100 score to its rating category:
+ *   90–100 ممتاز ⭐ · 80–89 جيد جدًا · 70–79 جيد · 60–69 مقبول · <60 ضعيف
+ */
+export function scoreCategory(score: number, locale: string = "ar"): string {
+  const ar =
+    score >= 90 ? "ممتاز ⭐" : score >= 80 ? "جيد جدًا" : score >= 70 ? "جيد" : score >= 60 ? "مقبول" : "ضعيف";
+  const en =
+    score >= 90 ? "Excellent ⭐" : score >= 80 ? "Very Good" : score >= 70 ? "Good" : score >= 60 ? "Fair" : "Poor";
+  return locale === "en" ? en : ar;
+}
 
 export const NotificationType = {
   ASSIGNMENT: "ASSIGNMENT",

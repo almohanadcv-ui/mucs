@@ -564,7 +564,7 @@ export const en: Messages = {
   logout: "Sign out",
   starLabels: {
     "1": "Poor",
-    "2": "Needs improvement",
+    "2": "Fair",
     "3": "Good",
     "4": "Very good",
     "5": "Excellent",

@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
-import { QuestionType, RECOMMENDATION_OPTIONS } from "@/core/domain/enums";
+import { QuestionType, RECOMMENDATION_OPTIONS, scoreCategory } from "@/core/domain/enums";
 import { useMe } from "@/features/auth/use-me";
 import { EvaluationStatusBadge } from "@/features/dashboard/status-badges";
 import {
@@ -163,7 +163,7 @@ export function EvaluationDetailView({
         <div className="flex items-center gap-3">
           {data.score != null && (
             <span className="inline-flex items-center gap-1 rounded-lg bg-success/10 px-3 py-1 font-bold text-success">
-              <Star className="size-4 fill-current" /> {data.score}
+              <Star className="size-4 fill-current" /> {data.score} / 100 — {scoreCategory(data.score)}
             </span>
           )}
           <EvaluationStatusBadge status={data.status} />

@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import { withBase } from "@/lib/base-path";
+import { scoreCategory } from "@/core/domain/enums";
 
 type Item = { label: string; value: string; remarks: string | null };
 type Comment = { authorType: "MANAGER" | "EMPLOYEE" | "HR"; authorName: string | null; body: string; createdAt: string };
@@ -130,7 +131,7 @@ export default function EvaluationReviewPage({
                 <Field label="الموظف" value={data.employeeName} />
                 <Field label="النموذج" value={data.templateTitle} />
                 {data.evaluatorName && <Field label="المقيّم" value={data.evaluatorName} />}
-                {data.score != null && <Field label="النتيجة" value={`${data.score} / 100`} />}
+                {data.score != null && <Field label="النتيجة" value={`${data.score} / 100 — ${scoreCategory(data.score)}`} />}
               </div>
             </section>
 
