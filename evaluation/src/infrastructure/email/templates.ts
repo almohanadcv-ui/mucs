@@ -1,5 +1,6 @@
 import "server-only";
 import { getServerEnv } from "@/lib/env";
+import { scoreCategory } from "@/core/domain/enums";
 import { LOGO_CID } from "./mailer";
 
 /** The system's own name in the inbox — each product signs its own mail. */
@@ -300,6 +301,7 @@ export function evaluationResultEmail(params: {
            <div style="display:inline-block;min-width:200px;background:${scoreColor}0f;border:1px solid ${scoreColor}33;border-radius:14px;padding:18px 30px;">
              <div style="font-family:${FONT};font-size:12px;color:${MUTED};margin-bottom:6px;">النتيجة الإجمالية</div>
              <div style="font-family:'Segoe UI',Arial,sans-serif;font-size:38px;font-weight:800;color:${scoreColor};line-height:1;direction:ltr;">${score}<span style="font-size:16px;color:${MUTED};font-weight:600;"> / 100</span></div>
+             <div style="font-family:${FONT};font-size:14px;font-weight:700;color:${scoreColor};margin-top:8px;">${escapeHtml(scoreCategory(score))}</div>
            </div>
          </td></tr></table>`
       : "";

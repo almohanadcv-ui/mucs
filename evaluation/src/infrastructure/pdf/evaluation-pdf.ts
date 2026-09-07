@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import { loadArabicFont } from "./arabic-font";
-import { RECOMMENDATION_OPTIONS } from "@/core/domain/enums";
+import { RECOMMENDATION_OPTIONS, scoreCategory } from "@/core/domain/enums";
 import { getServerEnv } from "@/lib/env";
 
 /**
@@ -163,13 +163,15 @@ export async function buildEvaluationPdf(input: EvaluationPdfInput): Promise<Buf
   // ── Score chip ──────────────────────────────────────────────────────────────
   if (input.score != null) {
     const chipW = 220;
-    const chipH = 62;
+    const chipH = 80;
     const cx = doc.page.width / 2 - chipW / 2;
     const col = input.score >= 75 ? "#0f766e" : input.score >= 50 ? "#d97706" : "#dc2626";
+    const category = scoreCategory(input.score).replace(/\s*⭐/, ""); // no emoji in PDF font
     doc.save().roundedRect(cx, y, chipW, chipH, 10).fillOpacity(0.08).fill(col).restore();
     doc.save().roundedRect(cx, y, chipW, chipH, 10).lineWidth(1).strokeOpacity(0.35).stroke(col).restore();
-    doc.fontSize(10).fillColor(MUTED).text(arabicWrap(doc, "النتيجة الإجمالية", chipW), cx, y + 11, { width: chipW, align: "center" });
-    doc.fontSize(26).fillColor(col).text(`${input.score} / 100`, cx, y + 25, { width: chipW, align: "center" });
+    doc.fontSize(10).fillColor(MUTED).text(arabicWrap(doc, "النتيجة الإجمالية", chipW), cx, y + 9, { width: chipW, align: "center" });
+    doc.fontSize(24).fillColor(col).text(`${input.score} / 100`, cx, y + 23, { width: chipW, align: "center" });
+    doc.fontSize(12).fillColor(col).text(arabicWrap(doc, category, chipW), cx, y + 55, { width: chipW, align: "center" });
     y += chipH + 22;
   }
 
