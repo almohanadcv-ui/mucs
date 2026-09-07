@@ -7,6 +7,8 @@ import type { SessionUser } from "@/infrastructure/auth/session";
 type TFn = (key: string, params?: Record<string, string | number>) => string;
 
 export interface EvaluationReportRow {
+  /** Evaluation id — used to open the row, never rendered as a column. */
+  id: string;
   employeeName: string;
   employeeNo: string;
   department: string;
@@ -72,6 +74,7 @@ export async function getEvaluationReport(
   });
 
   return rows.map((e) => ({
+    id: e.id,
     employeeName: e.employee?.name ?? "",
     employeeNo: e.employee?.employeeNo ?? "",
     department: e.employee?.department?.name ?? "",

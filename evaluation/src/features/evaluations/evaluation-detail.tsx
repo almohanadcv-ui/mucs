@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Loader2, Check, CheckCheck, Star, Trash2, Download, Pencil, Send, MessageSquare } from "lucide-react";
+import { Loader2, Check, CheckCheck, Star, Trash2, Download, Pencil, Send, MessageSquare, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -289,7 +289,7 @@ export function EvaluationDetailView({
         </Card>
       )}
 
-      <div className="flex flex-wrap justify-start gap-3">
+      <div className="flex flex-wrap justify-start gap-3 print:hidden">
         {canEdit && (
           <Button asChild variant={status === "EMPLOYEE_RESPONDED" ? "default" : "outline"}>
             <Link href={`/dashboard/evaluations/${id}/edit`}>
@@ -308,10 +308,13 @@ export function EvaluationDetailView({
             <Download className="size-4" /> {t("evaluations.downloadPdf")}
           </a>
         </Button>
+        <Button variant="outline" onClick={() => window.print()} className="print:hidden">
+          <Printer className="size-4" /> طباعة
+        </Button>
       </div>
 
       {canDelete && (
-        <div className="flex justify-start border-t pt-4">
+        <div className="flex justify-start border-t pt-4 print:hidden">
           <Button
             variant="outline"
             size="sm"

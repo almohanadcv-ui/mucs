@@ -10,6 +10,7 @@ import {
 } from "@/core/application/reports/report-service";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReportToolbar } from "@/features/reports/report-toolbar";
+import { ReportTable } from "@/features/reports/report-table";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getT();
@@ -49,38 +50,10 @@ export default async function ReportsPage() {
 
       <Card>
         <CardContent className="p-4">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-right text-muted-foreground">
-                  {columns.map((c) => (
-                    <th key={c.key} className="whitespace-nowrap px-3 py-2 font-medium">
-                      {c.header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={columns.length} className="py-12 text-center text-muted-foreground">
-                      {t("reports.noData")}
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((r, i) => (
-                    <tr key={i} className="border-b last:border-0">
-                      {columns.map((c) => (
-                        <td key={c.key} className="whitespace-nowrap px-3 py-2.5">
-                          {r[c.key] ?? "—"}
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          <p className="mb-3 text-xs text-muted-foreground print:hidden">
+            اضغط على أي صف لفتح التقييم وقراءته أو طباعته أو تنزيله PDF.
+          </p>
+          <ReportTable rows={rows} columns={columns} noData={t("reports.noData")} />
         </CardContent>
       </Card>
     </div>
