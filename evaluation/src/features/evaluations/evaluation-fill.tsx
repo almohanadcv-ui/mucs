@@ -166,7 +166,16 @@ export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
         </div>
       )}
 
-      {template && (
+      {/* No rating until an employee is chosen. */}
+      {template && !employee && (
+        <Card>
+          <CardContent className="p-6 text-center text-sm text-muted-foreground">
+            {t("evaluations.chooseEmployee")}
+          </CardContent>
+        </Card>
+      )}
+
+      {template && employee && (
         <>
           {template.questions.map((q, i) => (
             <Card key={q.id ?? i}>
