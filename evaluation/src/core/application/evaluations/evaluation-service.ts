@@ -12,8 +12,6 @@ import {
   NotificationType,
   Role,
   CommentAuthor,
-  QuestionType,
-  STAR_RATING_LABELS,
   RECOMMENDATION_KEYS,
 } from "@/core/domain/enums";
 import { sha256, randomToken } from "@/infrastructure/security/crypto";
@@ -1028,16 +1026,11 @@ export async function getEvaluationForEmployee(rawToken: string) {
     .sort((a, b) => a.question.order - b.question.order)
     .map((a) => {
       const q = toQuestionLike(a.question);
-      let value = formatAnswerDisplay(q, {
+      // formatAnswerDisplay already appends the 5-star word (ممتاز/جيد…).
+      const value = formatAnswerDisplay(q, {
         valueNumber: a.valueNumber, valueText: a.valueText, valueBool: a.valueBool,
         valueDate: a.valueDate, valueJson: a.valueJson,
       });
-      // Show the word (ممتاز/جيد جداً…) beside a 5-star rating, like the app.
-      if (a.question.type === QuestionType.STAR_RATING && a.valueNumber != null) {
-        const max = (a.question.config as { max?: number } | null)?.max ?? 5;
-        const label = max === 5 ? STAR_RATING_LABELS[a.valueNumber] : undefined;
-        if (label) value = `${value} — ${label}`;
-      }
       return { label: a.question.label, value, remarks: a.remarks };
     });
 
@@ -1256,15 +1249,11 @@ export async function getMyEvaluation(user: SessionUser) {
     .sort((a, b) => a.question.order - b.question.order)
     .map((a) => {
       const q = toQuestionLike(a.question);
-      let value = formatAnswerDisplay(q, {
+      // formatAnswerDisplay already appends the 5-star word (ممتاز/جيد…).
+      const value = formatAnswerDisplay(q, {
         valueNumber: a.valueNumber, valueText: a.valueText, valueBool: a.valueBool,
         valueDate: a.valueDate, valueJson: a.valueJson,
       });
-      if (a.question.type === QuestionType.STAR_RATING && a.valueNumber != null) {
-        const max = (a.question.config as { max?: number } | null)?.max ?? 5;
-        const label = max === 5 ? STAR_RATING_LABELS[a.valueNumber] : undefined;
-        if (label) value = `${value} — ${label}`;
-      }
       return { label: a.question.label, value, remarks: a.remarks };
     });
 

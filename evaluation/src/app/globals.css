@@ -158,3 +158,47 @@
     scrollbar-color: hsl(var(--border)) transparent;
   }
 }
+
+/*
+  Printing (زر «طباعة / PDF» في التقارير). Force the light palette so a page
+  printed while dark mode is on doesn't come out as light text on white paper,
+  and let the browser keep the table's colors/borders instead of dropping them.
+*/
+@media print {
+  :root,
+  .dark {
+    --background: 0 0% 100%;
+    --foreground: 222 24% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 24% 12%;
+    --muted: 220 16% 96%;
+    --muted-foreground: 220 10% 40%;
+    --border: 220 16% 80%;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #12304a !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Give the table room and clean borders on paper. */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th,
+  tbody td {
+    border-bottom: 1px solid #cbd5e1 !important;
+  }
+  /* Table cells wrap on paper instead of forcing a horizontal overflow. */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  td.whitespace-nowrap,
+  th.whitespace-nowrap {
+    white-space: normal !important;
+  }
+}

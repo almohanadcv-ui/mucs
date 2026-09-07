@@ -1,4 +1,4 @@
-import { QuestionType } from "./enums";
+import { QuestionType, STAR_RATING_LABELS } from "./enums";
 
 /** Shape of a question's JSON config (see templates/dto.ts). */
 export interface QuestionConfig {
@@ -143,8 +143,15 @@ export function formatAnswerDisplay(question: QuestionLike, a: NormalizedAnswer)
     cfg.options?.find((o) => o.value === value)?.label ?? value;
 
   switch (question.type) {
-    case QuestionType.STAR_RATING:
-      return a.valueNumber != null ? `${a.valueNumber} / ${cfg.max ?? 5}` : dash;
+    case QuestionType.STAR_RATING: {
+      if (a.valueNumber == null) return dash;
+      const max = cfg.max ?? 5;
+      const base = `${a.valueNumber} / ${max}`;
+      // For the standard 1..5 scale, append the descriptive word (ممتاز/جيد…)
+      // so it appears everywhere the value is shown — site, email, PDF, review.
+      const word = max === 5 ? STAR_RATING_LABELS[a.valueNumber] : undefined;
+      return word ? `${base} — ${word}` : base;
+    }
     case QuestionType.NUMBER:
       return a.valueNumber != null ? String(a.valueNumber) : dash;
     case QuestionType.YES_NO:

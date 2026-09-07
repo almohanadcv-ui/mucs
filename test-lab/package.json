@@ -1,0 +1,20 @@
+{
+  "name": "mica-test-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Runnable, reusable performance/load/security Test Lab for the MICA API (k6 + server monitoring + analytical reports).",
+  "type": "module",
+  "scripts": {
+    "discover": "bash scripts/discover-endpoints.sh",
+    "health": "bash scripts/health-gate.sh",
+    "monitor": "bash monitoring/server-monitor.sh",
+    "report": "node monitoring/analyze.mjs",
+    "test:baseline": "bash scripts/run.sh baseline load-tests/baseline.js",
+    "test:smoke": "bash scripts/run.sh smoke smoke-tests/smoke.js",
+    "test:load": "bash scripts/run.sh load load-tests/load-get.js",
+    "test:journey": "bash scripts/run.sh journey load-tests/full-journey.js",
+    "test:stress": "bash scripts/run.sh stress stress-tests/stress.js",
+    "test:spike": "bash scripts/run.sh spike spike-tests/spike.js",
+    "test:soak": "bash scripts/run.sh soak soak-tests/soak.js"
+  }
+}

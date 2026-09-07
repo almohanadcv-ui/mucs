@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>عيادة الصحة | HealthCare Clinic</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --primary: #1a6b8a;
+      --primary-light: #2892b8;
+      --primary-dark: #104d66;
+      --accent: #28c98f;
+      --accent-light: #4edba8;
+      --gold: #f0a500;
+      --bg: #f4f8fb;
+      --white: #ffffff;
+      --dark: #0f2233;
+      --gray: #6b7a90;
+      --gray-light: #e8f0f5;
+      --radius: 16px;
+      --shadow: 0 8px 32px rgba(26,107,138,0.12);
+      --shadow-hover: 0 16px 48px rgba(26,107,138,0.22);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { font-family: 'Cairo', 'Inter', sans-serif; background: var(--bg); color: var(--dark); overflow-x: hidden; }
+    nav { position: fixed; top: 0; width: 100%; z-index: 1000; background: rgba(255,255,255,0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(26,107,138,0.08); padding: 0 5%; display: flex; align-items: center; justify-content: space-between; height: 72px; transition: all 0.3s ease; }
+    nav.scrolled { background: rgba(255,255,255,0.98); box-shadow: 0 4px 24px rgba(26,107,138,0.10); }
+    .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .logo-icon { width: 44px; height: 44px; background: linear-gradient(135deg, var(--primary), var(--accent)); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .logo-text { line-height: 1.1; }
+    .logo-text span:first-child { display: block; font-size: 15px; font-weight: 700; color: var(--primary); }
+    .logo-text span:last-child { display: block; font-size: 11px; font-weight: 400; color: var(--gray); }
+    .nav-links { display: flex; align-items: center; gap: 32px; list-style: none; }
+    .nav-links a { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--dark); transition: color 0.2s; }
+    .nav-links a:hover { color: var(--primary); }
+    .nav-cta { background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white !important; padding: 10px 22px; border-radius: 50px; transition: all 0.3s ease !important; box-shadow: 0 4px 16px rgba(26,107,138,0.3); }
+    .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(26,107,138,0.4) !important; }
+    .lang-btn { background: var(--gray-light); border: none; cursor: pointer; padding: 8px 16px; border-radius: 50px; font-size: 13px; font-weight: 600; color: var(--primary); font-family: inherit; transition: all 0.2s; }
+    .lang-btn:hover { background: var(--primary); color: white; }
+    .hero { min-height: 100vh; background: linear-gradient(135deg, #0f2233 0%, #1a4d6b 50%, #1a6b8a 100%); display: flex; align-items: center; position: relative; overflow: hidden; padding: 100px 5% 60px; }
+    .hero-blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.15; animation: float 8s ease-in-out infinite; }
+    .hero-blob-1 { width: 500px; height: 500px; background: var(--accent); top: -100px; left: -100px; }
+    .hero-blob-2 { width: 400px; height: 400px; background: var(--primary-light); bottom: -100px; right: -100px; animation-delay: -4s; }
+    @keyframes float { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-30px) scale(1.05); } }
+    .hero-content { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center; max-width: 1200px; margin: auto; width: 100%; }
+    .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(40,201,143,0.15); border: 1px solid rgba(40,201,143,0.3); color: var(--accent-light); padding: 8px 18px; border-radius: 50px; font-size: 13px; font-weight: 600; margin-bottom: 24px; animation: fadeInUp 0.6s ease both; }
+    .hero-badge::before { content: '✦'; font-size: 10px; }
+    .hero h1 { font-size: clamp(2.2rem, 4vw, 3.5rem); font-weight: 900; line-height: 1.2; color: white; margin-bottom: 20px; animation: fadeInUp 0.6s ease 0.1s both; }
+    .hero h1 .highlight { background: linear-gradient(135deg, var(--accent), var(--gold)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero p { font-size: 17px; line-height: 1.8; color: rgba(255,255,255,0.75); margin-bottom: 36px; animation: fadeInUp 0.6s ease 0.2s both; }
+    .hero-buttons { display: flex; gap: 16px; flex-wrap: wrap; animation: fadeInUp 0.6s ease 0.3s both; }
+    .btn-primary { background: linear-gradient(135deg, var(--accent), var(--accent-light)); color: white; text-decoration: none; padding: 16px 32px; border-radius: 50px; font-size: 15px; font-weight: 700; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 8px 32px rgba(40,201,143,0.35); transition: all 0.3s ease; border: none; cursor: pointer; font-family: inherit; }
+    .btn-primary:hover { transform: translateY(-3px); box-shadow: 0 16px 48px rgba(40,201,143,0.45); }
+    .btn-outline { background: transparent; color: white; text-decoration: none; padding: 15px 32px; border-radius: 50px; font-size: 15px; font-weight: 600; border: 2px solid rgba(255,255,255,0.3); transition: all 0.3s ease; display: inline-flex; align-items: center; gap: 8px; }
+    .btn-outline:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.6); }
+    .hero-stats { display: flex; gap: 32px; margin-top: 40px; animation: fadeInUp 0.6s ease 0.4s both; }
+    .hero-stat { text-align: center; }
+    .hero-stat .num { font-size: 2rem; font-weight: 900; color: white; display: block; }
+    .hero-stat .lbl { font-size: 12px; color: rgba(255,255,255,0.6); }
+    .hero-visual { position: relative; animation: fadeInRight 0.8s ease 0.2s both; }
+    .hero-card { background: rgba(255,255,255,0.07); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.12); border-radius: 24px; padding: 32px; position: relative; }
+    .hero-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .hero-card-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--primary-light)); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .hero-card-info .name { color: white; font-weight: 700; font-size: 15px; }
+    .hero-card-info .role { color: rgba(255,255,255,0.6); font-size: 12px; }
+    .hero-card-title { color: rgba(255,255,255,0.7); font-size: 13px; margin-bottom: 12px; }
+    .hero-card-services { display: flex; flex-direction: column; gap: 8px; }
+    .hero-card-service { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 14px; font-size: 13px; color: rgba(255,255,255,0.85); }
+    .hero-card-service .icon { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--accent), var(--primary-light)); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+    .floating-badge { position: absolute; background: white; border-radius: 14px; padding: 12px 18px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; animation: floatBadge 4s ease-in-out infinite; }
+    .floating-badge-1 { top: -20px; left: -30px; }
+    .floating-badge-2 { bottom: -20px; right: -30px; animation-delay: -2s; }
+    @keyframes floatBadge { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    .fb-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .services { padding: 100px 5%; max-width: 1200px; margin: auto; }
+    .section-header { text-align: center; margin-bottom: 64px; }
+    .section-tag { display: inline-block; background: rgba(26,107,138,0.08); color: var(--primary); padding: 6px 18px; border-radius: 50px; font-size: 13px; font-weight: 700; margin-bottom: 16px; }
+    .section-title { font-size: clamp(1.8rem, 3vw, 2.8rem); font-weight: 900; color: var(--dark); line-height: 1.3; margin-bottom: 16px; }
+    .section-desc { font-size: 16px; color: var(--gray); max-width: 550px; margin: auto; line-height: 1.8; }
+    .services-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 28px; }
+    .service-card { background: white; border-radius: var(--radius); padding: 32px 28px; box-shadow: var(--shadow); transition: all 0.4s ease; position: relative; overflow: hidden; border: 1px solid rgba(26,107,138,0.06); }
+    .service-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, var(--primary), var(--accent)); transform: scaleX(0); transform-origin: right; transition: transform 0.4s ease; }
+    .service-card:hover::before { transform: scaleX(1); transform-origin: left; }
+    .service-card:hover { transform: translateY(-8px); box-shadow: var(--shadow-hover); }
+    .service-icon { width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; font-size: 28px; margin-bottom: 20px; transition: transform 0.3s ease; }
+    .service-card:hover .service-icon { transform: scale(1.1) rotate(-5deg); }
+    .service-card h3 { font-size: 18px; font-weight: 700; margin-bottom: 10px; color: var(--dark); }
+    .service-card p { font-size: 14px; color: var(--gray); line-height: 1.7; }
+    .service-card .learn-more { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--primary); text-decoration: none; transition: gap 0.2s; }
+    .service-card .learn-more:hover { gap: 10px; }
+    .why-us { background: linear-gradient(135deg, var(--dark), #1a3a50); padding: 100px 5%; position: relative; overflow: hidden; }
+    .why-inner { max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center; }
+    .why-text .section-tag { background: rgba(40,201,143,0.12); color: var(--accent); }
+    .why-text .section-title { color: white; }
+    .why-text .section-desc { color: rgba(255,255,255,0.6); text-align: right; max-width: 100%; }
+    .why-features { margin-top: 40px; display: flex; flex-direction: column; gap: 20px; }
+    .why-feature { display: flex; align-items: flex-start; gap: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 16px; padding: 20px; transition: all 0.3s ease; }
+    .why-feature:hover { background: rgba(255,255,255,0.07); border-color: rgba(40,201,143,0.2); transform: translateX(-4px); }
+    .why-feature-icon { width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .why-feature-text h4 { color: white; font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .why-feature-text p { color: rgba(255,255,255,0.55); font-size: 13px; line-height: 1.6; }
+    .why-visual { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .stat-card { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; padding: 28px; text-align: center; transition: all 0.3s ease; }
+    .stat-card:hover { background: rgba(255,255,255,0.09); border-color: rgba(40,201,143,0.25); transform: translateY(-4px); }
+    .stat-card.tall { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; }
+    .stat-card .big { font-size: 3rem; font-weight: 900; color: white; line-height: 1; }
+    .stat-card .big span { background: linear-gradient(135deg, var(--accent), var(--gold)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .stat-card .lbl { font-size: 14px; color: rgba(255,255,255,0.55); margin-top: 8px; }
+    .form-section { padding: 100px 5%; background: var(--bg); }
+    .form-inner { max-width: 1100px; margin: auto; display: grid; grid-template-columns: 1fr 1.2fr; gap: 80px; align-items: start; }
+    .form-benefits { margin-top: 36px; display: flex; flex-direction: column; gap: 16px; }
+    .form-benefit { display: flex; align-items: center; gap: 14px; }
+    .form-benefit-check { width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; background: linear-gradient(135deg, var(--accent), var(--accent-light)); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+    .form-benefit-text { font-size: 14px; color: var(--gray); font-weight: 500; }
+    .form-card { background: white; border-radius: 24px; padding: 40px; box-shadow: 0 20px 60px rgba(26,107,138,0.12); border: 1px solid rgba(26,107,138,0.06); }
+    .form-card h3 { font-size: 20px; font-weight: 800; color: var(--dark); margin-bottom: 6px; }
+    .form-card .form-subtitle { font-size: 14px; color: var(--gray); margin-bottom: 28px; }
+    .form-group { margin-bottom: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 700; color: var(--dark); margin-bottom: 8px; }
+    .form-label .required { color: #e53e3e; margin-right: 2px; }
+    .form-input, .form-select, .form-textarea { width: 100%; border: 2px solid var(--gray-light); border-radius: 12px; padding: 13px 16px; font-size: 14px; font-family: inherit; color: var(--dark); background: var(--bg); transition: all 0.3s ease; outline: none; }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--primary); background: white; box-shadow: 0 0 0 4px rgba(26,107,138,0.08); }
+    .form-textarea { resize: none; height: 100px; }
+    .form-select { cursor: pointer; }
+    .form-submit { width: 100%; background: linear-gradient(135deg, var(--primary), var(--primary-light)); color: white; border: none; cursor: pointer; padding: 16px 32px; border-radius: 12px; font-size: 16px; font-weight: 700; font-family: inherit; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.3s ease; box-shadow: 0 8px 24px rgba(26,107,138,0.3); }
+    .form-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(26,107,138,0.4); }
+    .form-note { text-align: center; font-size: 12px; color: var(--gray); margin-top: 14px; }
+    .form-success { display: none; text-align: center; padding: 40px 20px; }
+    .form-success .success-icon { width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent-light)); display: flex; align-items: center; justify-content: center; font-size: 36px; margin: auto auto 20px; animation: scaleIn 0.5s ease; }
+    .form-success h3 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+    .form-success p { color: var(--gray); font-size: 14px; }
+    @keyframes scaleIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .testimonials { background: white; padding: 100px 5%; }
+    .testimonials-inner { max-width: 1200px; margin: auto; }
+    .testimonials-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 60px; }
+    .testimonial-card { background: var(--bg); border-radius: 20px; padding: 28px; border: 1px solid rgba(26,107,138,0.06); transition: all 0.3s ease; }
+    .testimonial-card:hover { transform: translateY(-4px); box-shadow: var(--shadow); }
+    .stars { color: var(--gold); font-size: 16px; margin-bottom: 14px; letter-spacing: 2px; }
+    .testimonial-text { font-size: 14px; color: var(--gray); line-height: 1.8; margin-bottom: 20px; font-style: italic; }
+    .testimonial-author { display: flex; align-items: center; gap: 12px; }
+    .author-avatar { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+    .author-name { font-weight: 700; font-size: 14px; }
+    .author-title { font-size: 12px; color: var(--gray); }
+    footer { background: var(--dark); padding: 60px 5% 30px; color: rgba(255,255,255,0.6); }
+    .footer-inner { max-width: 1200px; margin: auto; }
+    .footer-top { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 60px; margin-bottom: 48px; }
+    .footer-brand p { margin-top: 16px; font-size: 14px; line-height: 1.8; max-width: 280px; }
+    .footer-col h4 { color: white; font-size: 14px; font-weight: 700; margin-bottom: 16px; }
+    .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .footer-col ul li a { color: rgba(255,255,255,0.5); text-decoration: none; font-size: 14px; transition: color 0.2s; }
+    .footer-col ul li a:hover { color: var(--accent); }
+    .footer-bottom { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+    .ai-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(40,201,143,0.1); border: 1px solid rgba(40,201,143,0.2); color: var(--accent); padding: 6px 14px; border-radius: 50px; font-size: 12px; font-weight: 600; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-delay-1 { transition-delay: 0.1s; }
+    .reveal-delay-2 { transition-delay: 0.2s; }
+    .reveal-delay-3 { transition-delay: 0.3s; }
+    @media (max-width: 900px) { .hero-content, .why-inner, .form-inner { grid-template-columns: 1fr; } .hero-visual { display: none; } .why-visual { grid-template-columns: repeat(2, 1fr); } .footer-top { grid-template-columns: 1fr; gap: 32px; } .nav-links { display: none; } .form-row { grid-template-columns: 1fr; } }
+    @media (max-width: 600px) { .hero h1 { font-size: 2rem; } .hero-buttons { flex-direction: column; } .form-card { padding: 24px 18px; } }
+    .scroll-top { position: fixed; bottom: 32px; left: 32px; z-index: 999; width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, var(--primary), var(--accent)); color: white; border: none; cursor: pointer; font-size: 20px; box-shadow: 0 8px 24px rgba(26,107,138,0.3); display: flex; align-items: center; justify-content: center; opacity: 0; transform: translateY(20px); transition: all 0.3s ease; }
+    .scroll-top.visible { opacity: 1; transform: translateY(0); }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 8px 32px rgba(40,201,143,0.35); } 50% { box-shadow: 0 8px 32px rgba(40,201,143,0.6), 0 0 0 8px rgba(40,201,143,0.08); } }
+    .btn-pulse { animation: pulse 2.5s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+  <nav id="navbar">
+    <a href="#" class="logo">
+      <div class="logo-icon">🏥</div>
+      <div class="logo-text">
+        <span id="logo-ar">عيادة الصحة</span>
+        <span id="logo-en">HealthCare Clinic</span>
+      </div>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#services" id="nav-services">خدماتنا</a></li>
+      <li><a href="#why-us" id="nav-why">لماذا نحن</a></li>
+      <li><a href="#contact" id="nav-contact">تواصل معنا</a></li>
+      <li><a href="#contact" class="nav-cta" id="nav-book">احجز موعدك</a></li>
+    </ul>
+    <button class="lang-btn" onclick="toggleLang()" id="lang-toggle">EN</button>
+  </nav>
+
+  <section class="hero" id="home">
+    <div class="hero-blob hero-blob-1"></div>
+    <div class="hero-blob hero-blob-2"></div>
+    <div class="hero-content">
+      <div>
+        <div class="hero-badge" id="hero-badge">رعاية صحية متميزة</div>
+        <h1 id="hero-title">صحتك أولويتنا<br/><span class="highlight" id="hero-highlight">رعاية لا تُقارن</span></h1>
+        <p id="hero-desc">نقدم خدمات طبية متكاملة بأعلى المعايير العالمية، مع فريق من أمهر الأطباء المتخصصين لضمان صحتك وراحتك.</p>
+        <div class="hero-buttons">
+          <a href="#contact" class="btn-primary btn-pulse"><span id="hero-btn1">احجز موعداً الآن</span> ←</a>
+          <a href="#services" class="btn-outline"><span id="hero-btn2">استعرض خدماتنا</span></a>
+        </div>
+        <div class="hero-stats">
+          <div class="hero-stat"><span class="num" id="counter-patients">0</span><span class="lbl" id="stat1-lbl">مريض سعيد</span></div>
+          <div class="hero-stat"><span class="num" id="counter-doctors">0</span><span class="lbl" id="stat2-lbl">طبيب متخصص</span></div>
+          <div class="hero-stat"><span class="num" id="counter-years">0</span><span class="lbl" id="stat3-lbl">سنة خبرة</span></div>
+        </div>
+      </div>
+      <div class="hero-visual">
+        <div class="floating-badge floating-badge-1"><div class="fb-dot" style="background:#28c98f"></div><span id="fb1">متاح الآن</span></div>
+        <div class="hero-card">
+          <div class="hero-card-header">
+            <div class="hero-card-avatar">👨‍⚕️</div>
+            <div class="hero-card-info">
+              <div class="name" id="card-doctor">د. أحمد الشهراني</div>
+              <div class="role" id="card-specialty">استشاري الطب الداخلي</div>
+            </div>
+          </div>
+          <div class="hero-card-title" id="card-services-title">خدماتنا المتميزة</div>
+          <div class="hero-card-services">
+            <div class="hero-card-service"><div class="icon">🫀</div><span id="svc1">قلب وأوعية دموية</span></div>
+            <div class="hero-card-service"><div class="icon">🦷</div><span id="svc2">أسنان وتجميل</span></div>
+            <div class="hero-card-service"><div class="icon">🧠</div><span id="svc3">طب الأعصاب</span></div>
+          </div>
+        </div>
+        <div class="floating-badge floating-badge-2"><div class="fb-dot" style="background:#1a6b8a"></div><span id="fb2">⭐ تقييم 4.9/5</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="services" id="services">
+    <div class="section-header reveal">
+      <div class="section-tag" id="services-tag">خدماتنا الطبية</div>
+      <h2 class="section-title" id="services-title">رعاية شاملة لكل احتياجاتك</h2>
+      <p class="section-desc" id="services-desc">نوفر مجموعة واسعة من التخصصات الطبية بأحدث التقنيات وأفضل الكوادر المتخصصة</p>
+    </div>
+    <div class="services-grid">
+      <div class="service-card reveal"><div class="service-icon" style="background:rgba(26,107,138,0.1)">🫀</div><h3>أمراض القلب</h3><p>تشخيص وعلاج جميع أمراض القلب والأوعية الدموية بأحدث الأجهزة والتقنيات الطبية.</p><a href="#contact" class="learn-more">احجز موعد ←</a></div>
+      <div class="service-card reveal reveal-delay-1"><div class="service-icon" style="background:rgba(40,201,143,0.1)">🧠</div><h3>طب الأعصاب</h3><p>علاج الاضطرابات العصبية والأمراض المتعلقة بالجهاز العصبي المركزي والمحيطي.</p><a href="#contact" class="learn-more">احجز موعد ←</a></div>
+      <div class="service-card reveal reveal-delay-2"><div class="service-icon" style="background:rgba(240,165,0,0.1)">🦷</div><h3>طب الأسنان</h3><p>خدمات شاملة لصحة الفم والأسنان من علاج وتجميل وزراعة بأعلى المعايير.</p><a href="#contact" class="learn-more">احجز موعد ←</a></div>
+      <div class="service-card reveal reveal-delay-1"><div class="service-icon" style="background:rgba(229,62,62,0.1)">🩺</div><h3>الطب العام</h3><p>فحوصات دورية وعلاج الأمراض الشائعة وإدارة الأمراض المزمنة بنهج متكامل.</p><a href="#contact" class="learn-more">احجز موعد ←</a></div>
+      <div class="service-card reveal reveal-delay-2"><div class="service-icon" style="background:rgba(128,90,213,0.1)">🔬</div><h3>التحاليل المخبرية</h3><p>مختبر متكامل بأحدث الأجهزة لجميع أنواع التحاليل والفحوصات المخبرية الدقيقة.</p><a href="#contact" class="learn-more">احجز موعد ←</a></div>
+      <div class="service-card reveal reveal-delay-3"><div class="service-icon" style="background:rgba(56,161,105,0.1)">💊</div><h3>الصيدلة السريرية</h3><p>صيدلية متكاملة داخل العيادة توفر جميع الأدوية مع إرشادات الاستخدام الصحيح.</p><a href="#contact" class="learn-more">احجز موعد ←</a></div>
+    </div>
+  </section>
+
+  <section class="why-us" id="why-us">
+    <div class="why-inner">
+      <div class="why-text reveal">
+        <div class="section-tag">لماذا تختارنا</div>
+        <h2 class="section-title">نضع معايير جديدة في الرعاية الصحية</h2>
+        <p class="section-desc" style="text-align:right;max-width:100%">نجمع بين الخبرة الطبية العالية والتقنية الحديثة لنقدم لك أفضل تجربة علاجية ممكنة</p>
+        <div class="why-features">
+          <div class="why-feature"><div class="why-feature-icon">🎯</div><div class="why-feature-text"><h4>دقة في التشخيص</h4><p>أجهزة تشخيصية من الجيل الأحدث وفريق طبي متخصص لضمان دقة التشخيص والعلاج</p></div></div>
+          <div class="why-feature"><div class="why-feature-icon">⚡</div><div class="why-feature-text"><h4>استجابة سريعة</h4><p>نظام حجز ذكي يضمن حصولك على موعد في أقرب وقت مع الطبيب المناسب لحالتك</p></div></div>
+          <div class="why-feature"><div class="why-feature-icon">🛡️</div><div class="why-feature-text"><h4>سرية تامة</h4><p>نضمن خصوصية كاملة لبياناتك وملفك الطبي وفق أعلى معايير حماية البيانات</p></div></div>
+        </div>
+      </div>
+      <div class="why-visual reveal reveal-delay-1">
+        <div class="stat-card tall"><div class="big"><span>+5000</span></div><div class="lbl">مريض تم علاجه بنجاح</div></div>
+        <div class="stat-card"><div class="big"><span>98%</span></div><div class="lbl">رضا المرضى</div></div>
+        <div class="stat-card"><div class="big"><span>15+</span></div><div class="lbl">تخصصاً طبياً</div></div>
+        <div class="stat-card"><div class="big"><span>24/7</span></div><div class="lbl">خدمة الطوارئ</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="form-section" id="contact">
+    <div class="form-inner">
+      <div class="form-info reveal">
+        <div class="section-tag">احجز موعدك</div>
+        <h2 class="section-title">تواصل معنا الآن</h2>
+        <p class="section-desc" style="text-align:right;max-width:100%">أرسل بياناتك وسيتواصل معك فريقنا خلال ساعات قليلة لتأكيد الموعد</p>
+        <div class="form-benefits">
+          <div class="form-benefit"><div class="form-benefit-check">✓</div><span class="form-benefit-text">رد فوري من فريق الرعاية الصحية</span></div>
+          <div class="form-benefit"><div class="form-benefit-check">✓</div><span class="form-benefit-text">استشارة مبدئية مجانية</span></div>
+          <div class="form-benefit"><div class="form-benefit-check">✓</div><span class="form-benefit-text">مواعيد مرنة تناسب جدولك</span></div>
+          <div class="form-benefit"><div class="form-benefit-check">✓</div><span class="form-benefit-text">فريق طبي متخصص بانتظارك</span></div>
+        </div>
+      </div>
+      <div class="form-card reveal reveal-delay-1">
+        <div id="form-container">
+          <h3>أرسل استفسارك</h3>
+          <p class="form-subtitle">سنتواصل معك في أقرب وقت ممكن</p>
+          <form id="lead-form" novalidate>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label"><span class="required">*</span> الاسم الكامل</label><input class="form-input" type="text" id="f-name" placeholder="محمد الأحمد" required /></div>
+              <div class="form-group"><label class="form-label"><span class="required">*</span> رقم الجوال</label><input class="form-input" type="tel" id="f-phone" placeholder="+966 5X XXX XXXX" required /></div>
+            </div>
+            <div class="form-group"><label class="form-label">البريد الإلكتروني</label><input class="form-input" type="email" id="f-email" placeholder="example@email.com" /></div>
+            <div class="form-row">
+              <div class="form-group"><label class="form-label"><span class="required">*</span> التخصص المطلوب</label>
+                <select class="form-select" id="f-service" required>
+                  <option value="">-- اختر --</option>
+                  <option>أمراض القلب</option><option>طب الأعصاب</option><option>طب الأسنان</option><option>الطب العام</option><option>تحاليل مخبرية</option><option>استشارة طبية</option>
+                </select>
+              </div>
+              <div class="form-group"><label class="form-label">كيف عرفتنا؟</label>
+                <select class="form-select" id="f-source">
+                  <option value="Website">الموقع الإلكتروني</option><option value="WhatsApp">واتساب</option><option value="Social Media">وسائل التواصل</option><option value="Friend">توصية صديق</option><option value="Google">جوجل</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group"><label class="form-label">ملاحظات إضافية</label><textarea class="form-textarea" id="f-notes" placeholder="اكتب استفسارك هنا..."></textarea></div>
+            <button type="submit" class="form-submit"><span id="submit-text">إرسال الاستفسار</span> ←</button>
+            <p class="form-note">🔒 بياناتك محمية وسرية تماماً</p>
+          </form>
+        </div>
+        <div class="form-success" id="form-success">
+          <div class="success-icon">✓</div>
+          <h3>تم الإرسال بنجاح!</h3>
+          <p>شكراً لتواصلك معنا. سيتواصل فريقنا معك خلال ساعات قليلة.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="testimonials">
+    <div class="testimonials-inner">
+      <div class="section-header reveal">
+        <div class="section-tag">آراء مرضانا</div>
+        <h2 class="section-title">ماذا يقول عنا مرضانا</h2>
+      </div>
+      <div class="testimonials-grid">
+        <div class="testimonial-card reveal"><div class="stars">★★★★★</div><p class="testimonial-text">"خدمة ممتازة وفريق طبي متعاون جداً. شعرت بالراحة من أول زيارة والتشخيص كان دقيقاً جداً."</p><div class="testimonial-author"><div class="author-avatar">👩</div><div><div class="author-name">أم خالد</div><div class="author-title">مريضة — قسم القلب</div></div></div></div>
+        <div class="testimonial-card reveal reveal-delay-1"><div class="stars">★★★★★</div><p class="testimonial-text">"أفضل عيادة تعاملت معها. المواعيد منظمة والأطباء محترفون والخدمة سريعة. أنصح الجميع."</p><div class="testimonial-author"><div class="author-avatar">👨</div><div><div class="author-name">فهد العتيبي</div><div class="author-title">مريض — طب الأعصاب</div></div></div></div>
+        <div class="testimonial-card reveal reveal-delay-2"><div class="stars">★★★★★</div><p class="testimonial-text">"الفريق الطبي استقبلني بحرارة ووضحوا لي كل شيء. تجربة إنسانية رائعة قبل أن تكون طبية."</p><div class="testimonial-author"><div class="author-avatar">👩‍💼</div><div><div class="author-name">نورة السعيدي</div><div class="author-title">مريضة — الطب العام</div></div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <a href="#" class="logo"><div class="logo-icon">🏥</div><div class="logo-text"><span style="color:white">عيادة الصحة</span><span>HealthCare Clinic</span></div></a>
+          <p>نقدم رعاية صحية متكاملة بأعلى المعايير العالمية لضمان صحة وسلامة مرضانا.</p>
+        </div>
+        <div class="footer-col"><h4>خدماتنا</h4><ul><li><a href="#services">أمراض القلب</a></li><li><a href="#services">طب الأعصاب</a></li><li><a href="#services">طب الأسنان</a></li><li><a href="#services">الطب العام</a></li></ul></div>
+        <div class="footer-col"><h4>تواصل معنا</h4><ul><li><a href="tel:+966XXXXXXXXX">📞 اتصل بنا</a></li><li><a href="https://wa.me/966XXXXXXXXX">💬 واتساب</a></li><li><a href="#contact">📅 احجز موعد</a></li><li><a href="mailto:info@clinic.com">📧 البريد</a></li></ul></div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2025 عيادة الصحة — جميع الحقوق محفوظة</span>
+        <span class="ai-badge">🤖 مدعوم بنظام AI لاسترداد العملاء</span>
+      </div>
+    </div>
+  </footer>
+
+  <button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
+
+  <script>
+    window.addEventListener('scroll', () => {
+      document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 60);
+      document.getElementById('scrollTop').classList.toggle('visible', window.scrollY > 60);
+    });
+
+    const observer = new IntersectionObserver(entries => entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('visible'); observer.unobserve(e.target); } }), {threshold:0.12});
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+    let countersStarted = false;
+    function animateCounter(id, target, suffix='', duration=2000) {
+      const el = document.getElementById(id); if(!el) return;
+      let start=0; const step=target/(duration/16);
+      const t=setInterval(()=>{ start+=step; if(start>=target){el.textContent=target+suffix;clearInterval(t);}else el.textContent=Math.floor(start)+suffix; },16);
+    }
+    new IntersectionObserver(entries=>{ if(entries[0].isIntersecting&&!countersStarted){ countersStarted=true; setTimeout(()=>{ animateCounter('counter-patients',5000,'+'); animateCounter('counter-doctors',35,'+'); animateCounter('counter-years',12,'+'); },400); } },{threshold:0.3}).observe(document.querySelector('.hero'));
+
+    document.getElementById('lead-form').addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const btn = document.querySelector('.form-submit');
+      btn.innerHTML = '<span>جارٍ الإرسال...</span>';
+      btn.disabled = true;
+      const name=document.getElementById('f-name').value.trim();
+      const phone=document.getElementById('f-phone').value.trim();
+      const service=document.getElementById('f-service').value;
+      if(!name||!phone||!service){ btn.innerHTML='<span>إرسال الاستفسار</span> ←'; btn.disabled=false; alert('يرجى ملء الحقول المطلوبة'); return; }
+      try {
+        await fetch('https://almuhannadali.app.n8n.cloud/webhook/lead-intake-webhook', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ name, phone, email:document.getElementById('f-email').value, service_requested:service, source:document.getElementById('f-source').value||'Website', budget:'', industry:'Clinic', notes:document.getElementById('f-notes').value })
+        });
+      } catch(err){}
+      document.getElementById('form-container').style.display='none';
+      document.getElementById('form-success').style.display='block';
+    });
+  </script>
+</body>
+</html>
