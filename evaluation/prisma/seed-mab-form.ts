@@ -43,7 +43,15 @@ const supervisory: [string, string, string, string][] = [
   ["اتخاذ القرار", "Decision Making", "سلامة وتوقيت القرارات وفق ظروف الموقع", "Soundness and timeliness of decisions under site conditions"],
 ];
 
-const kpiStatus = { options: ["تحقّق — Met", "تحقّق جزئيًا — Partially Met", "لم يتحقّق — Not Met"] };
+// SINGLE_CHOICE options MUST be { value, label } objects (not bare strings),
+// or the app renders empty radios.
+const kpiStatus = {
+  options: [
+    { value: "met", label: "تحقّق — Met", score: 1 },
+    { value: "partial", label: "تحقّق جزئيًا — Partially Met", score: 0.5 },
+    { value: "not_met", label: "لم يتحقّق — Not Met", score: 0 },
+  ],
+};
 
 const narrative: [string, string][] = [
   ["نقاط القوة الرئيسية", "Key Strengths"],
