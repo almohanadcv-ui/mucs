@@ -20,7 +20,9 @@ function questionCreateData(questions: QuestionInput[]) {
   return questions.map((q, i) => ({
     type: q.type,
     label: q.label,
+    labelEn: q.labelEn ?? null,
     helpText: q.helpText ?? null,
+    helpTextEn: q.helpTextEn ?? null,
     required: q.required,
     order: q.order ?? i,
     config: (q.config ?? undefined) as Prisma.InputJsonValue | undefined,

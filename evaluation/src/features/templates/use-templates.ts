@@ -11,7 +11,9 @@ export interface TemplateQuestion {
   id?: string;
   type: string;
   label: string;
+  labelEn?: string | null;
   helpText?: string | null;
+  helpTextEn?: string | null;
   required: boolean;
   order: number;
   config?: {

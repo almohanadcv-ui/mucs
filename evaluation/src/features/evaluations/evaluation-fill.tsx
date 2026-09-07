@@ -26,7 +26,8 @@ import {
 import { useTemplate } from "@/features/templates/use-templates";
 import { QuestionField, type AnswerValue } from "./question-field";
 import { useCreateEvaluation, useUpdateEvaluation, type EvaluationDetail } from "./use-evaluations";
-import { useT } from "@/i18n/client";
+import { useI18n } from "@/i18n/client";
+import { pickLocalized } from "@/lib/localized";
 
 /** Rebuild a form value from an evaluation's stored answer, per question type. */
 function toFormValue(type: string, a: EvaluationDetail["answers"][number]): AnswerValue {
@@ -47,7 +48,7 @@ function toFormValue(type: string, a: EvaluationDetail["answers"][number]): Answ
 }
 
 export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const router = useRouter();
   const isEdit = !!initial;
   const { data: lookups } = useLookups();
@@ -176,11 +177,11 @@ export function EvaluationFill({ initial }: { initial?: EvaluationDetail }) {
                   </span>
                   <div className="flex-1">
                     <Label className="text-base">
-                      {q.label}
+                      {pickLocalized(q.label, q.labelEn, locale)}
                       {q.required && <span className="text-destructive"> *</span>}
                     </Label>
-                    {q.helpText && (
-                      <p className="mb-2 text-xs text-muted-foreground">{q.helpText}</p>
+                    {(q.helpText || q.helpTextEn) && (
+                      <p className="mb-2 text-xs text-muted-foreground">{pickLocalized(q.helpText ?? "", q.helpTextEn, locale)}</p>
                     )}
                     {/* Answer and its note sit side by side on wide screens,
                         mirroring the «ملاحظات» column of the paper form, and

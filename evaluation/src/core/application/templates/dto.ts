@@ -45,7 +45,9 @@ export const questionInputSchema = z
   .object({
     type: questionTypeEnum,
     label: z.string().trim().min(1, "نص السؤال مطلوب").max(300),
+    labelEn: z.string().trim().max(300).optional().nullable(),
     helpText: z.string().trim().max(500).optional().nullable(),
+    helpTextEn: z.string().trim().max(500).optional().nullable(),
     required: z.boolean().default(false),
     order: z.number().int().min(0).default(0),
     config: questionConfigSchema.optional(),

@@ -136,7 +136,9 @@ export function TemplateBuilder({ initial }: { initial?: TemplateDetail }) {
       questions: questions.map((q, i) => ({
         type: q.type,
         label: q.label.trim(),
+        labelEn: q.labelEn?.trim() || null,
         helpText: q.helpText || null,
+        helpTextEn: q.helpTextEn?.trim() || null,
         required: q.required,
         order: i,
         config: q.config ?? undefined,
@@ -362,6 +364,13 @@ function QuestionCard({
                   value={question.label}
                   onChange={(e) => onChange({ label: e.target.value })}
                   placeholder={t("templates.questionText")}
+                />
+                <Input
+                  dir="ltr"
+                  value={question.labelEn ?? ""}
+                  onChange={(e) => onChange({ labelEn: e.target.value })}
+                  placeholder="English label (optional)"
+                  className="text-sm"
                 />
               </div>
               <div className="space-y-1">

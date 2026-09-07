@@ -53,18 +53,21 @@ const narrative: [string, string][] = [
 ];
 
 function buildQuestions() {
-  const q: { type: string; label: string; helpText?: string; required: boolean; order: number; config?: unknown }[] = [];
+  const q: {
+    type: string; label: string; labelEn: string; helpText?: string; helpTextEn?: string;
+    required: boolean; order: number; config?: unknown;
+  }[] = [];
   let order = 0;
   const star = { max: 5 };
   for (const [ar, en, arD, enD] of core)
-    q.push({ type: "STAR_RATING", label: bi(ar, en), helpText: bi(arD, enD), required: true, order: order++, config: { ...star, weight: 1 } });
+    q.push({ type: "STAR_RATING", label: ar, labelEn: en, helpText: arD, helpTextEn: enD, required: true, order: order++, config: { ...star, weight: 1 } });
   for (const [ar, en, arD, enD] of supervisory)
-    q.push({ type: "STAR_RATING", label: bi(`(إشرافي) ${ar}`, `(Supervisory) ${en}`), helpText: bi(arD, enD), required: false, order: order++, config: { ...star, weight: 1 } });
-  q.push({ type: "TEXTAREA", label: bi("الأهداف ومؤشرات الأداء (الهدف · المستهدف · النتيجة)", "Goals & KPIs (goal · target · actual)"), helpText: bi("اكتب كل هدف من الفترة السابقة ونتيجته", "Enter each goal from last period and its result"), required: false, order: order++ });
+    q.push({ type: "STAR_RATING", label: `(إشرافي) ${ar}`, labelEn: `(Supervisory) ${en}`, helpText: arD, helpTextEn: enD, required: false, order: order++, config: { ...star, weight: 1 } });
+  q.push({ type: "TEXTAREA", label: "الأهداف ومؤشرات الأداء (الهدف · المستهدف · النتيجة)", labelEn: "Goals & KPIs (goal · target · actual)", helpText: "اكتب كل هدف من الفترة السابقة ونتيجته", helpTextEn: "Enter each goal from last period and its result", required: false, order: order++ });
   for (let i = 1; i <= 3; i++)
-    q.push({ type: "SINGLE_CHOICE", label: bi(`حالة تحقيق الهدف ${i}`, `Goal ${i} status`), required: false, order: order++, config: kpiStatus });
+    q.push({ type: "SINGLE_CHOICE", label: `حالة تحقيق الهدف ${i}`, labelEn: `Goal ${i} status`, required: false, order: order++, config: kpiStatus });
   for (const [ar, en] of narrative)
-    q.push({ type: "TEXTAREA", label: bi(ar, en), required: false, order: order++ });
+    q.push({ type: "TEXTAREA", label: ar, labelEn: en, required: false, order: order++ });
   return q;
 }
 

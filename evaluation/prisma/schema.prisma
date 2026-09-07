@@ -406,7 +406,11 @@ model Question {
   templateId String       @db.Uuid
   type       QuestionType
   label      String
+  /// Optional English label/help — when set, shown while the UI is in English;
+  /// otherwise the Arabic label is used for both locales.
+  labelEn    String?
   helpText   String?
+  helpTextEn String?
   required   Boolean      @default(false)
   order      Int          @default(0)
 
