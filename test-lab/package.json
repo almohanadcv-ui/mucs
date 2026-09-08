@@ -5,6 +5,7 @@
   "description": "Runnable, reusable performance/load/security Test Lab for the MICA API (k6 + server monitoring + analytical reports).",
   "type": "module",
   "scripts": {
+    "ready": "bash scripts/readiness.sh",
     "discover": "bash scripts/discover-endpoints.sh",
     "health": "bash scripts/health-gate.sh",
     "monitor": "bash monitoring/server-monitor.sh",
