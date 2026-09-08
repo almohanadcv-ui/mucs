@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { History, Loader2, Search } from "lucide-react";
-import { listAuditLog } from "@/features/audit/api";
+import { History, Loader2, Search, ChevronDown, ChevronLeft, Car } from "lucide-react";
+import { listAuditLog, type AuditLogItem } from "@/features/audit/api";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 export default function AuditPage() {
   const [page, setPage] = useState(1);
   const [entityType, setEntityType] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["audit-log", page, entityType],
@@ -57,41 +58,61 @@ export default function AuditPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-right text-muted-foreground">
+                  <th className="w-8 px-2 py-2" />
                   <th className="px-3 py-2 font-medium">الوقت</th>
+                  <th className="px-3 py-2 font-medium">الحدث</th>
+                  <th className="px-3 py-2 font-medium">المركبة</th>
                   <th className="px-3 py-2 font-medium">المستخدم</th>
-                  <th className="px-3 py-2 font-medium">الإجراء</th>
-                  <th className="px-3 py-2 font-medium">النوع</th>
-                  <th className="px-3 py-2 font-medium">المعرّف</th>
                   <th className="px-3 py-2 font-medium">الطريقة</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((e) => (
-                  <tr key={e.id} className="border-b last:border-0 hover:bg-muted/40">
-                    <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
-                      {new Date(e.createdAt).toLocaleString("ar-SA")}
-                    </td>
-                    <td className="px-3 py-2 font-medium">{e.userName ?? "—"}</td>
-                    <td className="px-3 py-2">
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                        {e.action}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">{e.entityType ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-muted-foreground" dir="ltr">
-                      {e.entityId ? e.entityId.slice(0, 10) + "…" : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground" dir="ltr">
-                      {e.method ?? ""} {e.path ?? ""}
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((e) => {
+                  const open = expanded === e.id;
+                  return (
+                    <Fragment key={e.id}>
+                      <tr
+                        className="cursor-pointer border-b last:border-0 hover:bg-muted/40"
+                        onClick={() => setExpanded(open ? null : e.id)}
+                      >
+                        <td className="px-2 py-2 text-muted-foreground">
+                          {open ? <ChevronDown className="size-4" /> : <ChevronLeft className="size-4" />}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
+                          {new Date(e.createdAt).toLocaleString("ar-SA")}
+                        </td>
+                        <td className="px-3 py-2 font-medium">{e.summary ?? e.action}</td>
+                        <td className="px-3 py-2">
+                          {e.vehicle ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                              <Car className="size-3" /> {e.vehicle.label}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{e.userName ?? "—"}</td>
+                        <td className="px-3 py-2 text-muted-foreground" dir="ltr">
+                          {e.method ?? ""} {e.path ?? ""}
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr className="border-b bg-muted/20">
+                          <td colSpan={6} className="px-6 py-4">
+                            <EventDetails e={e} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
+      {/* details renderer defined below */}
       {meta && meta.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted-foreground">
@@ -110,6 +131,90 @@ export default function AuditPage() {
               التالي
             </Button>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Arabic labels for the fields captured on an event. */
+const FIELD_LABELS: Record<string, string> = {
+  message: "الرسالة",
+  vehicleId: "معرّف المركبة",
+  driverId: "معرّف السائق",
+  requestedByName: "طلب بواسطة",
+  requestedById: "معرّف الطالب",
+  status: "الحالة",
+  replyNote: "ملاحظة الرد",
+  plateNumber: "رقم اللوحة",
+  make: "الصانع",
+  model: "الطراز",
+  year: "السنة",
+  odometer: "العداد",
+  amount: "المبلغ",
+  invoiceNumber: "رقم الفاتورة",
+  id: "المعرّف",
+  createdAt: "تاريخ الإنشاء",
+  answeredAt: "تاريخ الرد",
+};
+
+function labelFor(key: string): string {
+  return FIELD_LABELS[key] ?? key;
+}
+
+function renderValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+/** Every captured point of an event, shown literally as label/value pairs. */
+function EventDetails({ e }: { e: AuditLogItem }) {
+  const after = e.changesAfter && typeof e.changesAfter === "object" && !Array.isArray(e.changesAfter)
+    ? (e.changesAfter as Record<string, unknown>)
+    : null;
+
+  const meta: [string, unknown][] = [
+    ["الحدث", e.summary],
+    ["الإجراء (نظام)", e.action],
+    ["النوع", e.entityType],
+    ["المعرّف", e.entityId],
+    ["المركبة", e.vehicle?.label ?? null],
+    ["السائق", e.driverName],
+    ["المستخدم", e.userName],
+    ["الطريقة والمسار", `${e.method ?? ""} ${e.path ?? ""}`.trim()],
+    ["رمز الاستجابة", e.statusCode],
+    ["عنوان IP", e.ipAddress],
+    ["المتصفّح", e.userAgent],
+    ["معرّف الطلب", e.requestId],
+    ["الوقت", new Date(e.createdAt).toLocaleString("ar-SA")],
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h4 className="mb-2 text-xs font-semibold text-muted-foreground">تفاصيل الحدث</h4>
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+          {meta.map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-3 border-b border-dashed py-1">
+              <dt className="text-xs text-muted-foreground">{k}</dt>
+              <dd className="text-xs font-medium" dir="auto">{renderValue(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      {after && Object.keys(after).length > 0 && (
+        <div>
+          <h4 className="mb-2 text-xs font-semibold text-muted-foreground">البيانات المسجّلة</h4>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
+            {Object.entries(after).map(([k, v]) => (
+              <div key={k} className="flex justify-between gap-3 border-b border-dashed py-1">
+                <dt className="text-xs text-muted-foreground">{labelFor(k)}</dt>
+                <dd className="text-xs font-medium" dir="auto">{renderValue(v)}</dd>
+              </div>
+            ))}
+          </dl>
         </div>
       )}
     </div>

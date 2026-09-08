@@ -1,6 +1,12 @@
 import type { PaginatedResult, PaginationQuery } from "@mica-mab/shared-types";
 import { apiClient } from "@/lib/api-client";
 
+export interface AuditVehicle {
+  id: string;
+  plateNumber: string;
+  label: string;
+}
+
 export interface AuditLogItem {
   id: string;
   userId: string | null;
@@ -12,6 +18,17 @@ export interface AuditLogItem {
   path: string | null;
   ipAddress: string | null;
   createdAt: string;
+  // Enriched, human-readable context.
+  summary: string | null;
+  vehicle: AuditVehicle | null;
+  driverName: string | null;
+  // Full detail — every captured point, shown literally when a row is expanded.
+  statusCode: number | null;
+  requestId: string | null;
+  userAgent: string | null;
+  changesAfter: unknown;
+  changesBefore: unknown;
+  metadata: unknown;
 }
 
 export async function listAuditLog(
