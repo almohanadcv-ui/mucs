@@ -26,8 +26,11 @@ const p95 = dur["p(95)"] ?? null;
 const p99 = dur["p(99)"] ?? null;
 const reqs = m.http_reqs?.count ?? null;
 const rps = m.http_reqs?.rate ?? null;
-const errRate = m.http_req_failed?.value ?? null; // 0..1
+const errRate = m.http_req_failed?.value ?? null; // 0..1 (excludes 401/403/429)
 const vusMax = m.vus_max?.max ?? m.vus_max?.value ?? null;
+const throttledCount = m.throttled_429?.count ?? 0;
+const throttlePct = reqs ? (throttledCount / reqs) * 100 : 0;
+const isLocal = /127\.0\.0\.1|localhost/.test(process.env.BASE_URL || "");
 
 // ── monitor CSV → peaks ───────────────────────────────────────────────────────
 const peaks = {};
@@ -81,7 +84,11 @@ if (rows.length === 0) {
   bottleneck = "Postgres — اتصالات/أقفال";
   rootCause = `اتصالات PG بلغت ${peaks.pgConn}/${peaks.pgMax} (${pgPct.toFixed(0)}%)، انتظار=${peaks.pgWaiting}, أقفال=${peaks.pgLocks}. تشبّع تجمّع الاتصالات يرفع الكمون.`;
   recs.push("زد pool size / أضف PgBouncer، راجع الاستعلامات البطيئة والفهارس، قلّل الاتصالات لكل عملية.");
-} else if ((peaks.cpu || 0) >= 85) {
+} else if (throttlePct >= 20) {
+  bottleneck = "محدِّد المعدّل (Throttler) — قيد منهجية الاختبار لا قدرة الـAPI";
+  rootCause = `${throttlePct.toFixed(0)}% من الطلبات رجعت 429. الـthrottler لكل IP يحمي الـAPI، وبما أن الحمل كله من IP واحد يصطدم بالحدّ سريعًا — هذا لا يقيس السعة الحقيقية (المستخدمون من IPs مختلفة).`;
+  recs.push("للقياس الحقيقي: على staging ارفع/عطّل throttler مؤقتًا أو أضِف IP المُختبِر لقائمة الاستثناء، ثم صعّد الحمل درجة درجة.");
+} else if ((peaks.cpu || 0) >= 85 && !isLocal) {
   bottleneck = "CPU على الخادم";
   rootCause = `ذروة CPU ${peaks.cpu}% مع load ${peaks.load1}. المعالجة (تسلسل/تحويل/عمليات متزامنة) هي القيد.`;
   recs.push("أضف نسخ PM2 (cluster) أو ارفع النواة، خزّن المخرجات المتكررة (cache)، خفّف العمل المتزامن.");
@@ -105,6 +112,8 @@ if (rows.length === 0) {
 
 // ── Side notes (not the load bottleneck, but worth surfacing) ─────────────────
 const notes = [];
+if (throttlePct > 0 && throttlePct < 20)
+  notes.push(`${throttlePct.toFixed(0)}% من الطلبات مُقيَّدة (429) — الـthrottler يعمل؛ ابقِ المعدّل تحت الحدّ أو استثنِ IP المُختبِر على staging.`);
 if ((peaks.bullFailed || 0) > 0)
   notes.push(`BullMQ فيه ${peaks.bullFailed} مهمة فاشلة متراكمة (سابقة للاختبار) — راجع معالِجات الإيميل/webhook منفصلًا.`);
 if ((peaks.cpu || 0) >= 90 && /127\.0\.0\.1|localhost/.test(process.env.BASE_URL || ""))
@@ -127,7 +136,8 @@ ${fails.length ? fails.map((f) => `- ❌ ${f}`).join("\n") : "- كل الحدو�
 | ذروة RPS | ${fmt(rps != null ? Math.round(rps) : null)} |
 | P95 | ${fmt(p95 != null ? Math.round(p95) : null, "ms")} |
 | P99 | ${fmt(p99 != null ? Math.round(p99) : null, "ms")} |
-| معدّل الأخطاء | ${errRate != null ? (errRate * 100).toFixed(2) + "%" : "—"} |
+| معدّل الأخطاء (5xx حقيقي) | ${errRate != null ? (errRate * 100).toFixed(2) + "%" : "—"} |
+| مُقيَّد بالمعدّل (429) | ${throttledCount ? `${throttledCount} (${throttlePct.toFixed(0)}%)` : "0"} |
 
 ## ذروة الموارد على الخادم
 | المورد | الذروة |

@@ -19,6 +19,12 @@ check() { # <path> <label>
     echo "  ✅ $2 ($1) → 200"
     return 0
   fi
+  # 429 = the service is UP but rate-limited (throttler). Not a health failure —
+  # warn and pass so a prior burst doesn't cascade into blocking every later test.
+  if [ "$code" = "429" ]; then
+    echo "  ⚠️  $2 ($1) → 429 (حيّ لكنه مُقيَّد بالمعدّل — throttler)"
+    return 0
+  fi
   echo "  ❌ $2 ($1) → ${code:-no-response}"
   [ -n "$body" ] && echo "     $body" | head -c 300 && echo
   return 1

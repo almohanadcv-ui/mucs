@@ -3,7 +3,13 @@
 // the login path and field names are all env-driven (see .env.example / discover).
 import http from "k6/http";
 import { check } from "k6";
+import { Counter } from "k6/metrics";
 import { env, BASE_URL } from "../config/config.js";
+
+// Track rate-limited responses separately from real faults. A 429 means the
+// throttler is doing its job — not that the API is broken — so we count it here
+// and the analyzer reports the throttle share instead of failing the run.
+export const throttled = new Counter("throttled_429");
 
 // Login is OPTIONAL: GET-only production runs work anonymously against public
 // endpoints. When TEST_EMAIL/TEST_PASSWORD are set we authenticate once per VU
@@ -25,10 +31,11 @@ const HAS_AUTH = !!(env("TEST_EMAIL", "") && env("TEST_PASSWORD", ""));
 // protected endpoint answering 401/403 is CORRECT behaviour — the API is up and
 // its auth guard works — so those must not be scored as errors. With a token we
 // expect real success (2xx/3xx only) so a genuine 401 would surface as a fault.
+// 429 (throttled) is always "expected" — correct protection, tracked separately.
 http.setResponseCallback(
   HAS_AUTH
-    ? http.expectedStatuses({ min: 200, max: 399 })
-    : http.expectedStatuses({ min: 200, max: 399 }, 401, 403),
+    ? http.expectedStatuses({ min: 200, max: 399 }, 429)
+    : http.expectedStatuses({ min: 200, max: 399 }, 401, 403, 429),
 );
 
 export function u(path) {
@@ -71,10 +78,12 @@ export function login() {
   return pickToken(body);
 }
 
-// An acceptable status: no server error, and (anonymously) 401/403 is fine.
+// An acceptable status: no server error; 429 (throttled) is fine; and when
+// anonymous a 401/403 from a protected route is correct behaviour.
 function statusOk(status, authed) {
   if (status >= 500) return false;
   if (status < 400) return true;
+  if (status === 429) return true;
   return !authed && (status === 401 || status === 403);
 }
 
@@ -82,6 +91,7 @@ function statusOk(status, authed) {
 export function getChecked(path, token, label) {
   const res = http.get(u(path), { headers: authHeaders(token), tags: { name: label || path } });
   const authed = !!token;
+  if (res.status === 429) throttled.add(1);
   check(res, {
     [`${label || path} ok`]: (r) => statusOk(r.status, authed),
   });

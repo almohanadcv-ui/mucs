@@ -12,6 +12,11 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 READY_VUS="${READY_VUS:-50}"        # steady, moderate load — a realistic "many users at once"
 READY_DURATION="${READY_DURATION:-2m}"
+# The API's per-IP throttler blocks a burst for its window; wait it out between
+# load-generating steps so one scenario doesn't cascade 429s into the next.
+COOLDOWN="${COOLDOWN:-65}"
+
+cooldown() { echo "⏳ تهدئة ${COOLDOWN}ث حتى تنقضي نافذة الـ throttler…"; sleep "$COOLDOWN"; }
 
 line() { printf '─%.0s' {1..60}; echo; }
 step=0; failed=0; results=""
@@ -49,11 +54,11 @@ line
 # 3) Smoke → 4) Baseline → 5) fixed moderate load. All production-safe (GET-only).
 step=$((step+1)); echo "[$step] Smoke (سلامة أساسية)"
 bash "$HERE/scripts/run.sh" smoke smoke-tests/smoke.js; record "Smoke" $?
-line
+line; cooldown
 
 step=$((step+1)); echo "[$step] Baseline (الأرقام المرجعية)"
 bash "$HERE/scripts/run.sh" baseline load-tests/baseline.js; record "Baseline" $?
-line
+line; cooldown
 
 step=$((step+1)); echo "[$step] حِمل ثابت (${READY_VUS} مستخدم / ${READY_DURATION})"
 VUS="$READY_VUS" DURATION="$READY_DURATION" bash "$HERE/scripts/run.sh" load load-tests/load-get.js
