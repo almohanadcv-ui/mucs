@@ -50,6 +50,17 @@ export const LEVELS = {
 // Progressive stress stages — run MANUALLY, one at a time (never auto-advance).
 export const STRESS_STAGES = [10, 25, 50, 100, 250, 500, 1000, 2000];
 
+// Guard: heavy/write scenarios (stress/spike/soak/journey) must NEVER touch
+// production. Call this in a scenario's setup() — it throws unless the target is
+// staging with writes explicitly enabled.
+export function assertStaging() {
+  if (TEST_ENV === "production") {
+    throw new Error(
+      "🚫 Refusing: this scenario is STAGING-only. Set TEST_ENV=staging (and ALLOW_WRITE=1 for write flows) in .env.",
+    );
+  }
+}
+
 // k6 thresholds object built from THRESHOLDS + ABORT (shared by all scenarios).
 export function k6Thresholds() {
   return {
