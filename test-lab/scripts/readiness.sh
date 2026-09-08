@@ -25,6 +25,10 @@ record() { # <label> <rc>  (rc: 0 ok, 2 thresholds failed, other = error)
 }
 
 echo "🏁 فحص جاهزية المنصة — ${BASE_URL:-?}"
+if [ -z "${TEST_EMAIL:-}" ] || [ -z "${TEST_PASSWORD:-}" ]; then
+  echo "ℹ️  وضع بلا تسجيل دخول: نتحقق من البنية والصحة والأداء والحماية (401 سلوك صحيح)."
+  echo "   لتغطية المسارات الحقيقية كاملةً، ضع TEST_EMAIL/TEST_PASSWORD في .env."
+fi
 line
 
 # 1) Health gate — hard stop.

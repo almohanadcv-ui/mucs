@@ -89,9 +89,9 @@ if (rows.length === 0) {
   bottleneck = "الذاكرة (RAM)";
   rootCause = `ذروة استخدام الذاكرة ${peaks.mem}%. ضغط الذاكرة يسبّب GC/تبديل ويبطئ الاستجابة.`;
   recs.push("راجع تسرّب الذاكرة، حدّد حجم الحمولات/الرفع، ارفع RAM أو خفّض التزامن.");
-} else if ((peaks.bullWaiting || 0) > 100 || (peaks.bullFailed || 0) > 0) {
+} else if ((peaks.bullWaiting || 0) > 100) {
   bottleneck = "طابور BullMQ (Redis)";
-  rootCause = `تراكم المهام في الطابور بلغ ${peaks.bullWaiting} (فشل=${peaks.bullFailed}). المعالِجات لا تلحق بمعدّل الإنتاج.`;
+  rootCause = `تراكم المهام المنتظرة في الطابور بلغ ${peaks.bullWaiting} أثناء الاختبار. المعالِجات لا تلحق بمعدّل الإنتاج.`;
   recs.push("زد عدد workers/التزامن للمعالِجات، راجع أخطاء المعالجة، افصل الطوابير الثقيلة.");
 } else if ((peaks.redisMem || 0) > 0 && (peaks.redisClients || 0) > 500) {
   bottleneck = "Redis — عملاء/ذاكرة";
@@ -102,6 +102,15 @@ if (rows.length === 0) {
   rootCause = `معدّل الأخطاء ${(errRate * 100).toFixed(2)}% بينما الموارد دون الإشباع — الأرجح مهلات، محدوديّة معدّل (throttler)، أو أخطاء منطقية.`;
   recs.push("افحص سجلّات mica-api، راجع حدود throttler، وأكواد الأخطاء الغالبة في k6.");
 }
+
+// ── Side notes (not the load bottleneck, but worth surfacing) ─────────────────
+const notes = [];
+if ((peaks.bullFailed || 0) > 0)
+  notes.push(`BullMQ فيه ${peaks.bullFailed} مهمة فاشلة متراكمة (سابقة للاختبار) — راجع معالِجات الإيميل/webhook منفصلًا.`);
+if ((peaks.cpu || 0) >= 90 && /127\.0\.0\.1|localhost/.test(process.env.BASE_URL || ""))
+  notes.push("CPU عالٍ لكن k6 والمراقبة يعملان على نفس الخادم محليًا — جزء من الحمل هو أداة الاختبار نفسها، لا الـAPI فقط.");
+if (peaks.pgMax === 0 && rows.length > 0)
+  notes.push("إحصاءات Postgres فارغة (لم تُضبط PGUSER) — لرؤية الاتصالات/الأقفال أضِف مستخدم قراءة فقط في .env.");
 
 // ── Report ────────────────────────────────────────────────────────────────────
 const fmt = (v, s = "") => (v == null ? "—" : `${typeof v === "number" ? v.toLocaleString() : v}${s}`);
@@ -140,7 +149,7 @@ ${rootCause}
 
 ## ✅ التوصيات
 ${recs.length ? recs.map((r) => `- ${r}`).join("\n") : "- لا توجد إجراءات عاجلة؛ يمكن رفع الحمل للرُّبع التالي."}
-
+${notes.length ? `\n## 📌 ملاحظات جانبية\n${notes.map((n) => `- ${n}`).join("\n")}\n` : ""}
 ---
 _حدود القبول: p95<${THRESHOLDS.p95Ms}ms · p99<${THRESHOLDS.p99Ms}ms · أخطاء<${(THRESHOLDS.errorRate * 100).toFixed(1)}% · إجهاض تلقائي عند أخطاء>${(ABORT.errorRate * 100).toFixed(0)}% أو p95>${ABORT.p95Ms}ms مُستدام._
 `;

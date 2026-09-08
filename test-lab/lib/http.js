@@ -17,6 +17,20 @@ const TOKEN_FIELDS = (env("AUTH_TOKEN_FIELD", "") || "accessToken,access_token,t
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Whether a test account is configured. Drives what counts as an "error".
+const HAS_AUTH = !!(env("TEST_EMAIL", "") && env("TEST_PASSWORD", ""));
+
+// Define which HTTP statuses are NOT failures (governs http_req_failed, and thus
+// PASS/FAIL + abortOnFail). 2xx/3xx are always fine. When running ANONYMOUSLY, a
+// protected endpoint answering 401/403 is CORRECT behaviour — the API is up and
+// its auth guard works — so those must not be scored as errors. With a token we
+// expect real success (2xx/3xx only) so a genuine 401 would surface as a fault.
+http.setResponseCallback(
+  HAS_AUTH
+    ? http.expectedStatuses({ min: 200, max: 399 })
+    : http.expectedStatuses({ min: 200, max: 399 }, 401, 403),
+);
+
 export function u(path) {
   return `${BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
@@ -57,12 +71,19 @@ export function login() {
   return pickToken(body);
 }
 
+// An acceptable status: no server error, and (anonymously) 401/403 is fine.
+function statusOk(status, authed) {
+  if (status >= 500) return false;
+  if (status < 400) return true;
+  return !authed && (status === 401 || status === 403);
+}
+
 /** A checked GET. Records a check named by `label`; returns the k6 response. */
 export function getChecked(path, token, label) {
   const res = http.get(u(path), { headers: authHeaders(token), tags: { name: label || path } });
+  const authed = !!token;
   check(res, {
-    [`${label || path} status<500`]: (r) => r.status < 500,
-    [`${label || path} status<400`]: (r) => r.status < 400,
+    [`${label || path} ok`]: (r) => statusOk(r.status, authed),
   });
   return res;
 }
