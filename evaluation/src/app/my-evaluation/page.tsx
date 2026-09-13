@@ -226,6 +226,15 @@ export default function MyEvaluationPage() {
               </div>
             )}
 
+            {/* Point 3: a visible warning to the employee to respond — they live
+                here, not on the dashboard where the notification bell is. */}
+            {!data.locked && data.status === "SENT_TO_EMPLOYEE" && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-center text-amber-800">
+                ⚠️ لم تُبدِ ردّك على هذا التقييم بعد. الرجاء <strong>الموافقة عليه</strong> أو{" "}
+                <strong>كتابة ملاحظاتك</strong> للمدير بالأسفل.
+              </div>
+            )}
+
             <section className="overflow-hidden rounded-xl border border-[#d6e8f5] bg-white/85 shadow-sm">
               <h2 className="border-b border-[#d6e8f5] bg-[#f5faff] px-5 py-3 font-bold">بنود التقييم</h2>
               <div className="divide-y divide-[#eef4fa]">

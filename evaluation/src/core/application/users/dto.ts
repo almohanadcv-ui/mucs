@@ -5,6 +5,7 @@ import { Role } from "@/core/domain/enums";
 const roleEnum = z.enum([
   Role.ADMIN,
   Role.MANAGEMENT,
+  Role.HR,
   Role.PRIMARY_REVIEWER,
   Role.SUPERVISOR,
   Role.EVALUATOR,

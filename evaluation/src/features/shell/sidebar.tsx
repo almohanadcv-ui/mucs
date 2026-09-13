@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MabLogo } from "@/components/mab-logo";
 import { NAV_ITEMS } from "./nav";
@@ -62,12 +61,6 @@ export function Sidebar({ role }: { role: Role }) {
           );
         })}
       </nav>
-
-      <div className="m-3 rounded-xl bg-white/5 p-4 text-center">
-        <ShieldCheck className="mx-auto mb-2 size-6 text-success" />
-        <p className="text-sm font-semibold text-white">{t("nav.protected")}</p>
-        <p className="text-xs text-sidebar-foreground/60">{t("nav.protectedDesc")}</p>
-      </div>
     </aside>
   );
 }
