@@ -8,9 +8,12 @@ import {
 } from "@/infrastructure/email/templates";
 import { getServerEnv } from "@/lib/env";
 
-/** Opened, but no employee action for this long → nudge everyone once. */
-const IDLE_HOURS = 24;
-const HOUR_MS = 60 * 60 * 1000;
+/**
+ * Opened, but no employee action for this long → nudge everyone once.
+ * Overridable via EVAL_IDLE_MINUTES (default 24h) so we can drop it to 1 minute
+ * for a live test, then restore 1440 without a code change.
+ */
+const IDLE_MINUTES = Number(process.env.EVAL_IDLE_MINUTES) || 24 * 60;
 
 export interface IdleRunResult {
   /** Evaluations found that were opened-but-ignored past the window. */
@@ -45,7 +48,7 @@ async function trySend(to: string, mail: { subject: string; html: string; text: 
  * so each notification carries the evaluation's own tenantId.
  */
 export async function runIdleEvaluationReminders(now = new Date()): Promise<IdleRunResult> {
-  const cutoff = new Date(now.getTime() - IDLE_HOURS * HOUR_MS);
+  const cutoff = new Date(now.getTime() - IDLE_MINUTES * 60 * 1000);
 
   const evals = await prisma.evaluation.findMany({
     where: {
