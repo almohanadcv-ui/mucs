@@ -471,6 +471,12 @@ model Evaluation {
   /// Set when the manager finally approves — the evaluation is read-only after
   /// this and the employee's magic-link is revoked.
   lockedAt           DateTime?
+  /// First time the employee OPENED their evaluation (magic-link or portal).
+  employeeOpenedAt   DateTime?
+  /// When we last warned the employee + notified the manager/HR that the
+  /// employee opened the evaluation but took no action — so the daily idle job
+  /// nudges once, not every run.
+  employeeIgnoredNotifiedAt DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

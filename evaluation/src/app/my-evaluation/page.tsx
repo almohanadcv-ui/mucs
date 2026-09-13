@@ -18,10 +18,26 @@ type Review = {
   comments: Comment[];
 };
 
+type HistoryItem = {
+  id: string;
+  templateTitle: string;
+  score: number | null;
+  status: string;
+  locked: boolean;
+  date: string;
+};
+
 const AUTHOR_LABEL: Record<string, string> = {
   MANAGER: "المدير",
   EMPLOYEE: "أنت",
   HR: "الموارد البشرية",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  SENT_TO_EMPLOYEE: "بانتظار ردّك",
+  EMPLOYEE_RESPONDED: "بانتظار المدير",
+  EMPLOYEE_ACKNOWLEDGED: "وافقت عليه",
+  APPROVED: "معتمد",
 };
 
 /**
@@ -37,34 +53,59 @@ export default function MyEvaluationPage() {
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [sentMsg, setSentMsg] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const res = await fetch(withBase("/api/my-evaluation"));
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(body?.error?.message || "تعذّر فتح التقييم.");
-      const ev = (body.data?.evaluation ?? null) as Review | null;
-      setData(ev);
-      setNone(ev === null);
-      if (!silent) setError(null);
-    } catch (e) {
-      if (!silent) setError(e instanceof Error ? e.message : "حدث خطأ.");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, []);
+  const load = useCallback(
+    async (silent = false, id: string | null = null) => {
+      if (!silent) setLoading(true);
+      try {
+        const res = await fetch(withBase(`/api/my-evaluation${id ? `?id=${id}` : ""}`));
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body?.error?.message || "تعذّر فتح التقييم.");
+        const ev = (body.data?.evaluation ?? null) as Review | null;
+        setData(ev);
+        setNone(ev === null);
+        if (!silent) setError(null);
+      } catch (e) {
+        if (!silent) setError(e instanceof Error ? e.message : "حدث خطأ.");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void load(false, selectedId);
+  }, [load, selectedId]);
+
+  // Load the full history once so the employee sees all past evaluations.
+  useEffect(() => {
+    fetch(withBase("/api/my-evaluation/history"))
+      .then((r) => r.json())
+      .then((b) => setHistory((b?.data?.items ?? []) as HistoryItem[]))
+      .catch(() => {});
+  }, []);
+
+  // Point 4: warn before leaving while the evaluation still needs the employee's
+  // action (not locked). The browser shows a native "Leave / Stay" prompt.
+  useEffect(() => {
+    if (!data || data.locked) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [data]);
 
   // Live: poll so the manager's reply appears without a manual refresh.
   useEffect(() => {
     if (data?.locked) return;
-    const iv = setInterval(() => void load(true), 8000);
+    const iv = setInterval(() => void load(true, selectedId), 8000);
     return () => clearInterval(iv);
-  }, [data?.locked, load]);
+  }, [data?.locked, load, selectedId]);
 
   async function respond(decision: "ACKNOWLEDGE" | "OBJECT") {
     if (decision === "OBJECT" && comment.trim().length < 3) {
@@ -87,7 +128,7 @@ export default function MyEvaluationPage() {
           : "تم إرسال ملاحظتك للمدير. يمكنك المتابعة معه هنا.",
       );
       setComment("");
-      await load();
+      await load(false, selectedId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "حدث خطأ.");
     } finally {
@@ -128,6 +169,41 @@ export default function MyEvaluationPage() {
           <div className="rounded-xl border border-red-200 bg-red-50 p-6 text-center text-red-700">
             {error}
           </div>
+        )}
+
+        {/* Point 5: all past evaluations with date/time — open any of them. */}
+        {history.length > 1 && (
+          <section className="overflow-hidden rounded-xl border border-[#d6e8f5] bg-white/85 shadow-sm">
+            <h2 className="border-b border-[#d6e8f5] bg-[#f5faff] px-5 py-3 font-bold">
+              تقييماتي السابقة ({history.length})
+            </h2>
+            <div className="divide-y divide-[#eef4fa]">
+              {history.map((h) => {
+                const active = (selectedId ?? history[0]?.id) === h.id;
+                return (
+                  <button
+                    key={h.id}
+                    onClick={() => setSelectedId(h.id)}
+                    className={`flex w-full items-center justify-between gap-3 px-5 py-3 text-right transition-colors hover:bg-[#f5faff] ${
+                      active ? "bg-[#eef7ff]" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-[#12304a]">{h.templateTitle}</div>
+                      <div className="text-xs text-[#5f7d94]">
+                        {new Date(h.date).toLocaleString("ar-SA")} · {STATUS_LABEL[h.status] ?? h.status}
+                      </div>
+                    </div>
+                    {h.score != null && (
+                      <span className="shrink-0 rounded-lg bg-[#1178b8]/10 px-2.5 py-1 text-sm font-bold text-[#1178b8]">
+                        {h.score} / 100 — {scoreCategory(h.score)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {data && (

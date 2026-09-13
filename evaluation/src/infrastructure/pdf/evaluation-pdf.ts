@@ -219,8 +219,13 @@ export async function buildEvaluationPdf(input: EvaluationPdfInput): Promise<Buf
     if (it.remarks) {
       doc.fillColor(MUTED).fontSize(9).text(remW, labelX, ty, { width: labelW2, align: "right" });
     }
-    // Value centered in its column so the whole column reads consistently.
-    doc.fillColor(NAVY).fontSize(11).text(it.value, left + 4, y + 7, { width: valueW - 8, align: "center" });
+    // Value centered in its column. Route through arabicWrap (NBSP-joined) like
+    // every other Arabic string here, so a two-word label ("جيد جداً") keeps its
+    // order instead of reversing under bidi next to the "N / 5" number.
+    doc
+      .fillColor(NAVY)
+      .fontSize(11)
+      .text(arabicWrap(doc, it.value, valueW - 8), left + 4, y + 7, { width: valueW - 8, align: "center" });
     y += rowH;
   });
 

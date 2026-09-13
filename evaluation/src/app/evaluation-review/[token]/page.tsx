@@ -66,6 +66,17 @@ export default function EvaluationReviewPage({
     return () => clearInterval(iv);
   }, [data?.locked, load]);
 
+  // Warn before leaving while the evaluation still needs the employee's action.
+  useEffect(() => {
+    if (!data || data.locked) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [data]);
+
   async function respond(decision: "ACKNOWLEDGE" | "OBJECT") {
     if (decision === "OBJECT" && comment.trim().length < 3) {
       setError("الرجاء كتابة ملاحظتك أولاً.");

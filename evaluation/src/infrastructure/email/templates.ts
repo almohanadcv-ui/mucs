@@ -82,9 +82,9 @@ function shell(p: ShellParams): string {
           <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid ${LINE};box-shadow:0 4px 16px rgba(15,43,70,.08);">
             <!-- header -->
             <tr>
-              <td style="background:${NAVY};background-image:linear-gradient(135deg,${NAVY} 0%,${NAVY_2} 100%);padding:26px 32px;text-align:center;">
-                <img src="cid:${LOGO_CID}" alt="MAB" height="40" style="height:40px;display:inline-block;border:0;" />
-                <div style="color:#aebfd4;font-size:12px;font-family:${FONT};margin-top:8px;letter-spacing:.2px;">${escapeHtml(
+              <td style="background:#ffffff;padding:30px 32px 24px;text-align:center;border-bottom:1px solid ${LINE};">
+                <img src="cid:${LOGO_CID}" alt="MAB" height="88" style="height:88px;max-width:88%;display:inline-block;border:0;" />
+                <div style="color:${NAVY};font-size:20px;font-weight:700;font-family:${FONT};margin-top:14px;letter-spacing:.2px;">${escapeHtml(
                   brand(),
                 )}</div>
               </td>
@@ -393,5 +393,64 @@ export function evaluationToEmployeeEmail(params: {
     text:
       `مرحبًا ${employeeName}،\nتم إعداد تقييم أدائك «${templateTitle}»${evaluatorName ? ` من قِبل ${evaluatorName}` : ""}.\n` +
       `للاطّلاع وإبداء ملاحظاتك افتح الرابط (صالح ٣٠ يومًا أو حتى الاعتماد):\n${link}`,
+  };
+}
+
+// ── Employee opened the evaluation but ignored it ──────────────────────────────
+/** Manager/HR alert: the employee opened their evaluation but did nothing. */
+export function evaluationEmployeeIdleEmail(params: {
+  recipientName?: string | null;
+  employeeName: string;
+  openedAtText: string;
+}): EmailContent {
+  const { recipientName, employeeName, openedAtText } = params;
+  const accent = "#d97706";
+  const content = `
+    ${greeting(recipientName ?? undefined)}
+    ${para(
+      `اطّلع الموظف <strong>${iso(employeeName)}</strong> على تقييم أدائه بتاريخ <strong>${escapeHtml(
+        openedAtText,
+      )}</strong>، لكنه <strong>لم يتّخذ أي إجراء</strong> حتى الآن — لم يوافق، ولم يعترض، ولم يردّ على المدير.`,
+    )}
+    ${para(`<span style="color:${MUTED};font-size:13px;">قد يحتاج إلى متابعة أو تذكير. تم تنبيه الموظف تلقائيًا كذلك.</span>`)}
+    ${button(`${appUrl()}/dashboard/evaluations`, "فتح لوحة التقييمات", accent)}`;
+  return {
+    subject: `الموظف ${employeeName} اطّلع على تقييمه دون رد`,
+    html: shell({
+      preheader: `${employeeName} فتح تقييمه بتاريخ ${openedAtText} ولم يتّخذ أي إجراء.`,
+      eyebrow: "متابعة تقييم",
+      accent,
+      title: "اطّلع الموظف على التقييم دون رد",
+      content,
+    }),
+    text:
+      `اطّلع الموظف ${employeeName} على تقييمه بتاريخ ${openedAtText} ولم يتّخذ أي إجراء ` +
+      `(لم يوافق/يعترض/يردّ). قد يحتاج إلى متابعة.`,
+  };
+}
+
+/** Employee reminder: you opened your evaluation but haven't responded yet. */
+export function evaluationNudgeEmployeeEmail(params: {
+  employeeName: string;
+  link: string;
+}): EmailContent {
+  const { employeeName, link } = params;
+  const accent = "#2563eb";
+  const content = `
+    ${greeting(employeeName)}
+    ${para("لاحظنا أنك <strong>اطّلعت على تقييم أدائك</strong> لكنك لم تُبدِ ردّك بعد.")}
+    ${para("الرجاء مراجعته ثم <strong>الموافقة عليه</strong> أو <strong>كتابة ملاحظاتك</strong> للمدير — رأيك مهم ويُسجَّل رسميًا.")}
+    ${button(link, "مراجعة تقييمي والرد", accent)}
+    ${para(`<span style="color:${MUTED};font-size:12px;">إن لم يعمل الزر، افتح: <span dir="ltr" style="word-break:break-all;color:${accent};">${escapeHtml(link)}</span></span>`)}`;
+  return {
+    subject: "تذكير: تقييم أدائك بانتظار ردّك",
+    html: shell({
+      preheader: "اطّلعت على تقييمك ولم تُبدِ ردّك بعد — الرجاء الموافقة أو كتابة ملاحظاتك.",
+      eyebrow: "تذكير",
+      accent,
+      title: "تقييم أدائك بانتظار ردّك",
+      content,
+    }),
+    text: `مرحبًا ${employeeName}،\nاطّلعت على تقييمك ولم تردّ بعد. الرجاء الموافقة أو كتابة ملاحظاتك:\n${link}`,
   };
 }

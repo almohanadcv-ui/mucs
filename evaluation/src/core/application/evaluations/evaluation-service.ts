@@ -1021,6 +1021,14 @@ export async function getEvaluationForEmployee(rawToken: string) {
     if (rec.expiresAt < new Date()) throw new AppError("CONFLICT", "انتهت صلاحية الرابط");
   }
 
+  // Record the first time the employee actually opens it (once), so the idle
+  // job can tell "opened but ignored" from "never opened".
+  if (ev.status === EvaluationStatus.SENT_TO_EMPLOYEE) {
+    void prisma.evaluation
+      .updateMany({ where: { id: rec.evaluationId, employeeOpenedAt: null }, data: { employeeOpenedAt: new Date() } })
+      .catch(() => {});
+  }
+
   const items = ev.answers
     .slice()
     .sort((a, b) => a.question.order - b.question.order)
@@ -1217,11 +1225,73 @@ async function myLatestEvaluationId(user: SessionUser): Promise<string | null> {
 }
 
 /**
- * The signed-in employee's own evaluation + dialogue, in the same shape the
- * magic-link page uses. Returns null when they have no evaluation yet.
+ * Every evaluation the signed-in employee can see — newest first — for the
+ * portal «تقييمي» history list (id, template, score, status, dates).
  */
-export async function getMyEvaluation(user: SessionUser) {
-  const evId = await myLatestEvaluationId(user);
+export async function listMyEvaluations(user: SessionUser) {
+  const emp = await linkedEmployee(user);
+  if (!emp) return [];
+  const rows = await prisma.evaluation.findMany({
+    where: {
+      tenantId: user.tenantId,
+      deletedAt: null,
+      employeeId: emp.id,
+      status: { in: EMPLOYEE_VISIBLE_STATUSES },
+    },
+    orderBy: [{ reviewedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      id: true,
+      status: true,
+      score: true,
+      lockedAt: true,
+      reviewedAt: true,
+      createdAt: true,
+      sentToEmployeeAt: true,
+      template: { select: { title: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    templateTitle: r.template.title,
+    score: r.score,
+    status: r.status,
+    locked: Boolean(r.lockedAt),
+    // The date the employee cares about: when it was finalised, else sent.
+    date: (r.reviewedAt ?? r.sentToEmployeeAt ?? r.createdAt).toISOString(),
+  }));
+}
+
+/**
+ * Resolve which of the employee's evaluations to show: a specific one they
+ * asked for (only if it's really theirs and visible), otherwise their latest.
+ */
+async function resolveMyEvaluationId(
+  user: SessionUser,
+  requestedId?: string,
+): Promise<string | null> {
+  if (!requestedId) return myLatestEvaluationId(user);
+  const emp = await linkedEmployee(user);
+  if (!emp) return null;
+  const ev = await prisma.evaluation.findFirst({
+    where: {
+      id: requestedId,
+      tenantId: user.tenantId,
+      deletedAt: null,
+      employeeId: emp.id,
+      status: { in: EMPLOYEE_VISIBLE_STATUSES },
+    },
+    select: { id: true },
+  });
+  return ev?.id ?? null;
+}
+
+/**
+ * The signed-in employee's own evaluation + dialogue, in the same shape the
+ * magic-link page uses. Returns null when they have no evaluation yet. Pass
+ * `evaluationId` to open a specific past one (validated to be theirs).
+ */
+export async function getMyEvaluation(user: SessionUser, evaluationId?: string) {
+  const evId = await resolveMyEvaluationId(user, evaluationId);
   if (!evId) return null;
 
   const ev = await prisma.evaluation.findFirst({
@@ -1243,6 +1313,12 @@ export async function getMyEvaluation(user: SessionUser) {
     },
   });
   if (!ev) return null;
+
+  if (ev.status === EvaluationStatus.SENT_TO_EMPLOYEE) {
+    void prisma.evaluation
+      .updateMany({ where: { id: evId, employeeOpenedAt: null }, data: { employeeOpenedAt: new Date() } })
+      .catch(() => {});
+  }
 
   const items = ev.answers
     .slice()
