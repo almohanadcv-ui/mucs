@@ -63,6 +63,7 @@ function scopeForRole(user: SessionUser): Prisma.EmployeeWhereInput {
     // not necessarily linked to them.
     case Role.ADMIN:
     case Role.MANAGEMENT:
+    case Role.HR:
     case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
       return {};

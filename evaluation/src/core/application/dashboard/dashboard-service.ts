@@ -28,6 +28,7 @@ function evalScope(user: SessionUser): Prisma.EvaluationWhereInput {
     // Oversight/review roles hold EVALUATION_VIEW_ALL — they see everything.
     case Role.ADMIN:
     case Role.MANAGEMENT:
+    case Role.HR:
     case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
       return {};
@@ -43,6 +44,7 @@ function employeeScope(user: SessionUser): Prisma.EmployeeWhereInput {
   switch (user.role) {
     case Role.ADMIN:
     case Role.MANAGEMENT:
+    case Role.HR:
     case Role.PRIMARY_REVIEWER:
     case Role.SUPERVISOR:
       return {};
