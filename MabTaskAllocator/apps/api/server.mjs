@@ -9,6 +9,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import ExcelJS from "exceljs";
 import { buildOperationalIntelligence } from "./intelligence.mjs";
+import { sendEmail, isMailConfigured } from "./email.mjs";
+import { notificationEmail, deviceCodeEmail } from "./email-templates.mjs";
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 
@@ -21,6 +23,12 @@ const maxFileSize = 10 * 1024 * 1024;
 const maxFilesPerUpload = 5;
 const isProduction = process.env.NODE_ENV === "production";
 const corsOrigins = String(process.env.CORS_ORIGINS ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
+// Public app URL used to build deep links inside notification emails.
+const appUrl = String(process.env.APP_URL ?? corsOrigins[0] ?? "").replace(/\/$/, "");
+function appLink(taskId) {
+  if (!appUrl) return "";
+  return taskId ? `${appUrl}/?task=${encodeURIComponent(taskId)}` : appUrl;
+}
 const loginAttempts = new Map();
 const taskTypes = ["Technical", "QS", "Shop Drawings", "BIM", "Variation"];
 const connectionString =
@@ -473,6 +481,12 @@ async function taskAssigneeIds(taskId) {
   return (await db.prepare("SELECT user_id FROM task_assignees WHERE task_id = ?").all(taskId)).map((item) => item.user_id);
 }
 
+async function taskAssigneeNames(taskId) {
+  return (await db.prepare(
+    "SELECT users.name FROM task_assignees JOIN users ON users.id = task_assignees.user_id WHERE task_assignees.task_id = ? ORDER BY users.name"
+  ).all(taskId)).map((item) => item.name);
+}
+
 async function setTaskAssignees(taskId, assigneeIds) {
   await db.prepare("DELETE FROM task_assignees WHERE task_id = ?").run(taskId);
   for (const userId of assigneeIds) {
@@ -641,20 +655,41 @@ async function parseTaskSheet(file) {
   return tasks;
 }
 
+// Notification kinds that also go out by email (chat/comment noise stays in-app).
+const EMAILABLE_KINDS = new Set([
+  "assignment", "reminder", "mention", "approval_request", "approval", "review", "delay", "project",
+]);
+
 async function notify(userId, kind, title, body, taskId, channelId, dedupeKey) {
   if (!userId) return;
-  await db.prepare(`
+  const result = await db.prepare(`
     INSERT INTO notifications (id, user_id, kind, title, body, task_id, channel_id, dedupe_key)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
   `).run(randomUUID(), userId, kind, title, body, taskId ?? null, channelId ?? null, dedupeKey ?? null);
+  // Only email when a NEW notification row was created (dedupe conflict → no row,
+  // so a daily reminder never emails twice). Fire-and-forget, never blocks.
+  if ((result?.changes ?? 0) > 0 && EMAILABLE_KINDS.has(kind)) {
+    void sendNotificationEmail(userId, kind, title, body, taskId).catch((error) =>
+      console.error(`[email] notification to user ${userId} failed:`, error?.message ?? error),
+    );
+  }
+}
+
+async function sendNotificationEmail(userId, kind, title, body, taskId) {
+  if (!isMailConfigured()) return;
+  const user = await db.prepare("SELECT name, username FROM users WHERE id = ?").get(userId);
+  // The username IS the email address in this app.
+  if (!user?.username || !user.username.includes("@")) return;
+  const mail = notificationEmail({ kind, name: user.name, title, body, link: appLink(taskId) });
+  await sendEmail({ to: user.username, subject: mail.subject, html: mail.html, text: mail.text });
 }
 
 async function runTaskReminders() {
   const today = riyadhDate();
   const tasks = await db.prepare("SELECT tasks.*, (SELECT count(*) FROM task_reopen_events WHERE task_id = tasks.id) AS reopen_count FROM tasks WHERE status != 'done' AND (due_date IS NOT NULL OR status IN ('blocked', 'under_review'))").all();
   const leaders = await db.prepare("SELECT * FROM users WHERE role IN ('admin', 'technical_manager', 'team_leader')").all();
-  await sendDeadlineReminders({ tasks, leaders, assigneeIds: taskAssigneeIds, canLead, notify });
+  await sendDeadlineReminders({ tasks, leaders, assigneeIds: taskAssigneeIds, assigneeNames: taskAssigneeNames, canLead, notify });
   for (const task of tasks) {
     if (["blocked", "under_review"].includes(task.status)) {
       const managers = (await db.prepare("SELECT * FROM users WHERE role IN ('superadmin', 'admin', 'technical_manager')").all()).filter((user) => canManage(user, task));
@@ -2306,6 +2341,11 @@ const server = createServer(async (request, response) => {
           } else {
             await db.prepare("UPDATE tasks SET status = 'under_review', progress = 100, leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
             await notifyTaskAudience(task, actor.id, "Task ready for review", `All workers approved ${task.task_code}: ${task.title}`);
+            // Tell the team leader(s)/admin a submission awaits their approval (emailed).
+            const reviewers = (await db.prepare("SELECT * FROM users WHERE role IN ('admin', 'technical_manager', 'team_leader')").all()).filter((leader) => canLead(leader, task));
+            for (const leader of reviewers) {
+              await notify(leader.id, "approval_request", `Approval needed: ${task.task_code}`, `${actor.name} submitted ${task.task_code}: ${task.title} for your review and approval.`, task.id);
+            }
           }
         });
       }

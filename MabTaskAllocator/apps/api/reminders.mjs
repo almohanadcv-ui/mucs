@@ -5,18 +5,40 @@ export function deadlineReminder(task, now = Date.now()) {
   if (!Number.isFinite(deadline)) return null;
   const remaining = deadline - now;
   if (remaining > 24 * 60 * 60 * 1000) return null;
-  const stage = remaining <= 0 ? 'expired' : remaining <= 2 * 60 * 60 * 1000 ? '2h' : '24h';
-  return { stage, title: stage === 'expired' ? 'Task deadline reached' : stage === '2h' ? 'Task due within 2 hours' : 'Task due within 24 hours',
-    key: `deadline:${task.id}:${task.due_date}:${task.reopen_count ?? 0}:${stage}` };
+  const stage = remaining <= 0 ? 'expired' : remaining <= 60 * 60 * 1000 ? '1h' : '24h';
+  return {
+    stage,
+    title: stage === 'expired' ? 'Task deadline reached' : stage === '1h' ? 'Task due within 1 hour' : 'Task due within 24 hours',
+    key: `deadline:${task.id}:${task.due_date}:${task.reopen_count ?? 0}:${stage}`,
+  };
 }
 
-export async function sendDeadlineReminders({ tasks, leaders, assigneeIds, canLead, notify, now = Date.now() }) {
+export async function sendDeadlineReminders({ tasks, leaders, assigneeIds, assigneeNames, canLead, notify, now = Date.now() }) {
   for (const task of tasks) {
     const reminder = deadlineReminder(task, now);
     if (!reminder) continue;
-    const recipients = new Set(await assigneeIds(task.id));
-    for (const leader of leaders) if (canLead(leader, task)) recipients.add(leader.id);
-    for (const id of recipients) await notify(id, 'reminder', reminder.title,
-      `${task.task_code}: ${task.title} � deadline ${task.due_date}, end of day (Riyadh)`, task.id, null, `${reminder.key}:${id}`);
+    const ids = await assigneeIds(task.id);
+    const names = assigneeNames ? await assigneeNames(task.id) : [];
+    const who = names.length ? names.join(', ') : 'the assignee';
+    const deadlineText = `${task.task_code}: ${task.title} — deadline ${task.due_date}, end of day (Riyadh)`;
+
+    // The assignee(s): a plain deadline reminder.
+    for (const id of ids) {
+      await notify(id, 'reminder', reminder.title, deadlineText, task.id, null, `${reminder.key}:${id}`);
+    }
+
+    // The team leader(s)/manager: a delay alert that names the employee.
+    const leaderTitle = reminder.stage === 'expired'
+      ? `Delay: ${who} missed a deadline`
+      : reminder.stage === '1h'
+        ? `Delay risk: ${who} — task due within 1 hour`
+        : `Upcoming deadline: ${who} — due within 24 hours`;
+    for (const leader of leaders) {
+      if (canLead(leader, task)) {
+        await notify(leader.id, 'delay', leaderTitle,
+          `${task.task_code}: ${task.title} — assigned to ${who}, deadline ${task.due_date}, end of day (Riyadh)`,
+          task.id, null, `${reminder.key}:leader:${leader.id}`);
+      }
+    }
   }
 }
