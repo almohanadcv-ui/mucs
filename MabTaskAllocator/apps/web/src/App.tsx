@@ -1682,12 +1682,14 @@ export function App() {
   async function handleLogin(username: string, password: string): Promise<boolean> {
     try {
       setLoginError("");
-      setAppLoading(true);
+      // Do NOT flip appLoading yet — that would unmount the login page and lose
+      // the verification step. Only switch to loading once we know it's a normal
+      // sign-in (no device challenge).
       const result = await api.login(username, password);
       if (result.status === "verify") {
-        setAppLoading(false);
         return true; // a new device — the login page will ask for the emailed code
       }
+      setAppLoading(true);
       await refreshData();
       return false;
     } catch (error) {
@@ -1700,12 +1702,12 @@ export function App() {
   async function handleVerifyDevice(username: string, code: string) {
     try {
       setLoginError("");
-      setAppLoading(true);
       await api.verifyDevice(username, code);
+      setAppLoading(true); // only now leave the login page for the app
       await refreshData();
     } catch (error) {
+      // Stay on the code screen so the error shows and they can retry.
       setLoginError(error instanceof Error ? error.message : "Verification failed.");
-      setAppLoading(false);
     }
   }
 
