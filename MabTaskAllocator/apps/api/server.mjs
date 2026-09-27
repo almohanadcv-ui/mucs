@@ -27,7 +27,8 @@ const { Pool } = pg;
 const port = Number(process.env.PORT ?? 4000);
 const appDirectory = dirname(fileURLToPath(import.meta.url));
 const attachmentsPath = resolve(process.env.ATTACHMENTS_PATH ?? join(appDirectory, "data", "attachments"));
-const sessionIdleMinutes = 10;
+// Stay signed in on a (verified) device — long idle window, overridable.
+const sessionIdleMinutes = Number(process.env.SESSION_IDLE_MINUTES) || 30 * 24 * 60;
 const maxFileSize = 10 * 1024 * 1024;
 const maxFilesPerUpload = 5;
 const isProduction = process.env.NODE_ENV === "production";
@@ -699,18 +700,31 @@ async function sendNotificationEmail(userId, kind, title, body, taskId) {
       "SELECT tasks.task_code, tasks.due_date, COALESCE(creator.name, 'System') AS created_by FROM tasks LEFT JOIN users creator ON creator.id = tasks.created_by_id WHERE tasks.id = ?",
     ).get(taskId);
     if (task) {
-      const files = await db.prepare("SELECT name, uploaded_by FROM task_files WHERE task_id = ? ORDER BY uploaded_at").all(taskId);
+      const files = await db.prepare("SELECT name, uploaded_by, storage_name, mime_type, size FROM task_files WHERE task_id = ? ORDER BY uploaded_at").all(taskId);
       details = {
         taskCode: task.task_code || undefined,
         deadline: task.due_date || undefined,
         sender: task.created_by || undefined,
         files: files.map((f) => ({ name: f.name, by: f.uploaded_by })),
       };
+      // Attach the actual documents (skip missing files or anything over 8 MB, so
+      // a stale record or a huge file never breaks the send).
+      const MAX_ATTACH = 8 * 1024 * 1024;
+      const attachments = [];
+      for (const f of files) {
+        if (!f.storage_name || (f.size ?? 0) > MAX_ATTACH) continue;
+        try {
+          attachments.push({ filename: f.name, content: readFileSync(join(attachmentsPath, f.storage_name)), contentType: f.mime_type || undefined });
+        } catch {
+          // File is gone from disk — list it by name only, don't fail the email.
+        }
+      }
+      details.attachmentsData = attachments;
     }
   }
 
   const mail = notificationEmail({ kind, name: user.name, title, body, link: appLink(taskId), details });
-  await sendEmail({ to: user.username, subject: mail.subject, html: mail.html, text: mail.text });
+  await sendEmail({ to: user.username, subject: mail.subject, html: mail.html, text: mail.text, attachments: details?.attachmentsData });
 }
 
 async function runTaskReminders() {
@@ -1558,7 +1572,7 @@ const server = createServer(async (request, response) => {
       const token = randomBytes(32).toString("hex");
       await db.prepare("INSERT INTO sessions (token, user_id, last_active_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
         .run(token, actor.id);
-      await db.prepare("DELETE FROM sessions WHERE last_active_at < datetime('now', '-10 minutes')").run();
+      await db.prepare("DELETE FROM sessions WHERE last_active_at < (timezone('UTC', now() - make_interval(mins => ?))::text)").run(sessionIdleMinutes);
       return send(response, 201, { token });
     }
 

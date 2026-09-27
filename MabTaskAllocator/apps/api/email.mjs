@@ -61,16 +61,27 @@ async function accessToken(cfg) {
  * Send one HTML email through Graph. Resolves on success; throws on a transport
  * failure or MAIL_NOT_CONFIGURED. Callers should catch and log, never block on it.
  */
-export async function sendEmail({ to, subject, html, text }) {
+export async function sendEmail({ to, subject, html, text, attachments }) {
   if (!to) return false;
   const cfg = config();
   const token = await accessToken(cfg);
+  const files = (attachments ?? []).filter((a) => a && a.content);
   const payload = {
     message: {
       subject,
       body: { contentType: "HTML", content: html },
       from: { emailAddress: { address: cfg.from, name: cfg.fromName } },
       toRecipients: [{ emailAddress: { address: to } }],
+      ...(files.length
+        ? {
+            attachments: files.map((a) => ({
+              "@odata.type": "#microsoft.graph.fileAttachment",
+              name: a.filename,
+              contentType: a.contentType || "application/octet-stream",
+              contentBytes: Buffer.isBuffer(a.content) ? a.content.toString("base64") : Buffer.from(a.content).toString("base64"),
+            })),
+          }
+        : {}),
     },
     saveToSentItems: false,
   };

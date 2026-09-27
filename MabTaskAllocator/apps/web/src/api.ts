@@ -205,38 +205,46 @@ export type BootstrapData = {
 
 const tokenKey = "mab-task-allocator.session";
 const activityKey = "mab-task-allocator.last-activity";
-export const inactivityLimitMs = 10 * 60 * 1000;
+// Stay signed in on a verified device: keep the session for 30 days of
+// inactivity and persist it in localStorage so closing the browser doesn't sign
+// the user out. (The new-device email code is the security gate.)
+export const inactivityLimitMs = 30 * 24 * 60 * 60 * 1000;
 
-if (!window.sessionStorage.getItem(tokenKey)) {
-  const legacyToken = window.localStorage.getItem(tokenKey);
-  const legacyActivity = window.localStorage.getItem(activityKey);
-  if (legacyToken) window.sessionStorage.setItem(tokenKey, legacyToken);
-  if (legacyActivity) window.sessionStorage.setItem(activityKey, legacyActivity);
+// Migrate any token left in the old sessionStorage location to localStorage.
+try {
+  const legacyToken = window.sessionStorage.getItem(tokenKey);
+  if (legacyToken && !window.localStorage.getItem(tokenKey)) {
+    window.localStorage.setItem(tokenKey, legacyToken);
+    const legacyActivity = window.sessionStorage.getItem(activityKey);
+    if (legacyActivity) window.localStorage.setItem(activityKey, legacyActivity);
+  }
+  window.sessionStorage.removeItem(tokenKey);
+  window.sessionStorage.removeItem(activityKey);
+} catch {
+  // storage unavailable — sign-in still works for the current page load
 }
-window.localStorage.removeItem(tokenKey);
-window.localStorage.removeItem(activityKey);
 
 export function hasSession() {
-  return Boolean(window.sessionStorage.getItem(tokenKey));
+  return Boolean(window.localStorage.getItem(tokenKey));
 }
 
 function setSession(token: string | null) {
   if (token) {
-    window.sessionStorage.setItem(tokenKey, token);
+    window.localStorage.setItem(tokenKey, token);
     markActivity();
   } else {
-    window.sessionStorage.removeItem(tokenKey);
-    window.sessionStorage.removeItem(activityKey);
+    window.localStorage.removeItem(tokenKey);
+    window.localStorage.removeItem(activityKey);
   }
 }
 
 export function getLastActivity() {
-  return Number(window.sessionStorage.getItem(activityKey) ?? 0);
+  return Number(window.localStorage.getItem(activityKey) ?? 0);
 }
 
 export function markActivity() {
   const timestamp = Date.now();
-  window.sessionStorage.setItem(activityKey, String(timestamp));
+  window.localStorage.setItem(activityKey, String(timestamp));
   return timestamp;
 }
 
@@ -263,7 +271,7 @@ async function encodeFiles(files: File[]) {
 }
 
 async function request<T>(path: string, options: RequestInit = {}) {
-  const token = window.sessionStorage.getItem(tokenKey);
+  const token = window.localStorage.getItem(tokenKey);
   const response = await fetch(path, {
     ...options,
     headers: {
@@ -295,7 +303,7 @@ async function request<T>(path: string, options: RequestInit = {}) {
 }
 
 async function download(path: string, fallbackName: string) {
-  const token = window.sessionStorage.getItem(tokenKey);
+  const token = window.localStorage.getItem(tokenKey);
   const response = await fetch(path, {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
@@ -471,7 +479,7 @@ export const api = {
     request(`/api/chat/messages/${messageId}`, { method: "DELETE", body: JSON.stringify({ scope }) }),
   downloadChatFile: (file: ChatMessageFile) => download(`/api/chat/files/${file.id}/download`, file.name),
   async loadChatFilePreview(fileId: string) {
-    const token = window.sessionStorage.getItem(tokenKey);
+    const token = window.localStorage.getItem(tokenKey);
     const response = await fetch(`/api/chat/files/${fileId}/download`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {}
     });

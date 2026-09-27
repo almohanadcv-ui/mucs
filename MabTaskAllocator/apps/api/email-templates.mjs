@@ -45,7 +45,7 @@ function shell({ preheader, eyebrow, accent, title, contentHtml }) {
           </td></tr>
           <tr><td style="padding:30px 32px;font-family:${FONT};">
             <span style="display:inline-block;background:${accent}1a;color:${accent};font-size:12px;font-weight:700;padding:5px 12px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px;">${escapeHtml(eyebrow)}</span>
-            <h1 style="margin:16px 0 14px;font-size:21px;line-height:1.4;color:${NAVY};font-weight:700;">${escapeHtml(title)}</h1>
+            <h1 style="margin:16px 0 14px;font-size:24px;line-height:1.4;color:${NAVY};font-weight:800;">${escapeHtml(title)}</h1>
             ${contentHtml}
           </td></tr>
           <tr><td style="padding:18px 32px;background:#f7f9fb;border-top:1px solid ${LINE};font-family:${FONT};">
@@ -59,7 +59,7 @@ function shell({ preheader, eyebrow, accent, title, contentHtml }) {
 }
 
 function para(html) {
-  return `<p style="margin:0 0 14px;font-size:15px;line-height:1.8;color:${INK};">${html}</p>`;
+  return `<p style="margin:0 0 16px;font-size:17px;line-height:1.85;color:${INK};">${html}</p>`;
 }
 
 // Per-notification-kind presentation.
@@ -83,21 +83,21 @@ function detailsBlock(details) {
   if (details.sender) rows.push(["Sent by", escapeHtml(details.sender)]);
   if (details.deadline) rows.push(["Deadline", `${escapeHtml(details.deadline)} <span style="color:${MUTED};">(end of day, Riyadh)</span>`]);
   const factsHtml = rows.length
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-family:${FONT};font-size:14px;">${rows
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-family:${FONT};font-size:15px;">${rows
         .map(
           ([k, v]) =>
-            `<tr><td style="padding:4px 0;color:${MUTED};width:110px;vertical-align:top;">${k}</td><td style="padding:4px 0;color:${INK};font-weight:600;">${v}</td></tr>`,
+            `<tr><td style="padding:4px 0;color:${MUTED};width:120px;vertical-align:top;">${k}</td><td style="padding:4px 0;color:${INK};font-weight:600;">${v}</td></tr>`,
         )
         .join("")}</table>`
     : "";
   const files = Array.isArray(details.files) ? details.files : [];
   const filesHtml = files.length
     ? `<div style="margin-top:${rows.length ? "10px" : "0"};padding-top:${rows.length ? "10px" : "0"};${rows.length ? `border-top:1px solid ${LINE};` : ""}">
-         <div style="font-size:13px;font-weight:700;color:${NAVY};margin-bottom:6px;">Attachments (${files.length})</div>
+         <div style="font-size:15px;font-weight:700;color:${NAVY};margin-bottom:6px;">Attachments (${files.length})</div>
          ${files
            .map(
              (f) =>
-               `<div style="font-size:13px;color:${INK};padding:3px 0;">📎 ${escapeHtml(f.name)}${
+               `<div style="font-size:15px;color:${INK};padding:4px 0;">📎 ${escapeHtml(f.name)}${
                  f.by ? ` <span style="color:${MUTED};">— sent by ${escapeHtml(f.by)}</span>` : ""
                }</div>`,
            )
