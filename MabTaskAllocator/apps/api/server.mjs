@@ -12,6 +12,15 @@ import { buildOperationalIntelligence } from "./intelligence.mjs";
 import { sendEmail, isMailConfigured } from "./email.mjs";
 import { notificationEmail, deviceCodeEmail } from "./email-templates.mjs";
 
+// Load apps/api/.env into process.env (Node strips surrounding quotes). The app
+// is started as a bare `node server.mjs` with no dotenv, so without this the
+// .env file would be ignored. Existing environment variables take precedence.
+try {
+  process.loadEnvFile(fileURLToPath(new URL("./.env", import.meta.url)));
+} catch {
+  // No .env file (e.g. env injected another way) — carry on with process.env.
+}
+
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 
 const { Pool } = pg;
