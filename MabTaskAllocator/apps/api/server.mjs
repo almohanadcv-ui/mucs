@@ -29,6 +29,9 @@ const appDirectory = dirname(fileURLToPath(import.meta.url));
 const attachmentsPath = resolve(process.env.ATTACHMENTS_PATH ?? join(appDirectory, "data", "attachments"));
 // Stay signed in on a (verified) device — long idle window, overridable.
 const sessionIdleMinutes = Number(process.env.SESSION_IDLE_MINUTES) || 30 * 24 * 60;
+// New-device email verification: OFF unless DEVICE_VERIFICATION=1 (so it can
+// never block sign-in). Turn it on again once the code screen is confirmed.
+const deviceVerificationEnabled = process.env.DEVICE_VERIFICATION === "1";
 const maxFileSize = 10 * 1024 * 1024;
 const maxFilesPerUpload = 5;
 const isProduction = process.env.NODE_ENV === "production";
@@ -1510,7 +1513,9 @@ const server = createServer(async (request, response) => {
       // New-device verification: only when email is configured to deliver the
       // code (otherwise fall through to a normal sign-in so local/dev still works).
       const deviceId = String(body.deviceId ?? "").trim().slice(0, 128);
-      if (isMailConfigured() && deviceId) {
+      // New-device email verification is opt-in (set DEVICE_VERIFICATION=1). Off by
+      // default so a login always issues a token — no code step can block sign-in.
+      if (deviceVerificationEnabled && isMailConfigured() && deviceId) {
         const trusted = await db.prepare("SELECT 1 FROM trusted_devices WHERE user_id = ? AND device_id = ?").get(row.id, deviceId);
         if (!trusted) {
           const code = String(100000 + (randomBytes(3).readUIntBE(0, 3) % 900000));
@@ -1572,7 +1577,14 @@ const server = createServer(async (request, response) => {
       const token = randomBytes(32).toString("hex");
       await db.prepare("INSERT INTO sessions (token, user_id, last_active_at) VALUES (?, ?, CURRENT_TIMESTAMP)")
         .run(token, actor.id);
-      await db.prepare("DELETE FROM sessions WHERE last_active_at < (timezone('UTC', now() - make_interval(mins => ?))::text)").run(sessionIdleMinutes);
+      // Best-effort housekeeping — must never fail the fork (which would block a
+      // page reload). Expired sessions are also pruned on access.
+      try {
+        const cutoff = new Date(Date.now() - sessionIdleMinutes * 60_000).toISOString().replace("T", " ").replace("Z", "");
+        await db.prepare("DELETE FROM sessions WHERE last_active_at < ?").run(cutoff);
+      } catch (error) {
+        console.error("[sessions] cleanup skipped:", error?.message ?? error);
+      }
       return send(response, 201, { token });
     }
 
