@@ -11,14 +11,14 @@ SELECT 'department-' || gen_random_uuid(), 'Technical Department',
        (SELECT id FROM users WHERE role = 'superadmin' ORDER BY name LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM departments WHERE lower(name) = lower('Technical Department'));
 
--- 2) Remove the mistaken plural duplicate.
-DELETE FROM departments WHERE lower(name) = lower('Technical Departments');
+-- 2) Remove the leftovers: the plural duplicate and the old mis-named discipline
+--    (the app already seeds the correctly-named disciplines on boot).
+DELETE FROM departments WHERE lower(name) IN (
+  lower('Technical Departments'),
+  lower('Electrical Office Engineer')
+);
 
--- 3) Rename the mis-named discipline to the EXACT name the code recognizes.
-UPDATE departments SET name = 'Electrical Technical office engineer'
- WHERE lower(name) = lower('Electrical Office Engineer');
-
--- 4) Ensure both disciplines exist.
+-- 3) Ensure both disciplines exist (no-op if already seeded).
 INSERT INTO departments (id, name, created_by_id)
 SELECT 'department-' || gen_random_uuid(), 'Electrical Technical office engineer',
        (SELECT id FROM users WHERE role = 'superadmin' ORDER BY name LIMIT 1)
