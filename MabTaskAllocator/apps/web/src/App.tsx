@@ -1026,10 +1026,13 @@ export function App() {
       setChatMessages(safeChatMessages);
       setLoginError("");
     } catch (error) {
-      if (!silent) setLoginError(error instanceof Error ? error.message : "Could not connect to the server.");
-      if (!hasSession()) {
-        setCurrentUser(null);
-        setLoginError(`Your session expired after ${inactivityLabel} of inactivity. Please log in again.`);
+      // Never force a logout on a transient refresh failure. Only fall back to the
+      // login screen when there is genuinely no session AND the user isn't already
+      // signed in (i.e. the very first load with an invalid token).
+      if (!silent && !currentUser && !hasSession()) {
+        setLoginError("Please log in.");
+      } else if (!silent) {
+        setLoginError(error instanceof Error ? error.message : "Could not refresh — retrying shortly.");
       }
     } finally {
       if (!silent) setAppLoading(false);
@@ -1038,16 +1041,14 @@ export function App() {
 
   useEffect(() => {
     if (!hasSession()) return;
-    const restoreIndependentTabSession = async () => {
+    const restoreSession = async () => {
       try {
-        await api.forkSession();
         await refreshData();
-      } catch (error) {
-        setLoginError(error instanceof Error ? error.message : "Please log in again.");
+      } catch {
         setAppLoading(false);
       }
     };
-    void restoreIndependentTabSession();
+    void restoreSession();
   }, []);
 
   useEffect(() => {
@@ -1104,43 +1105,16 @@ export function App() {
     };
   }, [currentUser?.id, userSettings.autoRefresh, userSettings.backgroundNotifications]);
 
+  // No client-side auto-logout: once signed in, the user stays signed in. We only
+  // keep the server session warm with a periodic touch.
   useEffect(() => {
     if (!currentUser) return;
-    let idleTimer = 0;
-    let lastServerTouch = getLastActivity();
-    let lastRecordedActivity = lastServerTouch;
-
-    const expire = () => void handleSessionExpired();
-    const scheduleExpiry = () => {
-      window.clearTimeout(idleTimer);
-      const remaining = inactivityLimitMs - (Date.now() - getLastActivity());
-      if (remaining <= 0) expire();
-      else idleTimer = window.setTimeout(expire, remaining);
-    };
-    const recordActivity = () => {
-      const previousActivity = getLastActivity();
-      if (previousActivity && Date.now() - previousActivity >= inactivityLimitMs) {
-        expire();
-        return;
-      }
-      if (Date.now() - lastRecordedActivity < 15_000) return;
-      const now = markActivity();
-      lastRecordedActivity = now;
-      if (now - lastServerTouch >= 60_000) {
-        lastServerTouch = now;
-        void api.touchSession().catch(() => undefined);
-      }
-      scheduleExpiry();
-    };
-    const events: (keyof WindowEventMap)[] = ["mousedown", "mousemove", "keydown", "scroll", "touchstart"];
-    events.forEach((eventName) => window.addEventListener(eventName, recordActivity, { passive: true }));
-    if (!getLastActivity()) markActivity();
-    scheduleExpiry();
-
-    return () => {
-      window.clearTimeout(idleTimer);
-      events.forEach((eventName) => window.removeEventListener(eventName, recordActivity));
-    };
+    markActivity();
+    const interval = window.setInterval(() => {
+      markActivity();
+      void api.touchSession().catch(() => undefined);
+    }, 5 * 60 * 1000);
+    return () => window.clearInterval(interval);
   }, [currentUser?.id]);
 
   useEffect(() => {
@@ -1705,6 +1679,9 @@ export function App() {
       if (result.status === "verify") {
         return true; // a new device — the login page will ask for the emailed code
       }
+      // Sign in immediately from the login response; loading the rest of the
+      // workspace must never bounce the user back out.
+      setCurrentUser(result.user);
       setAppLoading(true);
       await refreshData();
       return false;
