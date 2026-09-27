@@ -75,20 +75,63 @@ const KIND_META = {
   claim: { eyebrow: "Allocation", accent: "#0d9488", cta: "Open task" },
 };
 
+// A compact facts + attachments block (deadline, who sent it, files).
+function detailsBlock(details) {
+  if (!details) return "";
+  const rows = [];
+  if (details.taskCode) rows.push(["Task", escapeHtml(details.taskCode)]);
+  if (details.sender) rows.push(["Sent by", escapeHtml(details.sender)]);
+  if (details.deadline) rows.push(["Deadline", `${escapeHtml(details.deadline)} <span style="color:${MUTED};">(end of day, Riyadh)</span>`]);
+  const factsHtml = rows.length
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;font-family:${FONT};font-size:14px;">${rows
+        .map(
+          ([k, v]) =>
+            `<tr><td style="padding:4px 0;color:${MUTED};width:110px;vertical-align:top;">${k}</td><td style="padding:4px 0;color:${INK};font-weight:600;">${v}</td></tr>`,
+        )
+        .join("")}</table>`
+    : "";
+  const files = Array.isArray(details.files) ? details.files : [];
+  const filesHtml = files.length
+    ? `<div style="margin-top:${rows.length ? "10px" : "0"};padding-top:${rows.length ? "10px" : "0"};${rows.length ? `border-top:1px solid ${LINE};` : ""}">
+         <div style="font-size:13px;font-weight:700;color:${NAVY};margin-bottom:6px;">Attachments (${files.length})</div>
+         ${files
+           .map(
+             (f) =>
+               `<div style="font-size:13px;color:${INK};padding:3px 0;">📎 ${escapeHtml(f.name)}${
+                 f.by ? ` <span style="color:${MUTED};">— sent by ${escapeHtml(f.by)}</span>` : ""
+               }</div>`,
+           )
+           .join("")}
+       </div>`
+    : "";
+  if (!factsHtml && !filesHtml) return "";
+  return `<div style="margin:4px 0 16px;padding:14px 16px;background:#f7f9fb;border:1px solid ${LINE};border-radius:12px;">${factsHtml}${filesHtml}</div>`;
+}
+
 /** Build an email for an in-app notification. Returns { subject, html, text }. */
-export function notificationEmail({ kind, name, title, body, link }) {
+export function notificationEmail({ kind, name, title, body, link, details }) {
   const meta = KIND_META[kind] ?? { eyebrow: "Notification", accent: NAVY, cta: "Open in app" };
   const contentHtml =
     para(`Hi ${escapeHtml(name || "there")},`) +
     para(renderBody(body)) +
+    detailsBlock(details) +
     button(link, meta.cta, meta.accent) +
     (link
       ? para(`<span style="color:${MUTED};font-size:12px;">If the button doesn't work, open: <a href="${link}" style="color:${meta.accent};word-break:break-all;">${escapeHtml(link)}</a></span>`)
       : "");
+  const textFacts = details
+    ? [
+        details.sender ? `Sent by: ${details.sender}` : "",
+        details.deadline ? `Deadline: ${details.deadline} (end of day, Riyadh)` : "",
+        Array.isArray(details.files) && details.files.length
+          ? `Attachments: ${details.files.map((f) => f.name).join(", ")}`
+          : "",
+      ].filter(Boolean).join("\n")
+    : "";
   return {
     subject: title,
     html: shell({ preheader: body, eyebrow: meta.eyebrow, accent: meta.accent, title, contentHtml }),
-    text: `${title}\n\n${body}${link ? `\n\n${meta.cta}: ${link}` : ""}`,
+    text: `${title}\n\n${body}${textFacts ? `\n\n${textFacts}` : ""}${link ? `\n\n${meta.cta}: ${link}` : ""}`,
   };
 }
 

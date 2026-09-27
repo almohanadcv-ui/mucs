@@ -690,7 +690,26 @@ async function sendNotificationEmail(userId, kind, title, body, taskId) {
   const user = await db.prepare("SELECT name, username FROM users WHERE id = ?").get(userId);
   // The username IS the email address in this app.
   if (!user?.username || !user.username.includes("@")) return;
-  const mail = notificationEmail({ kind, name: user.name, title, body, link: appLink(taskId) });
+
+  // Enrich task emails with the deadline, who created/sent it, and the attached
+  // documents (name + who sent each).
+  let details;
+  if (taskId) {
+    const task = await db.prepare(
+      "SELECT tasks.task_code, tasks.due_date, COALESCE(creator.name, 'System') AS created_by FROM tasks LEFT JOIN users creator ON creator.id = tasks.created_by_id WHERE tasks.id = ?",
+    ).get(taskId);
+    if (task) {
+      const files = await db.prepare("SELECT name, uploaded_by FROM task_files WHERE task_id = ? ORDER BY uploaded_at").all(taskId);
+      details = {
+        taskCode: task.task_code || undefined,
+        deadline: task.due_date || undefined,
+        sender: task.created_by || undefined,
+        files: files.map((f) => ({ name: f.name, by: f.uploaded_by })),
+      };
+    }
+  }
+
+  const mail = notificationEmail({ kind, name: user.name, title, body, link: appLink(taskId), details });
   await sendEmail({ to: user.username, subject: mail.subject, html: mail.html, text: mail.text });
 }
 
