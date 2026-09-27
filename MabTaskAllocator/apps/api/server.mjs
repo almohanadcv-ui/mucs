@@ -1457,6 +1457,58 @@ const server = createServer(async (request, response) => {
         return send(response, 401, { message: "Username or password is incorrect." });
       }
       loginAttempts.delete(attemptKey);
+
+      // New-device verification: only when email is configured to deliver the
+      // code (otherwise fall through to a normal sign-in so local/dev still works).
+      const deviceId = String(body.deviceId ?? "").trim().slice(0, 128);
+      if (isMailConfigured() && deviceId) {
+        const trusted = await db.prepare("SELECT 1 FROM trusted_devices WHERE user_id = ? AND device_id = ?").get(row.id, deviceId);
+        if (!trusted) {
+          const code = String(100000 + (randomBytes(3).readUIntBE(0, 3) % 900000));
+          const expires = new Date(Date.now() + 10 * 60_000).toISOString();
+          await db.prepare("INSERT INTO login_codes (id, user_id, device_id, code_hash, expires_at) VALUES (?, ?, ?, ?, ?)")
+            .run(randomUUID(), row.id, deviceId, hashPassword(code), expires);
+          try {
+            const mail = deviceCodeEmail({ name: row.name, code });
+            await sendEmail({ to: row.username, subject: mail.subject, html: mail.html, text: mail.text });
+          } catch (error) {
+            console.error("[email] device code send failed:", error?.message ?? error);
+            return send(response, 502, { message: "Could not send the verification code. Please try again shortly." });
+          }
+          return send(response, 200, { requiresVerification: true });
+        }
+        await db.prepare("UPDATE trusted_devices SET last_seen_at = (timezone('UTC', now())::text) WHERE user_id = ? AND device_id = ?").run(row.id, deviceId);
+      }
+
+      const token = randomBytes(32).toString("hex");
+      await db.prepare("INSERT INTO sessions (token, user_id, last_active_at) VALUES (?, ?, CURRENT_TIMESTAMP)").run(token, row.id);
+      await recordAttendance(row.id, true);
+      return send(response, 200, { token, user: publicUser(row) });
+    }
+
+    if (request.method === "POST" && path === "/api/auth/verify-device") {
+      const username = String(body.username ?? "").trim().toLocaleLowerCase();
+      const deviceId = String(body.deviceId ?? "").trim().slice(0, 128);
+      const code = String(body.code ?? "").trim();
+      const address = String(request.headers["x-forwarded-for"] ?? request.socket.remoteAddress ?? "unknown").split(",")[0].trim();
+      const attemptKey = `verify:${address}:${username}`;
+      const attempt = loginAttempts.get(attemptKey);
+      if (attempt?.blockedUntil > Date.now()) {
+        response.setHeader("Retry-After", Math.ceil((attempt.blockedUntil - Date.now()) / 1000));
+        return send(response, 429, { message: "Too many attempts. Try again later." });
+      }
+      const row = await db.prepare("SELECT * FROM users WHERE lower(username) = lower(?)").get(username);
+      if (!row || !deviceId || !code) return send(response, 400, { message: "Invalid verification request." });
+      const record = await db.prepare("SELECT * FROM login_codes WHERE user_id = ? AND device_id = ? AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1").get(row.id, deviceId);
+      const nowIso = new Date().toISOString();
+      if (!record || record.expires_at < nowIso || !passwordMatches(code, record.code_hash)) {
+        const failures = (attempt?.failures ?? 0) + 1;
+        loginAttempts.set(attemptKey, { failures, blockedUntil: failures >= 5 ? Date.now() + 15 * 60_000 : 0 });
+        return send(response, 401, { message: "The verification code is invalid or has expired." });
+      }
+      loginAttempts.delete(attemptKey);
+      await db.prepare("UPDATE login_codes SET consumed_at = (timezone('UTC', now())::text) WHERE id = ?").run(record.id);
+      await db.prepare("INSERT INTO trusted_devices (user_id, device_id) VALUES (?, ?) ON CONFLICT (user_id, device_id) DO UPDATE SET last_seen_at = (timezone('UTC', now())::text)").run(row.id, deviceId);
       const token = randomBytes(32).toString("hex");
       await db.prepare("INSERT INTO sessions (token, user_id, last_active_at) VALUES (?, ?, CURRENT_TIMESTAMP)").run(token, row.id);
       await recordAttendance(row.id, true);

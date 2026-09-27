@@ -324,11 +324,37 @@ async function download(path: string, fallbackName: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// A stable per-browser id so a verified device isn't challenged again.
+function deviceId(): string {
+  const key = "mab-task-allocator.device-id";
+  try {
+    let id = window.localStorage.getItem(key);
+    if (!id) {
+      id = (window.crypto?.randomUUID?.() ?? `dev-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      window.localStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return "web";
+  }
+}
+
+export type LoginResult = { status: "ok"; user: AppUser } | { status: "verify" };
+
 export const api = {
-  async login(username: string, password: string) {
-    const result = await request<{ token: string; user: AppUser }>("/api/auth/login", {
+  async login(username: string, password: string): Promise<LoginResult> {
+    const result = await request<{ token?: string; user?: AppUser; requiresVerification?: boolean }>("/api/auth/login", {
       method: "POST",
-      body: JSON.stringify({ username, password })
+      body: JSON.stringify({ username, password, deviceId: deviceId() })
+    });
+    if (result.requiresVerification) return { status: "verify" };
+    setSession(result.token!);
+    return { status: "ok", user: result.user! };
+  },
+  async verifyDevice(username: string, code: string): Promise<AppUser> {
+    const result = await request<{ token: string; user: AppUser }>("/api/auth/verify-device", {
+      method: "POST",
+      body: JSON.stringify({ username, code, deviceId: deviceId() })
     });
     setSession(result.token);
     return result.user;

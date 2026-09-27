@@ -30,6 +30,28 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_active_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
 );
 
+-- Devices a user has verified: once a browser passes the emailed code it is
+-- trusted and won't be challenged again; a different device is challenged anew.
+CREATE TABLE IF NOT EXISTS trusted_devices (
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_id text NOT NULL,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  last_seen_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  PRIMARY KEY (user_id, device_id)
+);
+
+-- Pending one-time verification codes for new-device sign-ins.
+CREATE TABLE IF NOT EXISTS login_codes (
+  id text PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  device_id text NOT NULL,
+  code_hash text NOT NULL,
+  expires_at text NOT NULL,
+  consumed_at text,
+  created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
+);
+CREATE INDEX IF NOT EXISTS idx_login_codes_user_device ON login_codes (user_id, device_id);
+
 CREATE TABLE IF NOT EXISTS attendance_records (
   user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   work_date text NOT NULL,

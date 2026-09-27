@@ -465,18 +465,30 @@ interface LoginPageProps {
   darkMode: boolean;
   error: string;
   language: SiteLanguage;
-  onLogin: (username: string, password: string) => void;
+  onLogin: (username: string, password: string) => Promise<boolean>;
+  onVerify: (username: string, code: string) => void;
   onToggleLanguage: () => void;
   onToggleTheme: () => void;
 }
 
-function LoginPage({ darkMode, error, language, onLogin, onToggleLanguage, onToggleTheme }: LoginPageProps) {
+function LoginPage({ darkMode, error, language, onLogin, onVerify, onToggleLanguage, onToggleTheme }: LoginPageProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [stage, setStage] = useState<"credentials" | "verify">("credentials");
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onLogin(username, password);
+    setSubmitting(true);
+    const needsVerification = await onLogin(username, password);
+    setSubmitting(false);
+    if (needsVerification) setStage("verify");
+  }
+
+  function handleVerifySubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    onVerify(username, code.trim());
   }
 
   return (
@@ -513,49 +525,94 @@ function LoginPage({ darkMode, error, language, onLogin, onToggleLanguage, onTog
           </div>
         </div>
 
-        <form className="login-card" onSubmit={handleSubmit}>
-          <div className="login-card-header">
-            <img src={mabLogo} alt="MAB logo" />
-            <div>
-              <p>Secure access</p>
-              <h2>Welcome back</h2>
+        {stage === "credentials" ? (
+          <form className="login-card" onSubmit={handleSubmit}>
+            <div className="login-card-header">
+              <img src={mabLogo} alt="MAB logo" />
+              <div>
+                <p>Secure access</p>
+                <h2>Welcome back</h2>
+              </div>
             </div>
-          </div>
 
-          <label>
-            Username
-            <span>
-              <KeyRound aria-hidden="true" size={18} />
-              <input
-                autoComplete="username"
-                onChange={(event) => setUsername(event.target.value)}
-                type="email"
-                value={username}
-              />
-            </span>
-          </label>
+            <label>
+              Username
+              <span>
+                <KeyRound aria-hidden="true" size={18} />
+                <input
+                  autoComplete="username"
+                  onChange={(event) => setUsername(event.target.value)}
+                  type="email"
+                  value={username}
+                />
+              </span>
+            </label>
 
-          <label>
-            Password
-            <span>
-              <Lock aria-hidden="true" size={18} />
-              <input
-                autoComplete="current-password"
-                onChange={(event) => setPassword(event.target.value)}
-                type="password"
-                value={password}
-              />
-            </span>
-          </label>
+            <label>
+              Password
+              <span>
+                <Lock aria-hidden="true" size={18} />
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) => setPassword(event.target.value)}
+                  type="password"
+                  value={password}
+                />
+              </span>
+            </label>
 
-          {error ? <p className="form-error">{error}</p> : null}
+            {error ? <p className="form-error">{error}</p> : null}
 
-          <button type="submit" className="login-button">
-            <ShieldCheck aria-hidden="true" size={19} />
-            Login to Dashboard
-          </button>
+            <button type="submit" className="login-button" disabled={submitting}>
+              <ShieldCheck aria-hidden="true" size={19} />
+              {submitting ? "Signing in…" : "Login to Dashboard"}
+            </button>
+          </form>
+        ) : (
+          <form className="login-card" onSubmit={handleVerifySubmit}>
+            <div className="login-card-header">
+              <img src={mabLogo} alt="MAB logo" />
+              <div>
+                <p>New device</p>
+                <h2>Verify it's you</h2>
+              </div>
+            </div>
 
-        </form>
+            <p className="hero-copy" style={{ margin: "0 0 4px" }}>
+              We emailed a 6-digit verification code to <strong>{username}</strong>. Enter it to trust this device.
+            </p>
+
+            <label>
+              Verification code
+              <span>
+                <ShieldCheck aria-hidden="true" size={18} />
+                <input
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+                  placeholder="123456"
+                  value={code}
+                />
+              </span>
+            </label>
+
+            {error ? <p className="form-error">{error}</p> : null}
+
+            <button type="submit" className="login-button" disabled={code.length !== 6}>
+              <ShieldCheck aria-hidden="true" size={19} />
+              Verify & continue
+            </button>
+            <button
+              type="button"
+              className="ghost-button"
+              style={{ marginTop: 8 }}
+              onClick={() => { setStage("credentials"); setCode(""); }}
+            >
+              Back to login
+            </button>
+          </form>
+        )}
       </section>
     </main>
   );
@@ -1622,13 +1679,32 @@ export function App() {
     }
   }
 
-  async function handleLogin(username: string, password: string) {
+  async function handleLogin(username: string, password: string): Promise<boolean> {
     try {
+      setLoginError("");
       setAppLoading(true);
-      await api.login(username, password);
+      const result = await api.login(username, password);
+      if (result.status === "verify") {
+        setAppLoading(false);
+        return true; // a new device — the login page will ask for the emailed code
+      }
       await refreshData();
+      return false;
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "Login failed.");
+      setAppLoading(false);
+      return false;
+    }
+  }
+
+  async function handleVerifyDevice(username: string, code: string) {
+    try {
+      setLoginError("");
+      setAppLoading(true);
+      await api.verifyDevice(username, code);
+      await refreshData();
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : "Verification failed.");
       setAppLoading(false);
     }
   }
@@ -3014,6 +3090,7 @@ export function App() {
         error={loginError}
         language={language}
         onLogin={handleLogin}
+        onVerify={handleVerifyDevice}
         onToggleLanguage={toggleLanguage}
         onToggleTheme={toggleTheme}
       />
