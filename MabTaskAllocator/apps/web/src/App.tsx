@@ -56,6 +56,12 @@ import type { SiteLanguage } from "./i18n";
 
 const mabLogo = "/mab-logo.jpeg";
 
+// The single owner account — highest authority; may manage anyone and can never
+// be edited or deleted by anyone else. Mirrors OWNER_USERNAME on the server.
+const OWNER_USERNAME = "j.chehade@mabunited.com";
+const isOwnerUser = (user?: { username?: string } | null) =>
+  !!user && (user.username ?? "").trim().toLowerCase() === OWNER_USERNAME;
+
 const defaultDepartments: DepartmentName[] = [
   "Mechanical Technical office engineer",
   "Electrical Technical office engineer",
@@ -895,6 +901,7 @@ export function App() {
 
   const canManagePeople = Boolean(currentUser && ["superadmin", "admin", "technical_manager"].includes(currentUser.role));
   const canCreatePeople = canManagePeople || currentUser?.role === "team_leader";
+  const currentIsOwner = isOwnerUser(currentUser);
   const canChooseDepartment = currentUser?.role === "superadmin" || currentUser?.role === "technical_manager";
   function inDepartmentScope(department: string) {
     if (!currentUser) return false;
@@ -1867,7 +1874,8 @@ export function App() {
 
   function deleteUser(userId: string) {
     const user = users.find((person) => person.id === userId);
-    if (!user || user.id === currentUser?.id || user.role === "superadmin") return;
+    if (!user || user.id === currentUser?.id || isOwnerUser(user)) return;
+    if (user.role === "superadmin" && !isOwnerUser(currentUser)) return;
     requestConfirmation(`Are you sure you want to delete ${user.name}? This cannot be undone.`, async () => {
       try {
         await api.deleteUser(userId);
@@ -3961,10 +3969,15 @@ export function App() {
             <div className="member-list">
               {visibleUsers.map((user) => {
                 const isEditing = editingUserId === user.id && editDraft;
-                const canEditRow =
-                  currentUser.role === "superadmin" ||
-                  (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department));
-                const canDeleteRow = canEditRow && user.id !== currentUser.id && user.role !== "superadmin";
+                const canEditRow = isOwnerUser(user)
+                  ? currentIsOwner // only the owner may edit the owner
+                  : currentIsOwner || // the owner may edit anyone
+                    currentUser.role === "superadmin" ||
+                    (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department));
+                const canDeleteRow = isOwnerUser(user)
+                  ? false // the owner can never be deleted
+                  : user.id !== currentUser.id &&
+                    (currentIsOwner || (canEditRow && user.role !== "superadmin"));
 
                 return (
                   <article className="member-row managed-user-row" key={user.id}>

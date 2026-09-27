@@ -1406,6 +1406,13 @@ function requireManager(user) {
   }
 }
 
+// The single owner account: highest authority — may manage anyone (Super Admins
+// included) and can never be edited or deleted by anyone else.
+const OWNER_USERNAME = String(process.env.OWNER_USERNAME || "j.chehade@mabunited.com").trim().toLocaleLowerCase();
+function isOwner(user) {
+  return !!user && String(user.username || "").trim().toLocaleLowerCase() === OWNER_USERNAME;
+}
+
 function validateUserScope(actor, target) {
   if (!["superadmin", "admin", "technical_manager", "team_leader"].includes(actor.role)) throw Object.assign(new Error("People management permission required."), { status: 403 });
   if (!["superadmin", "admin", "technical_manager", "team_leader", "user"].includes(target.role)) {
@@ -1822,7 +1829,10 @@ const server = createServer(async (request, response) => {
         await db.exec("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
         const existing = await db.prepare("SELECT * FROM users WHERE id = ?").get(userMatch[1]);
         if (!existing) throw Object.assign(new Error("User not found."), { status: 404 });
-        validateUserScope(actor, existing);
+        // Only the owner may modify the owner account.
+        if (isOwner(existing) && !isOwner(actor)) throw Object.assign(new Error("Only the owner can modify the owner account."), { status: 403 });
+        // The owner has full authority; other actors keep the normal scope checks.
+        if (!isOwner(actor)) validateUserScope(actor, existing);
         const target = {
           ...existing,
           name: String(body.name ?? existing.name).trim(),
@@ -1830,7 +1840,7 @@ const server = createServer(async (request, response) => {
           role: body.role ?? existing.role,
           department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department
         };
-        validateUserScope(actor, target);
+        if (!isOwner(actor)) validateUserScope(actor, target);
         if (existing.role === "superadmin" && target.role !== "superadmin") {
           const otherAdmin = await db.prepare("SELECT id FROM users WHERE role = 'superadmin' AND id != ? LIMIT 1").get(existing.id);
           if (!otherAdmin) throw Object.assign(new Error("The last Super Admin cannot be demoted. Create another Super Admin first."), { status: 409 });
@@ -1853,8 +1863,14 @@ const server = createServer(async (request, response) => {
       requireManager(actor);
       const target = await db.prepare("SELECT * FROM users WHERE id = ?").get(userMatch[1]);
       if (!target) return send(response, 404, { message: "User not found." });
-      validateUserScope(actor, target);
-      if (target.id === actor.id || target.role === "superadmin") return send(response, 403, { message: "This user cannot be deleted." });
+      // The owner may delete anyone (Super Admins included) but never themselves;
+      // no one may delete the owner. Non-owners still can't delete a Super Admin.
+      if (isOwner(target)) return send(response, 403, { message: "The owner account cannot be deleted." });
+      if (target.id === actor.id) return send(response, 403, { message: "You cannot delete your own account." });
+      if (!isOwner(actor)) {
+        validateUserScope(actor, target);
+        if (target.role === "superadmin") return send(response, 403, { message: "Only the owner can delete a Super Admin." });
+      }
       await audit(actor, "deleted", "user", target.id, target.department, `Deleted ${target.name} (${target.username})`);
       await db.prepare("DELETE FROM users WHERE id = ?").run(target.id);
       await db.exec(`
