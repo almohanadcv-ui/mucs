@@ -4,10 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "vite --host 0.0.0.0 --configLoader native",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "node --test taskCounts.test.mjs peopleVisibility.test.mjs leaderMetrics.test.mjs i18n.test.mjs"
   },
   "dependencies": {
     "@mab/shared": "file:../../packages/shared",

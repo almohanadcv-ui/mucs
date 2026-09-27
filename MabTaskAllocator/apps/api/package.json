@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch server.mjs",
     "start": "node server.mjs",
-    "test": "node --test intelligence.test.mjs"
+    "test": "node --test intelligence.test.mjs reminders.test.mjs",
+    "test:integration": "node --test team-leader.test.mjs"
   },
   "engines": {
     "node": ">=22.5"

@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS users (
   name text NOT NULL,
   username text NOT NULL,
   password_hash text NOT NULL,
-  role text NOT NULL CHECK (role IN ('superadmin', 'admin', 'user')),
+  role text NOT NULL CHECK (role IN ('superadmin', 'admin', 'technical_manager', 'team_leader', 'user')),
   department text NOT NULL,
   created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
 );
@@ -15,7 +15,11 @@ CREATE TABLE IF NOT EXISTS departments (
   created_at text NOT NULL DEFAULT (timezone('UTC', now())::text)
 );
 
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('superadmin', 'admin', 'technical_manager', 'team_leader', 'user'));
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_name_ci ON departments (lower(name));
+ALTER TABLE departments ADD COLUMN IF NOT EXISTS parent_id text REFERENCES departments(id) ON DELETE RESTRICT;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username_ci ON users (lower(username));
 
@@ -91,6 +95,10 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS complexity integer NOT NULL DEFAULT 3
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS started_at text;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_requested_by_id text REFERENCES users(id) ON DELETE SET NULL;
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS claim_requested_at text;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS allocation_request jsonb;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS action_request jsonb;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS leader_approved_by_id text REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS leader_approved_at text;
 DO $$ BEGIN
   ALTER TABLE tasks ADD CONSTRAINT tasks_complexity_check CHECK (complexity BETWEEN 1 AND 5);
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -299,10 +307,15 @@ CREATE INDEX IF NOT EXISTS idx_chat_message_hidden_user ON chat_message_hidden(u
 INSERT INTO departments (id, name)
 VALUES
   ('department-executive', 'Executive'),
+  ('department-technical', 'Technical Department'),
   ('department-mechanical', 'Mechanical Technical office engineer'),
   ('department-electrical', 'Electrical Technical office engineer'),
   ('department-document-control', 'Document Controller')
 ON CONFLICT DO NOTHING;
+
+UPDATE departments SET parent_id = (SELECT id FROM departments WHERE lower(name) = 'technical department')
+WHERE lower(name) IN ('electrical technical office engineer', 'mechanical technical office engineer');
+UPDATE users SET department = 'Technical Department' WHERE role = 'technical_manager';
 
 INSERT INTO departments (id, name)
 SELECT 'department-' || md5(department), department
@@ -314,3 +327,31 @@ FROM (
 ) existing_departments
 WHERE department IS NOT NULL AND department != ''
 ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS project_leaders (
+  project_id text NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assigned_by_id text REFERENCES users(id) ON DELETE SET NULL,
+  assigned_at text NOT NULL DEFAULT (timezone('UTC', now())::text),
+  PRIMARY KEY (project_id, user_id)
+);
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS checklist jsonb NOT NULL DEFAULT '[]'::jsonb;
+CREATE OR REPLACE FUNCTION calculate_task_progress() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE total_steps integer; finished_steps integer;
+BEGIN
+  total_steps := jsonb_array_length(NEW.checklist);
+  SELECT count(*) INTO finished_steps FROM jsonb_array_elements(NEW.checklist) item WHERE item->>'completed' = 'true';
+  NEW.progress := CASE WHEN NEW.status IN ('done', 'under_review') THEN 100
+    WHEN total_steps > 0 THEN round(100.0 * finished_steps / total_steps)::integer ELSE 0 END;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS tasks_calculate_progress ON tasks;
+CREATE TRIGGER tasks_calculate_progress BEFORE INSERT OR UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION calculate_task_progress();
+UPDATE tasks SET progress = progress;
+
+ALTER TABLE task_files ADD COLUMN IF NOT EXISTS category text NOT NULL DEFAULT 'legacy' CHECK (category IN ('task', 'completion', 'legacy'));
+
+ALTER TABLE task_files DROP CONSTRAINT IF EXISTS task_files_category_check;
+ALTER TABLE task_files ADD CONSTRAINT task_files_category_check CHECK (category IN ('task', 'reference', 'completion', 'legacy'));

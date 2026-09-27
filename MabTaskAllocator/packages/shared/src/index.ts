@@ -4,7 +4,7 @@ export type TaskStatus = "new" | "assigned" | "in_progress" | "blocked" | "under
 
 export type TaskType = "Technical" | "QS" | "Shop Drawings" | "BIM" | "Variation";
 
-export type UserRole = "superadmin" | "admin" | "user";
+export type UserRole = "superadmin" | "admin" | "technical_manager" | "team_leader" | "user";
 
 export type DepartmentName = string;
 

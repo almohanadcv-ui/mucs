@@ -1,6 +1,7 @@
 import type { AppUser, DepartmentName, TaskPriority, TaskStatus, TaskType, UserRole } from "@mab/shared";
 
 export type TaskFile = {
+  category?: "task" | "reference" | "completion" | "legacy";
   id: string;
   name: string;
   uploadedBy: string;
@@ -10,6 +11,7 @@ export type TaskFile = {
 };
 
 export type TaskMessage = {
+  createdAtIso?: string;
   id: string;
   authorId: string;
   authorName: string;
@@ -34,12 +36,34 @@ export type TaskEvent = {
 };
 
 export type ManagedTask = {
+  checklist?: Array<{ id: string; title: string; completed: boolean }>;
   id: string;
   taskCode: string;
   title: string;
   department: DepartmentName;
   priority: TaskPriority;
   status: TaskStatus;
+  allocationRequest?: {
+    id: string;
+    requesterId: string;
+    requesterName: string;
+    assigneeIds: string[];
+    candidateNames: string[];
+    dueDate: string | null;
+    isNew: boolean;
+    state: "pending" | "rejected";
+  };
+  leaderApprovedById?: string;
+  leaderApprovedAt?: string;
+  actionRequest?: {
+    id: string;
+    action: "approve" | "finish" | "reopen";
+    comment: string;
+    requesterId: string;
+    requesterName: string;
+    previousStatus: TaskStatus;
+    state: "pending";
+  };
   assigneeId?: string;
   assigneeIds: string[];
   candidateName?: string;
@@ -72,6 +96,7 @@ export type ManagedTask = {
   updatedAt: string;
   files: TaskFile[];
   messages: TaskMessage[];
+  mentionableUsers?: Array<{ id: string; name: string }>;
 };
 
 export type PerformanceTask = Pick<ManagedTask, "id" | "department" | "status" | "priority" | "taskType" | "progress" | "complexity" | "startedAt" | "createdAt" | "completedAtIso" | "dueDate" | "assigneeIds" | "reopenCount">;
@@ -98,6 +123,7 @@ export type Project = {
   department: DepartmentName;
   createdAt: string;
   members: AppUser[];
+  leaders?: AppUser[];
   taskCount: number;
 };
 
@@ -162,6 +188,7 @@ export type TodoItem = {
 export type BootstrapData = {
   currentUser: AppUser;
   departments: DepartmentName[];
+  departmentHierarchy: Array<{ id: string; name: string; parentId: string | null }>;
   users: AppUser[];
   tasks: ManagedTask[];
   performanceTasks: PerformanceTask[];
@@ -170,6 +197,7 @@ export type BootstrapData = {
   auditLogs: AuditLog[];
   projects: Project[];
   notifications: AppNotification[];
+  unreadNotificationCount: number;
   todos: TodoItem[];
   chatChannels: ChatChannel[];
   chatMessages: ChatMessage[];
@@ -244,7 +272,20 @@ async function request<T>(path: string, options: RequestInit = {}) {
       ...options.headers
     }
   });
-  const data = (await response.json()) as T & { message?: string };
+  const text = await response.text();
+  let data = {} as T & { message?: string };
+
+  if (text) {
+    try {
+      data = JSON.parse(text) as T & { message?: string };
+    } catch {
+      data = {
+        message: response.ok
+          ? "The server returned an unreadable response."
+          : "The server is reachable, but it did not return a valid application response."
+      } as T & { message?: string };
+    }
+  }
 
   if (!response.ok) {
     if (response.status === 401) setSession(null);
@@ -259,7 +300,15 @@ async function download(path: string, fallbackName: string) {
     headers: token ? { Authorization: `Bearer ${token}` } : {}
   });
   if (!response.ok) {
-    const data = await response.json().catch(() => ({ message: "The download failed." }));
+    const text = await response.text().catch(() => "");
+    let data: { message?: string } = { message: "The download failed." };
+    if (text) {
+      try {
+        data = JSON.parse(text) as { message?: string };
+      } catch {
+        data = { message: "The server did not return a valid download response." };
+      }
+    }
     if (response.status === 401) setSession(null);
     throw new Error(data.message ?? "The download failed.");
   }
@@ -306,42 +355,49 @@ export const api = {
     request<{ todo: TodoItem }>("/api/todos", { method: "POST", body: JSON.stringify(todo) }),
   updateTodo: (todo: TodoItem) =>
     request<{ todo: TodoItem }>(`/api/todos/${todo.id}`, { method: "PUT", body: JSON.stringify(todo) }),
+  deleteAllTodos: () => request<{ deleted: number }>("/api/todos", { method: "DELETE" }),
   deleteTodo: (todoId: string) => request(`/api/todos/${todoId}`, { method: "DELETE" }),
   loadChat: () => request<{ chatChannels: ChatChannel[]; chatMessages: ChatMessage[] }>("/api/chat"),
-  createUser: (user: { name: string; username: string; password: string; role: UserRole; department: DepartmentName }) =>
+  createUser: (user: { name: string; username: string; password: string; role: UserRole; department: DepartmentName; projectId?: string }) =>
     request("/api/users", { method: "POST", body: JSON.stringify(user) }),
   updateUser: (user: AppUser & { password?: string }) =>
     request(`/api/users/${user.id}`, { method: "PUT", body: JSON.stringify(user) }),
   deleteUser: (userId: string) => request(`/api/users/${userId}`, { method: "DELETE" }),
   async createTask(
     task: Omit<ManagedTask, "id" | "taskCode" | "files" | "messages" | "status" | "createdAt" | "updatedAt" | "completedAtIso" | "startedAt" | "workerApprovals" | "pendingApprovalNames" | "claimRequest" | "claimRequests" | "reopenCount" | "events">,
-    files: File[] = []
+    files: File[] = [],
+    requiresApproval?: boolean
   ) {
     return request("/api/tasks", {
       method: "POST",
-      body: JSON.stringify({ ...task, files: await encodeFiles(files) })
+      body: JSON.stringify({ ...task, requiresApproval, files: await encodeFiles(files) })
     });
   },
   updateTask: (task: ManagedTask) =>
     request(`/api/tasks/${task.id}`, { method: "PUT", body: JSON.stringify(task) }),
   deleteTask: (taskId: string) => request(`/api/tasks/${taskId}`, { method: "DELETE" }),
-  taskAction: (taskId: string, action: "view" | "claim" | "claim-approve" | "claim-reject" | "submit" | "approve", body = {}) =>
+  taskAction: (taskId: string, action: "view" | "claim" | "claim-approve" | "claim-reject" | "submit" | "approve" | "finish" | "allocation-request" | "allocation-approve" | "allocation-reject" | "request-approve" | "request-reject", body = {}) =>
     request(`/api/tasks/${taskId}/${action}`, { method: "POST", body: JSON.stringify(body) }),
-  reopenTask: (taskId: string, comment: string) =>
-    request(`/api/tasks/${taskId}/reopen`, { method: "POST", body: JSON.stringify({ comment }) }),
+  reopenTask: (taskId: string, comment: string, requiresApproval?: boolean) =>
+    request(`/api/tasks/${taskId}/reopen`, { method: "POST", body: JSON.stringify({ comment, requiresApproval }) }),
   trackTaskView: (taskId: string) => request(`/api/tasks/${taskId}/view`, { method: "POST", body: "{}" }),
+  updateChecklist: (taskId: string, body: {action: string; id?: string; title?: string; completed?: boolean}) => request(`/api/tasks/${taskId}/checklist`, {method: "PUT", body: JSON.stringify(body)}),
   addMessage: (taskId: string, body: string) =>
     request(`/api/tasks/${taskId}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
   updateTaskMessage: (taskId: string, messageId: string, body: string) =>
     request<{ task: ManagedTask }>(`/api/tasks/${taskId}/messages/${messageId}`, { method: "PUT", body: JSON.stringify({ body }) }),
   deleteTaskMessage: (taskId: string, messageId: string) =>
     request<{ task: ManagedTask }>(`/api/tasks/${taskId}/messages/${messageId}`, { method: "DELETE" }),
-  async addFiles(taskId: string, files: File[]) {
+  async addFiles(taskId: string, files: File[], category: "task" | "reference" | "completion" = "completion") {
     return request(`/api/tasks/${taskId}/files`, {
       method: "POST",
-      body: JSON.stringify({ files: await encodeFiles(files) })
+      body: JSON.stringify({ files: await encodeFiles(files), category })
     });
   },
+  async updateDocument(fileId: string, name: string, category: string, file?: File) {
+    return request(`/api/files/${fileId}`, {method: "PUT", body: JSON.stringify({name, category, file: file ? await encodeFile(file) : undefined})});
+  },
+  deleteDocument: (fileId: string) => request(`/api/files/${fileId}`, {method:"DELETE"}),
   downloadFile: (file: TaskFile) => download(`/api/files/${file.id}/download`, file.name),
   downloadProductivityReport: (userId: string) =>
     download(`/api/reports/productivity/${userId}`, "productivity-report.xlsx"),
@@ -352,6 +408,9 @@ export const api = {
   updateProject: (projectId: string, project: { name: string; description: string; memberIds: string[] }) =>
     request(`/api/projects/${projectId}`, { method: "PUT", body: JSON.stringify(project) }),
   deleteProject: (projectId: string) => request(`/api/projects/${projectId}`, { method: "DELETE" }),
+  assignProjectLeaders: (projectId: string, leaderIds: string[]) => request(`/api/projects/${projectId}/leaders`, { method: "PUT", body: JSON.stringify({ leaderIds }) }),
+  addProjectMembers: (projectId: string, memberIds: string[]) =>
+    request(`/api/projects/${projectId}/members`, { method: "POST", body: JSON.stringify({ memberIds }) }),
   downloadProjectTaskTemplate: (projectId: string, projectName: string) =>
     download(`/api/projects/${projectId}/task-sheet-template`, `${projectName}-task-sheet.xlsx`),
   async importProjectTasks(projectId: string, file: File) {
@@ -398,6 +457,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message, history })
     }),
-  markNotificationsRead: () => request("/api/notifications/read", { method: "POST" }),
-  markNotificationRead: (notificationId: string) => request(`/api/notifications/${notificationId}/read`, { method: "POST", body: "{}" })
+  markNotificationsRead: () => request<{ unreadCount: number }>("/api/notifications/read", { method: "POST" }),
+  markNotificationRead: (notificationId: string) => request<{ unreadCount: number }>(`/api/notifications/${notificationId}/read`, { method: "POST", body: "{}" })
 };

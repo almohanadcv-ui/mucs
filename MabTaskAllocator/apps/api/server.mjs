@@ -1,3 +1,4 @@
+import { sendDeadlineReminders } from "./reminders.mjs";
 import { createServer } from "node:http";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
@@ -8,6 +9,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import pg from "pg";
 import ExcelJS from "exceljs";
 import { buildOperationalIntelligence } from "./intelligence.mjs";
+
+function fail(status, message) { throw Object.assign(new Error(message), { status }); }
 
 const { Pool } = pg;
 const port = Number(process.env.PORT ?? 4000);
@@ -22,7 +25,7 @@ const loginAttempts = new Map();
 const taskTypes = ["Technical", "QS", "Shop Drawings", "BIM", "Variation"];
 const connectionString =
   process.env.DATABASE_URL ??
-  "postgresql://mab_user:mab_password@localhost:5432/mab_task_allocator";
+  "postgresql://mab_user@localhost:55432/mab_task_allocator";
 
 mkdirSync(attachmentsPath, { recursive: true });
 
@@ -78,6 +81,20 @@ const db = {
     return executeQuery(translateSql(sql));
   },
   async transaction(work) {
+    const activeClient = queryContext.getStore();
+    if (activeClient) {
+      const savepoint = "nested_" + randomUUID().replaceAll("-", "");
+      await activeClient.query("SAVEPOINT " + savepoint);
+      try {
+        const result = await work();
+        await activeClient.query("RELEASE SAVEPOINT " + savepoint);
+        return result;
+      } catch (error) {
+        await activeClient.query("ROLLBACK TO SAVEPOINT " + savepoint);
+        await activeClient.query("RELEASE SAVEPOINT " + savepoint);
+        throw error;
+      }
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -235,7 +252,8 @@ async function serializeTask(row) {
     authorId: message.author_id ?? "deleted-user",
     authorName: message.author_name,
     body: message.body,
-    createdAt: formatDate(message.created_at)
+    createdAt: formatDate(message.created_at),
+    createdAtIso: isoDateTime(message.created_at)
   }));
   const assignees = await db.prepare(`
     SELECT users.id, users.name FROM task_assignees
@@ -258,11 +276,12 @@ async function serializeTask(row) {
     ORDER BY task_claim_requests.requested_at ASC
   `).all(row.id);
   const files = (await db.prepare(`
-    SELECT id, name, uploaded_by, uploaded_at, mime_type, size FROM task_files
+    SELECT id, name, uploaded_by, uploaded_at, mime_type, size, category FROM task_files
     WHERE task_id = ? ORDER BY uploaded_at ASC
   `).all(row.id)).map((file) => ({
     id: file.id,
     name: file.name,
+    category: file.category,
     uploadedBy: file.uploaded_by,
     uploadedAt: formatDate(file.uploaded_at),
     mimeType: file.mime_type ?? "application/octet-stream",
@@ -276,6 +295,10 @@ async function serializeTask(row) {
     department: row.department,
     priority: row.priority,
     status: row.status,
+    allocationRequest: row.allocation_request ?? undefined,
+    actionRequest: row.action_request ?? undefined,
+    leaderApprovedById: row.leader_approved_by_id ?? undefined,
+    leaderApprovedAt: isoDateTime(row.leader_approved_at),
     assigneeId: assignees[0]?.id ?? row.assignee_id ?? undefined,
     assigneeIds: assignees.map((assignee) => assignee.id),
     candidateName: assignees.map((assignee) => assignee.name).join(", ") || "Unassigned",
@@ -301,13 +324,15 @@ async function serializeTask(row) {
     startedAt: isoDateTime(row.started_at),
     dueDate: row.due_date ?? "",
     progress: row.progress,
+    checklist: row.checklist ?? [],
     reviewComment: row.review_comment ?? undefined,
     completedAt: formatDate(row.completed_at),
     completedAtIso: isoDateTime(row.completed_at),
     createdAt: isoDateTime(row.created_at),
     updatedAt: isoDateTime(row.updated_at),
     files,
-    messages
+    messages,
+    mentionableUsers: (await taskConversationPeople(row)).map(user => ({ id: user.id, name: user.name }))
   };
 }
 
@@ -364,8 +389,8 @@ async function serializePerformanceTasks(rows) {
 async function projectsFor(actor) {
   const rows = actor.role === "superadmin"
     ? await db.prepare("SELECT * FROM projects ORDER BY created_at DESC").all()
-    : actor.role === "admin"
-      ? await db.prepare("SELECT * FROM projects WHERE department = ? ORDER BY created_at DESC").all(actor.department)
+    : ["admin", "technical_manager", "team_leader"].includes(actor.role)
+      ? await db.prepare("SELECT * FROM projects WHERE lower(trim(department)) = ANY(?::text[]) ORDER BY created_at DESC").all([...departmentScope(actor), ...(actor.role === "technical_manager" || actor.role === "team_leader" && technicalDepartments.some(name => sameDepartment(name, actor.department)) ? ["technical department"] : [])])
       : await db.prepare(`
           SELECT projects.* FROM projects JOIN project_members ON project_members.project_id = projects.id
           WHERE project_members.user_id = ? ORDER BY projects.created_at DESC
@@ -376,7 +401,9 @@ async function projectsFor(actor) {
       FROM project_members JOIN users ON users.id = project_members.user_id
       WHERE project_members.project_id = ? ORDER BY users.name
     `).all(project.id)).map(publicUser);
-    const taskCount = (await db.prepare("SELECT count(*) AS count FROM tasks WHERE project_id = ?").get(project.id)).count;
+    const projectTasks = await db.prepare("SELECT id, department, allocation_request FROM tasks WHERE project_id = ?").all(project.id);
+    let taskCount = 0;
+    for (const task of projectTasks) if (await canView(actor, task)) taskCount++;
     return {
       id: project.id,
       name: project.name,
@@ -384,6 +411,7 @@ async function projectsFor(actor) {
       department: project.department,
       createdAt: isoDateTime(project.created_at),
       members,
+      leaders: (await db.prepare("SELECT users.* FROM project_leaders JOIN users ON users.id = project_leaders.user_id WHERE project_id = ? AND users.role = 'team_leader' ORDER BY users.name").all(project.id)).filter(user => projectIncludes(project.department, user.department)).map(publicUser),
       taskCount
     };
   }));
@@ -464,6 +492,31 @@ async function setTaskAssignees(taskId, assigneeIds) {
   await ensureTaskChatGroup(taskId);
 }
 
+function projectIncludes(projectDepartment, department) {
+  return sameDepartment(projectDepartment, department) || (sameDepartment(projectDepartment, "Technical Department") && technicalDepartments.some(name => sameDepartment(name, department)));
+}
+function canLeadProject(actor, project) {
+  return canManage(actor, project) || (actor.role === "team_leader" && projectIncludes(project.department, actor.department));
+}
+async function validProjectMembers(ids, projectDepartment, actor) {
+  const unique = [...new Set(Array.isArray(ids) ? ids.map(String) : [])];
+  const members = [];
+  for (const id of unique) {
+    const user = await db.prepare("SELECT * FROM users WHERE id = ? AND role = 'user'").get(id);
+    if (!user || !projectIncludes(projectDepartment, user.department) || (actor.role === "team_leader" && !sameDepartment(actor.department, user.department))) fail(400, "Choose engineers within the project and your department scope.");
+    members.push(user);
+  }
+  return members;
+}
+async function requireProjectDepartment(name) {
+  if (sameDepartment(name, "Technical Department")) {
+    const parent = await db.prepare("SELECT name FROM departments WHERE name = 'Technical Department'").get();
+    if (!parent) fail(400, "Technical Department does not exist.");
+    return parent.name;
+  }
+  return requireDepartment(name);
+}
+
 async function validTaskAssignees(ids, department, projectId = null) {
   const uniqueIds = [...new Set(Array.isArray(ids) ? ids.map(String) : [])];
   if (!uniqueIds.length) return [];
@@ -480,6 +533,52 @@ async function validTaskAssignees(ids, department, projectId = null) {
     if (memberCount !== uniqueIds.length) throw new Error("Task assignees must be members of the selected project.");
   }
   return users;
+}
+
+async function requestAllocation(task, actor, assignees, dueDate, isNew = false) {
+  const proposal = {
+    id: randomUUID(), requesterId: actor.id, requesterName: actor.name,
+    assigneeIds: assignees.map((user) => user.id), candidateNames: assignees.map((user) => user.name),
+    dueDate, isNew, state: "pending"
+  };
+  await db.prepare("UPDATE tasks SET allocation_request = ?::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(JSON.stringify(proposal), task.id);
+  await recordTaskEvent(task.id, actor, "allocation_requested", `Allocation requested for ${proposal.candidateNames.join(", ") || "the department free task queue"}`);
+  await notifyDepartmentAdmins(task, "Task allocation needs approval", `${actor.name} requested allocation of ${task.title}`);
+}
+
+async function notifyDepartmentAdmins(task, title, body) {
+  const admins = (await db.prepare("SELECT * FROM users WHERE role IN ('admin', 'technical_manager')").all()).filter((user) => canManage(user, task));
+  if (!admins.length) throw Object.assign(new Error("No department admin is available to approve this request. Ask a Super Admin to assign a department admin, or choose No to apply the action immediately."), { status: 409 });
+  for (const admin of admins) await notify(admin.id, "approval_request", title, body, task.id);
+}
+
+async function completeTask(task, actor) {
+  await db.prepare("UPDATE tasks SET status = 'done', progress = 100, review_comment = 'Approved.', completed_at = CURRENT_TIMESTAMP, action_request = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
+  await deleteTaskChatGroup(task.id);
+  await recordTaskEvent(
+    task.id,
+    actor,
+    actor.role === "team_leader" ? "leader_approved" : "approved",
+    actor.role === "team_leader" ? "Team leader approved and completed the task" : "Task approved and completed"
+  );
+  for (const userId of await taskAssigneeIds(task.id)) await notify(userId, "approval", "Task approved", `${actor.name} approved: ${task.title}`, task.id);
+}
+
+async function reopenCompletedTask(task, actor, comment) {
+  const assignedUserIds = await taskAssigneeIds(task.id);
+  await db.prepare("UPDATE tasks SET checklist = ?::jsonb WHERE id = ?").run(JSON.stringify((task.checklist ?? []).map(item => ({ ...item, completed: false }))), task.id);
+  await db.prepare(`UPDATE tasks SET status = ?, progress = ?, review_comment = ?, completed_at = NULL,
+    leader_approved_at = NULL, leader_approved_by_id = NULL, allocation_request = NULL, action_request = NULL,
+    started_at = CASE WHEN ? = 1 THEN started_at ELSE NULL END,
+    due_date = CASE WHEN ? = 1 THEN due_date ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+    .run(assignedUserIds.length ? "in_progress" : "new", 0,
+      comment, assignedUserIds.length ? 1 : 0, assignedUserIds.length ? 1 : 0, task.id);
+  await db.prepare("INSERT INTO task_reopen_events (id, task_id, reviewer_id, comment) VALUES (?, ?, ?, ?)").run(randomUUID(), task.id, actor.id, comment);
+  await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(task.id);
+  await ensureTaskChatGroup(task.id);
+  await recordTaskEvent(task.id, actor, "reopened", "Task reopened; checklist steps reset for verification: " + comment);
+  for (const userId of assignedUserIds) await notify(userId, "review", "Task reopened", actor.name + ": " + comment, task.id);
 }
 
 async function parseTaskSheet(file) {
@@ -553,28 +652,35 @@ async function notify(userId, kind, title, body, taskId, channelId, dedupeKey) {
 
 async function runTaskReminders() {
   const today = riyadhDate();
-  const tomorrow = new Date(`${today}T00:00:00+03:00`);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowDate = tomorrow.toISOString().slice(0, 10);
-  const tasks = await db.prepare(`
-    SELECT * FROM tasks WHERE status != 'done'
-      AND (due_date <= ? OR status IN ('blocked', 'under_review'))
-  `).all(tomorrowDate);
+  const tasks = await db.prepare("SELECT tasks.*, (SELECT count(*) FROM task_reopen_events WHERE task_id = tasks.id) AS reopen_count FROM tasks WHERE status != 'done' AND (due_date IS NOT NULL OR status IN ('blocked', 'under_review'))").all();
+  const leaders = await db.prepare("SELECT * FROM users WHERE role IN ('admin', 'technical_manager', 'team_leader')").all();
+  await sendDeadlineReminders({ tasks, leaders, assigneeIds: taskAssigneeIds, canLead, notify });
   for (const task of tasks) {
-    const assigneeIds = await taskAssigneeIds(task.id);
-    if (task.due_date && task.due_date <= tomorrowDate) {
-      const overdue = task.due_date < today;
-      for (const userId of assigneeIds) {
-        await notify(userId, "reminder", overdue ? "Task overdue" : "Task due soon", `${task.task_code}: ${task.title} · due ${task.due_date}`, task.id, null, `${today}:due:${task.id}:${userId}`);
-      }
-    }
     if (["blocked", "under_review"].includes(task.status)) {
-      const managers = await db.prepare("SELECT id FROM users WHERE role = 'superadmin' OR (role = 'admin' AND lower(trim(department)) = lower(trim(?)))").all(task.department);
+      const managers = (await db.prepare("SELECT * FROM users WHERE role IN ('superadmin', 'admin', 'technical_manager')").all()).filter((user) => canManage(user, task));
       for (const manager of managers) {
         await notify(manager.id, "reminder", task.status === "blocked" ? "Blocked task needs attention" : "Task awaiting review", `${task.task_code}: ${task.title}`, task.id, null, `${today}:${task.status}:${task.id}:${manager.id}`);
       }
     }
   }
+}
+
+async function taskConversationPeople(task) {
+  const assigned = new Set(await taskAssigneeIds(task.id));
+  const candidates = await db.prepare("SELECT * FROM users ORDER BY name").all();
+  const people = [];
+  for (const person of candidates) {
+    const involved = assigned.has(person.id) || person.id === task.created_by_id ||
+      (["admin", "technical_manager", "team_leader"].includes(person.role) && canLead(person, task));
+    if (involved && await canView(person, task)) people.push(person);
+  }
+  return people;
+}
+
+function taskMentionRecipients(message, people) {
+  const names = new Set([...message.matchAll(/@\[([^\]]+)\]/g)].map(match => match[1].trim().toLocaleLowerCase()));
+  for (const name of names) if (!people.some(person => person.name.trim().toLocaleLowerCase() === name)) fail(400, "You can mention only people involved in this task. Choose a person from the mention list.");
+  return new Set(people.filter(person => names.has(person.name.trim().toLocaleLowerCase())).map(person => person.id));
 }
 
 async function notifyTaskAudience(task, actorId, title, body) {
@@ -586,10 +692,7 @@ async function notifyTaskAudience(task, actorId, title, body) {
 }
 
 async function notifyTaskManagers(task, actorId, title, body) {
-  const managers = await db.prepare(`
-    SELECT id FROM users
-    WHERE id != ? AND (role = 'superadmin' OR (role = 'admin' AND lower(trim(department)) = lower(trim(?))))
-  `).all(actorId, task.department);
+  const managers = (await db.prepare("SELECT * FROM users WHERE id != ? AND role IN ('superadmin', 'admin', 'technical_manager')").all(actorId)).filter((user) => canManage(user, task));
   await Promise.all(managers.map((user) => notify(user.id, "claim", title, body, task.id)));
 }
 
@@ -601,8 +704,8 @@ async function dmContactsFor(actor) {
   return actor.role === "superadmin"
     ? await db.prepare("SELECT * FROM users WHERE id != ? ORDER BY name").all(actor.id)
     : await db.prepare(`
-        SELECT * FROM users WHERE id != ? AND lower(trim(department)) = lower(trim(?)) ORDER BY name
-      `).all(actor.id, actor.department);
+        SELECT * FROM users WHERE id != ? AND lower(trim(department)) = ANY(?::text[]) ORDER BY name
+      `).all(actor.id, departmentScope(actor));
 }
 
 async function resolveChatChannel(actor, channelId) {
@@ -613,7 +716,7 @@ async function resolveChatChannel(actor, channelId) {
       error.status = 404;
       throw error;
     }
-    if (actor.role !== "superadmin" && actor.department !== department) {
+    if (!canAccessDepartment(actor, department)) {
       const error = new Error("You can chat only inside your own department.");
       error.status = 403;
       throw error;
@@ -632,7 +735,7 @@ async function resolveChatChannel(actor, channelId) {
       error.status = 403;
       throw error;
     }
-    if (actor.role !== "superadmin" && actor.department !== group.department) {
+    if (!canAccessDepartment(actor, group.department)) {
       const error = new Error("You can chat only inside your own department.");
       error.status = 403;
       throw error;
@@ -653,7 +756,7 @@ async function resolveChatChannel(actor, channelId) {
       error.status = 404;
       throw error;
     }
-    if (actor.role !== "superadmin" && !sameDepartment(actor.department, other.department)) {
+    if (!canAccessDepartment(actor, other.department)) {
       const error = new Error("You can message colleagues in your own department only.");
       error.status = 403;
       throw error;
@@ -713,7 +816,7 @@ async function chatDataFor(actor) {
         UNION SELECT department FROM tasks WHERE department != 'Executive'
         ORDER BY department
       `).all()).map((item) => item.department)
-    : [actor.department];
+    : actor.role === "technical_manager" ? technicalDepartments : [actor.department];
   const departmentGroups = departments.length
     ? await db.prepare(`
         SELECT id, name, department, task_id FROM chat_groups
@@ -723,7 +826,7 @@ async function chatDataFor(actor) {
     : [];
   const groups = [];
   for (const group of departmentGroups) {
-    if (!group.task_id || actor.role === "superadmin" || actor.role === "admin" || (await taskAssigneeIds(group.task_id)).includes(actor.id)) {
+    if (!group.task_id || ["superadmin", "admin", "technical_manager", "team_leader"].includes(actor.role) || (await taskAssigneeIds(group.task_id)).includes(actor.id)) {
       groups.push(group);
     }
   }
@@ -799,16 +902,16 @@ async function chatDataFor(actor) {
     for (const row of extraReplyRows) replyPreviewById.set(row.id, { id: row.id, authorName: row.author_name, body: row.body });
   }
 
-  const reads = await db.prepare("SELECT channel_id, last_read_at FROM chat_reads WHERE user_id = ?").all(actor.id);
-  const lastReadByChannel = new Map(reads.map((row) => [row.channel_id, row.last_read_at]));
-  const unreadByChannel = new Map();
-  for (const message of rawMessages) {
-    if (message.author_id === actor.id) continue;
-    const lastRead = lastReadByChannel.get(message.channel_id);
-    if (!lastRead || message.created_at > lastRead) {
-      unreadByChannel.set(message.channel_id, (unreadByChannel.get(message.channel_id) ?? 0) + 1);
-    }
-  }
+  const unreadRows = await db.prepare(`
+    SELECT messages.channel_id, count(*) AS count FROM chat_messages messages
+    LEFT JOIN chat_reads reads ON reads.channel_id = messages.channel_id AND reads.user_id = ?
+    WHERE messages.channel_id IN (${channelIds.map(() => "?").join(",")})
+      AND messages.author_id IS DISTINCT FROM ? AND messages.deleted_at IS NULL
+      AND (reads.last_read_at IS NULL OR messages.created_at > reads.last_read_at)
+      AND NOT EXISTS (SELECT 1 FROM chat_message_hidden hidden WHERE hidden.message_id = messages.id AND hidden.user_id = ?)
+    GROUP BY messages.channel_id
+  `).all(actor.id, ...channelIds, actor.id, actor.id);
+  const unreadByChannel = new Map(unreadRows.map((row) => [row.channel_id, row.count]));
 
   const channelsWithUnread = channels.map((channel) => ({ ...channel, unreadCount: unreadByChannel.get(channel.id) ?? 0 }));
   const messages = rawMessages.map((message) => ({
@@ -826,14 +929,31 @@ async function chatDataFor(actor) {
   return { chatChannels: channelsWithUnread, chatMessages: messages };
 }
 
+const technicalDepartments = ["Electrical Technical office engineer", "Mechanical Technical office engineer"];
+function departmentScope(user) {
+  return (user.role === "technical_manager" ? technicalDepartments : [user.department]).map((name) => name.trim().toLowerCase());
+}
+function canAccessDepartment(user, department) {
+  return user.role === "superadmin" || (user.role === "technical_manager" && sameDepartment(department, "Technical Department")) || departmentScope(user).includes(String(department ?? "").trim().toLowerCase());
+}
+
 function canManage(user, task) {
-  return user.role === "superadmin" || (user.role === "admin" && sameDepartment(user.department, task.department));
+  return ["superadmin", "admin", "technical_manager"].includes(user.role) && canAccessDepartment(user, task.department);
+}
+
+function canLead(user, task) {
+  return canManage(user, task) || (user.role === "team_leader" && sameDepartment(user.department, task.department));
+}
+
+async function needsLeaderApproval(task) {
+  return !task.leader_approved_at && Boolean(await db.prepare("SELECT id FROM users WHERE role = 'team_leader' AND lower(trim(department)) = lower(trim(?)) LIMIT 1").get(task.department));
 }
 
 async function canView(user, task) {
   if (user.role === "superadmin") return true;
-  if (!sameDepartment(user.department, task.department)) return false;
-  if (user.role === "admin") return true;
+  if (!canAccessDepartment(user, task.department)) return false;
+  if (["admin", "technical_manager", "team_leader"].includes(user.role)) return true;
+  if (task.allocation_request?.isNew) return false;
   const assignedUserIds = await taskAssigneeIds(task.task_id ?? task.id);
   if (assignedUserIds.length) return assignedUserIds.includes(user.id);
   return true;
@@ -907,7 +1027,7 @@ async function touchSession(request) {
   if (token) await db.prepare("UPDATE sessions SET last_active_at = CURRENT_TIMESTAMP WHERE token = ?").run(token);
 }
 
-async function saveTaskFiles(taskId, actor, files) {
+async function saveTaskFiles(taskId, actor, files, category = "task") {
   const incoming = Array.isArray(files) ? files.slice(0, maxFilesPerUpload) : [];
   if (Array.isArray(files) && files.length > maxFilesPerUpload) {
     const error = new Error(`You can upload up to ${maxFilesPerUpload} files at once.`);
@@ -931,9 +1051,9 @@ async function saveTaskFiles(taskId, actor, files) {
         writeFileSync(join(attachmentsPath, file.storageName), file.data, { flag: "wx" });
         writtenFiles.push(file.storageName);
         await db.prepare(`
-          INSERT INTO task_files (id, task_id, name, uploaded_by, storage_name, mime_type, size)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `).run(randomUUID(), taskId, file.name, actor.name, file.storageName, file.mimeType, file.data.length);
+          INSERT INTO task_files (id, task_id, name, uploaded_by, storage_name, mime_type, size, category)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(randomUUID(), taskId, file.name, actor.name, file.storageName, file.mimeType, file.data.length, category);
       }
     });
   } catch (error) {
@@ -1235,7 +1355,7 @@ async function buildProjectTaskTemplate(project) {
 }
 
 function requireManager(user) {
-  if (!user || !["admin", "superadmin"].includes(user.role)) {
+  if (!user || !["admin", "technical_manager", "superadmin"].includes(user.role)) {
     const error = new Error("Manager permission required.");
     error.status = 403;
     throw error;
@@ -1243,19 +1363,24 @@ function requireManager(user) {
 }
 
 function validateUserScope(actor, target) {
-  requireManager(actor);
-  if (actor.role === "admin" && (target.role !== "user" || !sameDepartment(target.department, actor.department))) {
-    const error = new Error("Admins can manage normal users in their own department only.");
+  if (!["superadmin", "admin", "technical_manager", "team_leader"].includes(actor.role)) throw Object.assign(new Error("People management permission required."), { status: 403 });
+  if (!["superadmin", "admin", "technical_manager", "team_leader", "user"].includes(target.role)) {
+    const error = new Error("Choose a valid user role.");
+    error.status = 400;
+    throw error;
+  }
+  if (actor.role !== "superadmin" && (!(actor.role === "team_leader" ? ["user"] : ["user", "team_leader"]).includes(target.role) || !canAccessDepartment(actor, target.department))) {
+    const error = new Error("You can manage only permitted user roles in your departments.");
     error.status = 403;
     throw error;
   }
 }
 
 async function requireDepartment(name) {
-  const department = await db.prepare("SELECT name FROM departments WHERE lower(name) = lower(?)")
+  const department = await db.prepare("SELECT name FROM departments WHERE lower(name) = lower(?) AND id NOT IN (SELECT parent_id FROM departments WHERE parent_id IS NOT NULL)")
     .get(String(name ?? "").trim());
   if (!department) {
-    const error = new Error("Choose a valid department.");
+    const error = new Error("Choose a valid department or an Electrical / Mechanical discipline.");
     error.status = 400;
     throw error;
   }
@@ -1330,10 +1455,39 @@ const server = createServer(async (request, response) => {
       return send(response, 200, await chatDataFor(actor));
     }
 
+    const fileEditMatch = path.match(/^\/api\/files\/([^/]+)$/);
+    if (fileEditMatch && ["PUT", "DELETE"].includes(request.method)) {
+      const file = await db.prepare("SELECT * FROM task_files WHERE id = ?").get(fileEditMatch[1]);
+      if (!file) fail(404, "Document not found.");
+      let obsoleteStorage;
+      await db.transaction(async () => {
+        const task = await db.prepare("SELECT * FROM tasks WHERE id = ? FOR UPDATE").get(file.task_id);
+        if (!task || !canLead(actor, task)) fail(403, "Only task leaders and managers can manage documents.");
+        if (task.status === "done") fail(409, "Reopen the completed task before editing its documents.");
+        if (request.method === "DELETE") {
+          await db.prepare("DELETE FROM task_files WHERE id = ?").run(file.id);
+          obsoleteStorage = file.storage_name;
+          await recordTaskEvent(task.id, actor, "document_deleted", "Removed document: " + file.name);
+        } else {
+          const name = basename(String(body.name ?? file.name)).trim();
+          const category = body.category ?? file.category;
+          if (!name || name.length > 180 || !["task", "reference", "completion", "legacy"].includes(category)) fail(400, "Provide a valid document name and category.");
+          if (body.file) {
+            await saveTaskFiles(task.id, actor, [{...body.file, name}], category);
+            await db.prepare("DELETE FROM task_files WHERE id = ?").run(file.id);
+            obsoleteStorage = file.storage_name;
+          } else await db.prepare("UPDATE task_files SET name = ?, category = ? WHERE id = ?").run(name, category, file.id);
+          await recordTaskEvent(task.id, actor, "document_updated", "Updated document: " + name);
+        }
+      });
+      if (obsoleteStorage) { try { unlinkSync(join(attachmentsPath, basename(obsoleteStorage))); } catch {} }
+      return send(response, 200, {ok:true});
+    }
+
     const fileDownloadMatch = path.match(/^\/api\/files\/([^/]+)\/download$/);
     if (request.method === "GET" && fileDownloadMatch) {
       const file = await db.prepare(`
-        SELECT task_files.*, tasks.id AS task_id, tasks.department, tasks.assignee_id, tasks.project_id
+        SELECT task_files.*, tasks.id AS task_id, tasks.department, tasks.assignee_id, tasks.project_id, tasks.allocation_request
         FROM task_files JOIN tasks ON tasks.id = task_files.task_id
         WHERE task_files.id = ?
       `).get(fileDownloadMatch[1]);
@@ -1353,7 +1507,7 @@ const server = createServer(async (request, response) => {
       requireManager(actor);
       const target = await db.prepare("SELECT * FROM users WHERE id = ? AND role = 'user'").get(reportMatch[1]);
       if (!target) return send(response, 404, { message: "Normal user not found." });
-      if (actor.role === "admin" && !sameDepartment(target.department, actor.department)) {
+      if (!canAccessDepartment(actor, target.department)) {
         return send(response, 403, { message: "Admins can export reports for their own department only." });
       }
       await touchSession(request);
@@ -1366,8 +1520,9 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "GET" && path === "/api/bootstrap") {
       const users = (await db.prepare("SELECT * FROM users ORDER BY name").all()).map(publicUser);
-      const departments = (await db.prepare("SELECT name FROM departments ORDER BY name").all())
-        .map((item) => item.name);
+      const departmentHierarchy = (await db.prepare("SELECT id, name, parent_id FROM departments WHERE name != 'Technical Management' ORDER BY name").all()).map((item) => ({ id: item.id, name: item.name, parentId: item.parent_id }));
+      const parentIds = new Set(departmentHierarchy.map((item) => item.parentId).filter(Boolean));
+      const departments = departmentHierarchy.filter((item) => !parentIds.has(item.id)).map((item) => item.name);
       const taskRows = await db.prepare(`
         SELECT tasks.*, projects.name AS project_name
         FROM tasks LEFT JOIN projects ON projects.id = tasks.project_id
@@ -1380,14 +1535,14 @@ const server = createServer(async (request, response) => {
       const tasks = await Promise.all(visibleTaskRows.map(serializeTask));
       const performanceRows = actor.role === "superadmin"
         ? taskRows
-        : taskRows.filter((task) => sameDepartment(task.department, actor.department));
+        : taskRows.filter((task) => canAccessDepartment(actor, task.department));
       const performanceTasks = await serializePerformanceTasks(performanceRows);
       const intelligence = buildOperationalIntelligence(performanceTasks, users.filter((user) =>
-        actor.role === "superadmin" || sameDepartment(user.department, actor.department)
+        canAccessDepartment(actor, user.department)
       ));
       const attendanceUsers = actor.role === "superadmin"
         ? await db.prepare("SELECT id, created_at FROM users WHERE role = 'user' ORDER BY name").all()
-        : await db.prepare("SELECT id, created_at FROM users WHERE role = 'user' AND lower(trim(department)) = lower(trim(?)) ORDER BY name").all(actor.department);
+        : await db.prepare("SELECT id, created_at FROM users WHERE role = 'user' AND lower(trim(department)) = ANY(?::text[]) ORDER BY name").all(departmentScope(actor));
       const attendanceProfiles = await Promise.all(attendanceUsers.map(async (user) => ({
         userId: user.id,
         employmentStart: user.created_at.slice(0, 10),
@@ -1416,7 +1571,7 @@ const server = createServer(async (request, response) => {
       }));
       const auditRows = actor.role === "user" ? [] : actor.role === "superadmin"
         ? await db.prepare("SELECT * FROM system_audit_logs ORDER BY created_at DESC LIMIT 150").all()
-        : await db.prepare("SELECT * FROM system_audit_logs WHERE lower(trim(department)) = lower(trim(?)) ORDER BY created_at DESC LIMIT 150").all(actor.department);
+        : await db.prepare("SELECT * FROM system_audit_logs WHERE lower(trim(department)) = ANY(?::text[]) ORDER BY created_at DESC LIMIT 150").all(departmentScope(actor));
       const auditLogs = auditRows.map((entry) => ({
         id: entry.id,
         actorName: entry.actor_name,
@@ -1431,6 +1586,7 @@ const server = createServer(async (request, response) => {
       return send(response, 200, {
         currentUser: actor,
         departments,
+        departmentHierarchy,
         users,
         tasks,
         performanceTasks,
@@ -1438,6 +1594,7 @@ const server = createServer(async (request, response) => {
         attendanceProfiles,
         projects: await projectsFor(actor),
         notifications,
+        unreadNotificationCount: (await db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0").get(actor.id)).count,
         auditLogs,
         todos: await todosFor(actor.id),
         ...(await chatDataFor(actor))
@@ -1474,6 +1631,11 @@ const server = createServer(async (request, response) => {
       return send(response, 201, { todo: (await todosFor(actor.id)).find((todo) => todo.id === id) });
     }
 
+    if (request.method === "DELETE" && path === "/api/todos") {
+      const result = await db.prepare("DELETE FROM todos WHERE user_id = ?").run(actor.id);
+      return send(response, 200, { deleted: result.changes });
+    }
+
     const todoMatch = path.match(/^\/api\/todos\/([^/]+)$/);
     if (todoMatch && request.method === "PUT") {
       const existing = await db.prepare("SELECT * FROM todos WHERE id = ? AND user_id = ?").get(todoMatch[1], actor.id);
@@ -1506,52 +1668,69 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && path === "/api/users") {
-      requireManager(actor);
       const target = {
         id: randomUUID(),
         name: String(body.name ?? "").trim(),
         username: String(body.username ?? "").trim(),
         password: String(body.password ?? ""),
-        role: actor.role === "admin" ? "user" : body.role,
-        department: actor.role === "admin" ? actor.department : body.department
+        role: body.role ?? "user",
+        department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department
       };
       validateUserScope(actor, target);
-      target.department = target.role === "superadmin" ? "Executive" : await requireDepartment(target.department);
+      target.department = target.role === "superadmin" ? "Executive" : target.role === "technical_manager" ? "Technical Department" : await requireDepartment(target.department);
       if (!target.name || !target.username || !target.password) throw new Error("Name, username, and password are required.");
       validatePassword(target.password);
-      await db.prepare(`
-        INSERT INTO users (id, name, username, password_hash, role, department)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(target.id, target.name, target.username, hashPassword(target.password), target.role, target.department);
+      const project = body.projectId ? await db.prepare("SELECT * FROM projects WHERE id = ?").get(body.projectId) : null;
+      if (body.projectId && (!project || !canLeadProject(actor, project) || !projectIncludes(project.department, target.department) || target.role !== "user")) {
+        return send(response, 403, { message: "Choose an existing project in the normal user's department." });
+      }
+      await db.transaction(async () => {
+        await db.prepare(`
+          INSERT INTO users (id, name, username, password_hash, role, department)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(target.id, target.name, target.username, hashPassword(target.password), target.role, target.department);
+        if (project) await db.prepare("INSERT INTO project_members (project_id, user_id) VALUES (?, ?)").run(project.id, target.id);
+      });
       await audit(actor, "created", "user", target.id, target.department, `Created ${target.role} ${target.name} (${target.username})`);
       return send(response, 201, { user: publicUser(target) });
     }
 
     const userMatch = path.match(/^\/api\/users\/([^/]+)$/);
     if (userMatch && request.method === "PUT") {
-      const existing = await db.prepare("SELECT * FROM users WHERE id = ?").get(userMatch[1]);
-      if (!existing) return send(response, 404, { message: "User not found." });
-      const target = {
-        ...existing,
-        name: String(body.name ?? existing.name).trim(),
-        username: String(body.username ?? existing.username).trim(),
-        role: actor.role === "admin" ? "user" : body.role,
-        department: actor.role === "admin" ? actor.department : body.department
-      };
-      validateUserScope(actor, target);
-      target.department = target.role === "superadmin" ? "Executive" : await requireDepartment(target.department);
-      if (!target.name || !target.username) throw new Error("Name and username are required.");
-      await db.prepare("UPDATE users SET name = ?, username = ?, role = ?, department = ? WHERE id = ?")
-        .run(target.name, target.username, target.role, target.department, target.id);
-      if (body.password) {
-        validatePassword(String(body.password));
-        await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(body.password), target.id);
-      }
-      await audit(actor, "updated", "user", target.id, target.department, `Updated ${target.name}${body.password ? " and reset password" : ""}`);
-      return send(response, 200, { user: publicUser(target) });
+      requireManager(actor);
+      const updatedUser = await db.transaction(async () => {
+        await db.exec("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
+        const existing = await db.prepare("SELECT * FROM users WHERE id = ?").get(userMatch[1]);
+        if (!existing) throw Object.assign(new Error("User not found."), { status: 404 });
+        validateUserScope(actor, existing);
+        const target = {
+          ...existing,
+          name: String(body.name ?? existing.name).trim(),
+          username: String(body.username ?? existing.username).trim(),
+          role: body.role ?? existing.role,
+          department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department
+        };
+        validateUserScope(actor, target);
+        if (existing.role === "superadmin" && target.role !== "superadmin") {
+          const otherAdmin = await db.prepare("SELECT id FROM users WHERE role = 'superadmin' AND id != ? LIMIT 1").get(existing.id);
+          if (!otherAdmin) throw Object.assign(new Error("The last Super Admin cannot be demoted. Create another Super Admin first."), { status: 409 });
+        }
+        target.department = target.role === "superadmin" ? "Executive" : target.role === "technical_manager" ? "Technical Department" : await requireDepartment(target.department);
+        if (!target.name || !target.username) throw new Error("Name and username are required.");
+        await db.prepare("UPDATE users SET name = ?, username = ?, role = ?, department = ? WHERE id = ?")
+          .run(target.name, target.username, target.role, target.department, target.id);
+        if (body.password) {
+          validatePassword(String(body.password));
+          await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(body.password), target.id);
+        }
+        await audit(actor, "updated", "user", target.id, target.department, `Updated ${target.name}${body.password ? " and reset password" : ""}`);
+        return publicUser(target);
+      });
+      return send(response, 200, { user: updatedUser });
     }
 
     if (userMatch && request.method === "DELETE") {
+      requireManager(actor);
       const target = await db.prepare("SELECT * FROM users WHERE id = ?").get(userMatch[1]);
       if (!target) return send(response, 404, { message: "User not found." });
       validateUserScope(actor, target);
@@ -1573,8 +1752,9 @@ const server = createServer(async (request, response) => {
       const name = String(body.name ?? "").trim().slice(0, 140);
       const description = String(body.description ?? "").trim().slice(0, 2000);
       if (!name || !department || department === "Executive") throw new Error("Project name and department are required.");
-      await requireDepartment(department);
-      const members = await validTaskAssignees(body.memberIds, department);
+      await requireProjectDepartment(department);
+      if (!canAccessDepartment(actor, department)) return send(response, 403, { message: "This department is outside your management scope." });
+      const members = await validProjectMembers(body.memberIds, department, actor);
       const id = randomUUID();
       await db.transaction(async () => {
         await db.prepare("INSERT INTO projects (id, name, description, department, created_by_id) VALUES (?, ?, ?, ?, ?)")
@@ -1592,7 +1772,7 @@ const server = createServer(async (request, response) => {
       requireManager(actor);
       const project = await db.prepare("SELECT * FROM projects WHERE id = ?").get(projectTemplateMatch[1]);
       if (!project) return send(response, 404, { message: "Project not found." });
-      if (actor.role === "admin" && !sameDepartment(project.department, actor.department)) {
+      if (!canAccessDepartment(actor, project.department)) {
         return send(response, 403, { message: "You cannot export this project task sheet." });
       }
       const data = await buildProjectTaskTemplate(project);
@@ -1605,7 +1785,7 @@ const server = createServer(async (request, response) => {
       requireManager(actor);
       const project = await db.prepare("SELECT * FROM projects WHERE id = ?").get(projectImportMatch[1]);
       if (!project) return send(response, 404, { message: "Project not found." });
-      if (actor.role === "admin" && !sameDepartment(project.department, actor.department)) {
+      if (!canAccessDepartment(actor, project.department)) {
         return send(response, 403, { message: "You cannot import tasks into this project." });
       }
       const importedTasks = await parseTaskSheet(body.file);
@@ -1621,12 +1801,16 @@ const server = createServer(async (request, response) => {
               value.toLowerCase() === member.username.toLowerCase() || value.toLowerCase() === member.name.toLowerCase()))
             .map((member) => member.id);
           const id = randomUUID();
-          const taskCode = await generateTaskCode(project.name, project.department);
-          const status = assigneeIds.length ? (imported.progress > 0 ? "in_progress" : "assigned") : "new";
+          const memberDepartments = [...new Set(members.filter(member => assigneeIds.includes(member.id)).map(member => member.department))];
+          const taskDepartment = sameDepartment(project.department, "Technical Department") ? memberDepartments[0] ?? body.department : project.department;
+          if (memberDepartments.length > 1 || !projectIncludes(project.department, taskDepartment)) fail(400, "Each imported task needs engineers from one discipline. Assign Electrical or Mechanical engineers on each row.");
+          await requireDepartment(taskDepartment);
+          const taskCode = await generateTaskCode(project.name, taskDepartment);
+          const status = assigneeIds.length ? "assigned" : "new";
           await db.prepare(`
             INSERT INTO tasks (id, task_code, title, department, priority, status, assignee_id, project_id, task_type, due_date, complexity, started_at, progress, created_by_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, ?, ?)
-          `).run(id, taskCode, imported.title, project.department, imported.priority, status, assigneeIds[0] ?? null,
+          `).run(id, taskCode, imported.title, taskDepartment, imported.priority, status, assigneeIds[0] ?? null,
             project.id, imported.taskType, assigneeIds.length ? (imported.dueDate || null) : null,
             imported.complexity, assigneeIds.length ? 1 : 0, assigneeIds.length ? imported.progress : 0, actor.id);
           for (const userId of assigneeIds) {
@@ -1645,13 +1829,54 @@ const server = createServer(async (request, response) => {
       return send(response, 201, { imported: createdIds.length });
     }
 
+    const projectLeadersMatch = path.match(/^\/api\/projects\/([^/]+)\/leaders$/);
+    if (projectLeadersMatch && request.method === "PUT") {
+      requireManager(actor);
+      const project = await db.prepare("SELECT * FROM projects WHERE id = ?").get(projectLeadersMatch[1]);
+      if (!project) return send(response, 404, { message: "Project not found." });
+      if (!canManage(actor, project)) return send(response, 403, { message: "You cannot assign leaders outside your department." });
+      if (!Array.isArray(body.leaderIds)) return send(response, 400, { message: "Select the project team leaders." });
+      const ids = [...new Set(body.leaderIds.map(String))];
+      const leaders = [];
+      for (const id of ids) {
+        const leader = await db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+        if (!leader || leader.role !== "team_leader" || !projectIncludes(project.department, leader.department)) return send(response, 400, { message: "Choose team leaders from this project's department." });
+        leaders.push(leader);
+      }
+      await db.transaction(async () => {
+        await db.prepare("SELECT id FROM projects WHERE id = ? FOR UPDATE").get(project.id);
+        const previous = await db.prepare("SELECT user_id FROM project_leaders WHERE project_id = ?").all(project.id);
+        await db.prepare("DELETE FROM project_leaders WHERE project_id = ?").run(project.id);
+        for (const leader of leaders) {
+          await db.prepare("INSERT INTO project_leaders (project_id,user_id,assigned_by_id) VALUES (?,?,?)").run(project.id,leader.id,actor.id);
+          if (!previous.some(item => item.user_id === leader.id)) await notify(leader.id, "project", "Project leadership assigned", actor.name + " assigned you as a team leader on " + project.name);
+        }
+        await audit(actor, "leaders_assigned", "project", project.id, project.department, "Team leaders for " + project.name + ": " + (leaders.map(person => person.name).join(", ") || "None"));
+      });
+      return send(response, 200, { project: (await projectsFor(actor)).find(item => item.id === project.id) });
+    }
+
+    const projectMembersMatch = path.match(/^\/api\/projects\/([^/]+)\/members$/);
+    if (projectMembersMatch && request.method === "POST") {
+      const project = await db.prepare("SELECT * FROM projects WHERE id = ?").get(projectMembersMatch[1]);
+      if (!project) return send(response, 404, { message: "Project not found." });
+      if (!canLeadProject(actor, project)) return send(response, 403, { message: "You cannot add members to this project." });
+      const members = await validProjectMembers(body.memberIds, project.department, actor);
+      if (!members.length) return send(response, 400, { message: "Select at least one normal user." });
+      await db.transaction(async () => {
+        for (const member of members) await db.prepare("INSERT OR IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)").run(project.id, member.id);
+        await audit(actor, "members_added", "project", project.id, project.department, `Added ${members.map((member) => member.name).join(", ")} to ${project.name}`);
+      });
+      return send(response, 200, { project: (await projectsFor(actor)).find((item) => item.id === project.id) });
+    }
+
     const projectMatch = path.match(/^\/api\/projects\/([^/]+)$/);
     if (projectMatch && request.method === "PUT") {
       requireManager(actor);
       const project = await db.prepare("SELECT * FROM projects WHERE id = ?").get(projectMatch[1]);
       if (!project) return send(response, 404, { message: "Project not found." });
-      if (actor.role === "admin" && !sameDepartment(project.department, actor.department)) return send(response, 403, { message: "You cannot edit this project." });
-      const members = await validTaskAssignees(body.memberIds, project.department);
+      if (!canAccessDepartment(actor, project.department)) return send(response, 403, { message: "You cannot edit this project." });
+      const members = await validProjectMembers(body.memberIds, project.department, actor);
       await db.transaction(async () => {
         await db.prepare("UPDATE projects SET name = ?, description = ? WHERE id = ?")
           .run(String(body.name ?? project.name).trim(), String(body.description ?? project.description).trim(), project.id);
@@ -1680,7 +1905,7 @@ const server = createServer(async (request, response) => {
       requireManager(actor);
       const project = await db.prepare("SELECT * FROM projects WHERE id = ?").get(projectMatch[1]);
       if (!project) return send(response, 404, { message: "Project not found." });
-      if (actor.role === "admin" && !sameDepartment(project.department, actor.department)) return send(response, 403, { message: "You cannot delete this project." });
+      if (!canAccessDepartment(actor, project.department)) return send(response, 403, { message: "You cannot delete this project." });
       await db.prepare("UPDATE tasks SET project_id = NULL WHERE project_id = ?").run(project.id);
       await audit(actor, "deleted", "project", project.id, project.department, `Deleted project ${project.name}`);
       await db.prepare("DELETE FROM projects WHERE id = ?").run(project.id);
@@ -1688,14 +1913,16 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && path === "/api/tasks") {
-      requireManager(actor);
+      if (!["superadmin", "admin", "technical_manager", "team_leader"].includes(actor.role)) return send(response, 403, { message: "Task allocation permission required." });
+      const requiresApproval = actor.role === "team_leader" && body.requiresApproval !== false;
       const project = body.projectId ? await db.prepare("SELECT * FROM projects WHERE id = ?").get(body.projectId) : null;
       if (body.projectId && !project) return send(response, 404, { message: "Project not found." });
       const requestedIds = Array.isArray(body.assigneeIds) ? body.assigneeIds : body.assigneeId ? [body.assigneeId] : [];
       const firstRequested = requestedIds[0] ? await db.prepare("SELECT * FROM users WHERE id = ? AND role = 'user'").get(requestedIds[0]) : null;
-      const department = project?.department ?? firstRequested?.department ?? (actor.role === "admin" ? actor.department : body.department);
+      const department = (project && !sameDepartment(project.department, "Technical Department") ? project.department : undefined) ?? firstRequested?.department ?? (["admin", "team_leader"].includes(actor.role) ? actor.department : body.department);
       await requireDepartment(department);
-      if (actor.role === "admin" && !sameDepartment(department, actor.department)) return send(response, 403, { message: "Admins can create tasks in their department only." });
+      if (project && !projectIncludes(project.department, department)) fail(400, "Choose a task discipline within this project.");
+      if (!canAccessDepartment(actor, department)) return send(response, 403, { message: "Tasks can be created in your own department only." });
       const assignees = await validTaskAssignees(requestedIds, department, project?.id ?? null);
       const complexity = normalizeComplexity(body.complexity);
       const dueDate = assignees.length ? (String(body.dueDate ?? "").slice(0, 10) || null) : null;
@@ -1704,33 +1931,46 @@ const server = createServer(async (request, response) => {
         title: String(body.title ?? "").trim(),
         department,
         priority: body.priority,
-        status: assignees.length ? (Number(body.progress) > 0 ? "in_progress" : "assigned") : "new",
+        status: assignees.length ? "assigned" : "new",
         assigneeIds: assignees.map((assignee) => assignee.id),
         dueDate,
         complexity,
-        progress: assignees.length ? Math.max(0, Math.min(100, Number(body.progress) || 0)) : 0,
+        progress: 0,
         projectId: project?.id ?? null,
         taskType: normalizeTaskType(body.taskType)
       };
       task.taskCode = await generateTaskCode(project?.name, department);
       if (!task.title) throw new Error("Task title is required.");
-      await db.prepare(`
-        INSERT INTO tasks (id, task_code, title, department, priority, status, assignee_id, project_id, task_type, due_date, complexity, started_at, progress, created_by_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, ?, ?)
-      `).run(task.id, task.taskCode, task.title, task.department, task.priority, task.status, task.assigneeIds[0] ?? null,
-        task.projectId, task.taskType, task.dueDate, task.complexity, task.assigneeIds.length ? 1 : 0, task.progress, actor.id);
-      await setTaskAssignees(task.id, task.assigneeIds);
-      await recordTaskEvent(task.id, actor, "created", task.assigneeIds.length ? `Task created and assigned to ${task.assigneeIds.length} user(s)` : "Unassigned task created");
-      await audit(actor, "created", "task", task.id, task.department, `Created ${task.taskCode}: ${task.title}`);
-      try {
-        await saveTaskFiles(task.id, actor, body.files);
-      } catch (error) {
-        await db.prepare("DELETE FROM tasks WHERE id = ?").run(task.id);
-        throw error;
-      }
-      for (const userId of task.assigneeIds) await notify(userId, "assignment", "New task allocated", `You were assigned: ${task.title}`, task.id);
+      const initialSteps = body.checklist ?? [];
+      if (!Array.isArray(initialSteps) || initialSteps.length > 100 || initialSteps.some(item => !String(item?.title ?? "").trim() || String(item.title).trim().length > 200)) fail(400, "Provide up to 100 work steps, each with 1?200 characters.");
+      const checklist = initialSteps.map(item => ({ id: randomUUID(), title: String(item.title).trim(), completed: false }));
+      const createdTask = await db.transaction(async () => {
+        await db.prepare(`
+          INSERT INTO tasks (id, task_code, title, department, priority, status, assignee_id, project_id, task_type, due_date, complexity, started_at, progress, created_by_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END, ?, ?)
+        `).run(task.id, task.taskCode, task.title, task.department, task.priority, requiresApproval ? "new" : task.status, requiresApproval ? null : task.assigneeIds[0] ?? null,
+          task.projectId, task.taskType, requiresApproval ? null : task.dueDate, task.complexity, !requiresApproval && task.assigneeIds.length ? 1 : 0, requiresApproval ? 0 : task.progress, actor.id);
+        await db.prepare("UPDATE tasks SET checklist = ?::jsonb WHERE id = ?").run(JSON.stringify(checklist), task.id);
+        if (requiresApproval) {
+          await requestAllocation(task, actor, assignees, task.dueDate, true);
+        } else {
+          await setTaskAssignees(task.id, task.assigneeIds);
+        }
+        if (!requiresApproval && task.assigneeIds.length && actor.role === "team_leader") await recordTaskEvent(task.id, actor, "leader_allocated", "Allocated task to " + assignees.map(user => user.name).join(", "));
+        await recordTaskEvent(task.id, actor, "created", !requiresApproval && task.assigneeIds.length ? `Task created and assigned to ${task.assigneeIds.length} user(s)` : "Unassigned task created");
+        await audit(actor, "created", "task", task.id, task.department, `Created ${task.taskCode}: ${task.title}`);
+        try {
+          await saveTaskFiles(task.id, actor, body.files);
+        } catch (error) {
+          await db.prepare("DELETE FROM tasks WHERE id = ?").run(task.id);
+          throw error;
+        }
+        for (const userId of requiresApproval ? [] : task.assigneeIds) await notify(userId, "assignment", "New task allocated", `You were assigned: ${task.title}`, task.id);
+
+        return serializeTask(await getTask(task.id));
+      });
       await touchSession(request);
-      return send(response, 201, { task: await serializeTask(await getTask(task.id)) });
+      return send(response, 201, { task: createdTask });
     }
 
     const taskMatch = path.match(/^\/api\/tasks\/([^/]+)$/);
@@ -1739,12 +1979,15 @@ const server = createServer(async (request, response) => {
       if (!existing) return send(response, 404, { message: "Task not found." });
       if (!canManage(actor, existing)) return send(response, 403, { message: "You cannot edit this task." });
       if (existing.status === "done") return send(response, 409, { message: "Completed tasks must be reopened before they can be edited." });
+      if (existing.action_request?.state === "pending") return send(response, 409, { message: "Review the pending task action before editing." });
+      if (existing.allocation_request?.isNew || existing.allocation_request?.state === "pending") return send(response, 409, { message: "Review the pending allocation before editing this task." });
       const project = body.projectId ? await db.prepare("SELECT * FROM projects WHERE id = ?").get(body.projectId) : null;
       if (body.projectId && !project) return send(response, 404, { message: "Project not found." });
       const requestedIds = Array.isArray(body.assigneeIds) ? body.assigneeIds : body.assigneeId ? [body.assigneeId] : [];
-      const department = project?.department ?? body.department ?? existing.department;
+      const department = (project && !sameDepartment(project.department, "Technical Department") ? project.department : undefined) ?? body.department ?? existing.department;
       await requireDepartment(department);
-      if (actor.role === "admin" && !sameDepartment(department, actor.department)) return send(response, 403, { message: "Admins can edit tasks in their department only." });
+      if (project && !projectIncludes(project.department, department)) fail(400, "Choose a task discipline within this project.");
+      if (!canAccessDepartment(actor, department)) return send(response, 403, { message: "Admins can edit tasks in their department only." });
       const assignees = await validTaskAssignees(requestedIds, department, project?.id ?? null);
       const previousIds = await taskAssigneeIds(existing.id);
       const complexity = normalizeComplexity(body.complexity ?? existing.complexity);
@@ -1760,7 +2003,7 @@ const server = createServer(async (request, response) => {
       await db.prepare(`
         UPDATE tasks SET title = ?, department = ?, priority = ?, status = ?, assignee_id = ?, project_id = ?, task_type = ?, due_date = ?, complexity = ?,
           started_at = CASE WHEN ? = 1 THEN COALESCE(started_at, CURRENT_TIMESTAMP) ELSE NULL END,
-          claim_requested_by_id = NULL, claim_requested_at = NULL, progress = ?, updated_at = CURRENT_TIMESTAMP
+          claim_requested_by_id = NULL, claim_requested_at = NULL, leader_approved_at = NULL, leader_approved_by_id = NULL, progress = ?, updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(String(body.title).trim(), department, body.priority, status, assignees[0]?.id ?? null,
         project?.id ?? null, normalizeTaskType(body.taskType), dueDate, complexity,
@@ -1775,6 +2018,10 @@ const server = createServer(async (request, response) => {
       if ((existing.due_date ?? "") !== (dueDate ?? "")) changes.push(`Deadline: ${existing.due_date || "none"} → ${dueDate || "none"}`);
       if (normalizeComplexity(existing.complexity) !== complexity) changes.push(`Complexity: ${normalizeComplexity(existing.complexity)} → ${complexity}`);
       const assignmentChanged = [...previousIds].sort().join(",") !== [...nextIds].sort().join(",");
+      if (assignmentChanged || (existing.status === "under_review" && status !== "under_review")) {
+        await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(existing.id);
+        await db.prepare("UPDATE tasks SET leader_approved_at = NULL, leader_approved_by_id = NULL, status = CASE WHEN status = 'under_review' THEN 'assigned' ELSE status END WHERE id = ?").run(existing.id);
+      }
       if (assignmentChanged) changes.push(`Assignees: ${previousIds.length || "none"} → ${nextIds.length || "none"}`);
       await recordTaskEvent(existing.id, actor, assignmentChanged ? "reassigned" : "updated", changes.join(" · ") || "Task details saved");
       if (body.status === "done") await deleteTaskChatGroup(existing.id);
@@ -1799,6 +2046,43 @@ const server = createServer(async (request, response) => {
       return send(response, 200, { ok: true });
     }
 
+    const checklistMatch = path.match(/^\/api\/tasks\/([^/]+)\/checklist$/);
+    if (checklistMatch && request.method === "PUT") {
+      await db.transaction(async () => {
+        const task = await db.prepare("SELECT * FROM tasks WHERE id = ? FOR UPDATE").get(checklistMatch[1]);
+        if (!task || !await canView(actor, task)) fail(404, "Task not found.");
+        const manages = canLead(actor, task);
+        const assigned = (await taskAssigneeIds(task.id)).includes(actor.id);
+        if (!manages && !assigned) fail(403, "Only assigned people or task leaders can update the checklist.");
+        if (["done", "under_review"].includes(task.status) || task.action_request || task.allocation_request?.state === "pending") fail(409, "Reopen the task or resolve its pending review before changing the checklist.");
+        let items = task.checklist ?? [];
+        if (body.action === "add") {
+          if (!manages) fail(403, "Only task leaders or managers can define work steps.");
+          const title = String(body.title ?? "").trim();
+          if (!title || title.length > 200 || items.length >= 100) fail(400, "Use a step of 1?200 characters; up to 100 steps per task.");
+          items = [...items, {id: randomUUID(), title, completed: false}];
+        } else {
+          const item = items.find(item => item.id === body.id);
+          if (!item) fail(409, "This checklist step has changed. Refresh the task.");
+          if (body.action === "edit") {
+            if (!manages) fail(403, "Only task leaders or managers can edit work steps.");
+            const title = String(body.title ?? "").trim();
+            if (!title || title.length > 200) fail(400, "Use a step of 1?200 characters.");
+            items = items.map(item => item.id === body.id ? {...item, title, completed: false} : item);
+          } else if (body.action === "delete") {
+            if (!manages) fail(403, "Only task leaders or managers can remove work steps.");
+            items = items.filter(item => item.id !== body.id);
+          } else if (body.action === "toggle" && typeof body.completed === "boolean") {
+            items = items.map(item => item.id === body.id ? {...item, completed: body.completed} : item);
+          } else fail(400, "Invalid checklist action.");
+        }
+        await db.prepare("UPDATE tasks SET checklist = ?::jsonb, status = CASE WHEN status = 'assigned' THEN 'in_progress' ELSE status END, leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(items), task.id);
+        await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(task.id);
+        await recordTaskEvent(task.id, actor, "checklist_updated", items.filter(item => item.completed).length + " of " + items.length + " work steps completed");
+      });
+      return send(response, 200, { task: await serializeTask(await getTask(checklistMatch[1])) });
+    }
+
     const taskMessageMatch = path.match(/^\/api\/tasks\/([^/]+)\/messages\/([^/]+)$/);
     if (taskMessageMatch && ["PUT", "DELETE"].includes(request.method)) {
       const task = await getTask(taskMessageMatch[1]);
@@ -1807,9 +2091,14 @@ const server = createServer(async (request, response) => {
         .get(taskMessageMatch[2], task.id);
       if (!message) return send(response, 404, { message: "Task comment not found." });
       if (message.author_id !== actor.id) return send(response, 403, { message: "You can change only your own comments." });
+      if (task.status === "done") return send(response, 409, { message: "Completed task comments are read-only." });
       if (request.method === "PUT") {
         const nextBody = String(body.body ?? "").trim().slice(0, 2000);
         if (!nextBody) throw new Error("Comment cannot be empty.");
+        const people = await taskConversationPeople(task);
+        const mentions = taskMentionRecipients(nextBody, people);
+        const previousNames = new Set([...message.body.matchAll(/@\[([^\]]+)\]/g)].map(match => match[1].trim().toLocaleLowerCase()));
+        for (const person of people) if (person.id !== actor.id && mentions.has(person.id) && !previousNames.has(person.name.trim().toLocaleLowerCase())) await notify(person.id, "mention", `You were mentioned on ${task.task_code}`, `${actor.name}: ${nextBody}`, task.id);
         await db.prepare("UPDATE task_messages SET body = ? WHERE id = ?").run(nextBody, message.id);
         await recordTaskEvent(task.id, actor, "comment_edited", `Edited comment: ${nextBody.slice(0, 180)}`);
       } else {
@@ -1820,12 +2109,61 @@ const server = createServer(async (request, response) => {
       return send(response, 200, { task: await serializeTask(task) });
     }
 
-    const actionMatch = path.match(/^\/api\/tasks\/([^/]+)\/(view|claim|claim-approve|claim-reject|submit|approve|reopen|messages|files)$/);
+    const actionMatch = path.match(/^\/api\/tasks\/([^/]+)\/(view|claim|claim-approve|claim-reject|submit|approve|reopen|allocation-request|allocation-approve|allocation-reject|request-approve|request-reject|finish|messages|files)$/);
     if (actionMatch && request.method === "POST") {
       const task = await getTask(actionMatch[1]);
       if (!task) return send(response, 404, { message: "Task not found." });
       const action = actionMatch[2];
       const assignedUserIds = await taskAssigneeIds(task.id);
+
+      if (["allocation-request", "allocation-approve", "allocation-reject"].includes(action)) {
+        await db.transaction(async () => {
+          const locked = await db.prepare("SELECT * FROM tasks WHERE id = ? FOR UPDATE").get(task.id);
+          const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+          if (locked.action_request?.state === "pending") fail(409, "Review the pending task action first.");
+          if (!canLead(actor, locked)) fail(403, "You cannot allocate tasks in this department.");
+          if (locked.status === "done" || locked.status === "under_review") fail(409, "Reopen this task before changing its allocation.");
+          const immediateAllocation = action === "allocation-request" && body.requiresApproval === false;
+          let proposal = locked.allocation_request;
+          if (action === "allocation-request") {
+            if (actor.role !== "team_leader") fail(403, "Only team leaders submit allocation requests.");
+            if (locked.allocation_request?.state === "pending") fail(409, "An allocation request is already awaiting approval.");
+            const assignees = await validTaskAssignees(body.assigneeIds, locked.department, locked.project_id);
+            if (!assignees.length) fail(400, "Select at least one team member.");
+            const dueDate = String(body.dueDate ?? "").slice(0, 10) || null;
+            if (!immediateAllocation) {
+              await requestAllocation(locked, actor, assignees, dueDate, Boolean(locked.allocation_request?.isNew));
+              return;
+            }
+            proposal = { assigneeIds: assignees.map((user) => user.id), dueDate, requesterId: actor.id };
+          }
+          if (!immediateAllocation && !canManage(actor, locked)) fail(403, "Admin approval is required for allocation requests.");
+          if (!immediateAllocation && (proposal?.state !== "pending" || proposal.id !== body.requestId)) fail(409, "This allocation request has changed. Refresh and review it again.");
+          if (action === "allocation-reject") {
+            proposal.state = "rejected";
+            await db.prepare("UPDATE tasks SET allocation_request = ?::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(proposal), task.id);
+            await recordTaskEvent(task.id, actor, "allocation_rejected", "Admin rejected the allocation request");
+            await notify(proposal.requesterId, "allocation", "Allocation rejected", `${actor.name} rejected allocation of ${task.title}`, task.id);
+            return;
+          }
+          const assignees = await validTaskAssignees(proposal.assigneeIds, locked.department, locked.project_id);
+          await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(task.id);
+          await db.prepare("DELETE FROM task_claim_requests WHERE task_id = ?").run(task.id);
+          await db.prepare(`UPDATE tasks SET allocation_request = NULL, leader_approved_at = NULL, leader_approved_by_id = NULL,
+            status = ?, progress = 0, due_date = ?, started_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END,
+            claim_requested_by_id = NULL, claim_requested_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+            .run(assignees.length ? "assigned" : "new", assignees.length ? proposal.dueDate : null, assignees.length ? 1 : 0, task.id);
+          await setTaskAssignees(task.id, proposal.assigneeIds);
+          if (assignees.length && proposal.requesterId) {
+            const leader = await db.prepare("SELECT * FROM users WHERE id = ?").get(proposal.requesterId);
+            if (leader?.role === "team_leader") await recordTaskEvent(task.id, leader, "leader_allocated", "Allocated task to " + assignees.map(user => user.name).join(", "));
+          }
+          await recordTaskEvent(task.id, actor, "allocation_approved", `${immediateAllocation ? "Team leader applied allocation without admin approval" : "Admin approved allocation"} to ${assignees.map((user) => user.name).join(", ") || "the department free task queue"}`);
+          if (!immediateAllocation) await notify(proposal.requesterId, "allocation", "Allocation approved", `${actor.name} approved allocation of ${task.title}`, task.id);
+          for (const user of assignees) await notify(user.id, "assignment", "New task allocated", `You were assigned: ${task.title}`, task.id);
+        });
+        return send(response, 200, { task: await serializeTask(await getTask(task.id)) });
+      }
 
       if (action === "view") {
         if (!await canView(actor, task)) return send(response, 403, { message: "You cannot view this task." });
@@ -1839,8 +2177,13 @@ const server = createServer(async (request, response) => {
         return send(response, 200, { ok: true });
       }
 
+      if (task.allocation_request?.isNew && ["claim", "claim-approve", "submit", "approve", "reopen"].includes(action)) return send(response, 409, { message: "This task is awaiting allocation approval." });
+      if (task.action_request?.state === "pending" && ["claim", "claim-approve", "submit"].includes(action)) return send(response, 409, { message: "Review the pending task request first." });
+
+      if (task.allocation_request?.state === "pending" && ["claim", "claim-approve"].includes(action)) return send(response, 409, { message: "Review the pending allocation first." });
+
       if (action === "claim") {
-        if (actor.role !== "user" || !sameDepartment(actor.department, task.department) || assignedUserIds.length || !await canView(actor, task)) return send(response, 403, { message: "This task cannot be claimed." });
+        if (task.status !== "new" || actor.role !== "user" || !sameDepartment(actor.department, task.department) || assignedUserIds.length || !await canView(actor, task)) return send(response, 403, { message: "This task cannot be claimed." });
         const result = await db.prepare(`
           INSERT OR IGNORE INTO task_claim_requests (task_id, user_id)
           VALUES (?, ?)
@@ -1851,11 +2194,14 @@ const server = createServer(async (request, response) => {
             claim_requested_at = COALESCE(claim_requested_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).run(actor.id, task.id);
+        for (const leader of await db.prepare("SELECT * FROM users WHERE role = 'team_leader'").all()) {
+          if (canLead(leader, task)) await notify(leader.id, "claim", "Task claim needs approval", `${actor.name} requested to take ${task.task_code}: ${task.title}`, task.id);
+        }
         await notifyTaskManagers(task, actor.id, "Task claim needs approval", `${actor.name} requested to take ${task.task_code}: ${task.title}`, task.id);
         await recordTaskEvent(task.id, actor, "claim_requested", "Requested to take this task");
       }
       if (action === "claim-approve") {
-        if (!canManage(actor, task)) return send(response, 403, { message: "Manager approval is required." });
+        if (!canLead(actor, task)) return send(response, 403, { message: "A department admin or team leader must review this request." });
         if (assignedUserIds.length) return send(response, 409, { message: "This task is already assigned." });
         const pendingRequests = await db.prepare(`
           SELECT users.* FROM task_claim_requests JOIN users ON users.id = task_claim_requests.user_id
@@ -1871,6 +2217,10 @@ const server = createServer(async (request, response) => {
         if (!requesters.length) return send(response, 409, { message: "Select at least one eligible requester." });
         const declinedRequesters = pendingRequests.filter((requester) => !requesters.some((approved) => approved.id === requester.id));
         await db.transaction(async () => {
+          const locked = await db.prepare("SELECT * FROM tasks WHERE id = ? FOR UPDATE").get(task.id);
+          if (locked.status !== "new" || (await taskAssigneeIds(task.id)).length || locked.action_request || locked.allocation_request?.state === "pending") fail(409, "This task is no longer available for claim approval.");
+          const remaining = await db.prepare("SELECT user_id FROM task_claim_requests WHERE task_id = ?").all(task.id);
+          if (requesters.some((person) => !remaining.some((request) => request.user_id === person.id))) fail(409, "A selected request is no longer pending.");
           for (const requester of requesters) {
             await db.prepare("INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)").run(task.id, requester.id);
           }
@@ -1878,15 +2228,16 @@ const server = createServer(async (request, response) => {
             UPDATE tasks SET assignee_id = ?, status = 'assigned', started_at = CURRENT_TIMESTAMP, due_date = ?,
               claim_requested_by_id = NULL, claim_requested_at = NULL, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `).run(requesters[0].id, null, task.id);
+          `).run(requesters[0].id, task.due_date ?? null, task.id);
           await db.prepare("DELETE FROM task_claim_requests WHERE task_id = ?").run(task.id);
         });
         for (const requester of requesters) await notify(requester.id, "claim", "Task claim approved", `${actor.name} approved your request for ${task.task_code}: ${task.title}`, task.id);
         for (const requester of declinedRequesters) await notify(requester.id, "claim", "Task claim closed", `${actor.name} assigned ${task.task_code} to another requester.`, task.id);
+        if (actor.role === "team_leader") await recordTaskEvent(task.id, actor, "leader_allocated", "Accepted task claim for " + requesters.map(user => user.name).join(", "));
         await recordTaskEvent(task.id, actor, "claim_approved", `${requesters.map((requester) => requester.name).join(", ")} assigned and the task started`);
       }
       if (action === "claim-reject") {
-        if (!canManage(actor, task)) return send(response, 403, { message: "Manager approval is required." });
+        if (!canLead(actor, task)) return send(response, 403, { message: "A department admin or team leader must review this request." });
         const requesterId = String(body.userId ?? task.claim_requested_by_id ?? "");
         if (!requesterId) return send(response, 409, { message: "Choose a claim request to reject." });
         const requester = await db.prepare("SELECT * FROM users WHERE id = ? AND role = 'user'").get(requesterId);
@@ -1897,71 +2248,122 @@ const server = createServer(async (request, response) => {
         await notify(requesterId, "claim", "Task claim declined", `${actor.name} declined your request for ${task.task_code}: ${task.title}`, task.id);
         await recordTaskEvent(task.id, actor, "claim_rejected", `${requester?.name ?? "A requester"} claim request declined`);
       }
+      if (task.allocation_request?.state === "pending" && ["submit", "claim", "claim-approve"].includes(action)) return send(response, 409, { message: "Review the pending allocation before starting or submitting this task." });
+
       if (action === "submit") {
-        if (actor.role !== "user" || !assignedUserIds.includes(actor.id) || ["done", "under_review"].includes(task.status)) return send(response, 403, { message: "This task cannot be submitted." });
-        const submitted = await db.prepare("INSERT OR IGNORE INTO task_worker_approvals (task_id, user_id) VALUES (?, ?)").run(task.id, actor.id);
-        if (!submitted.changes) return send(response, 409, { message: "You already submitted this task for review." });
-        const approvedIds = (await db.prepare("SELECT user_id FROM task_worker_approvals WHERE task_id = ?").all(task.id)).map((item) => item.user_id);
-        const remainingIds = assignedUserIds.filter((userId) => !approvedIds.includes(userId));
-        const remainingWorkers = remainingIds.length
-          ? await db.prepare(`SELECT name FROM users WHERE id IN (${remainingIds.map(() => "?").join(",")}) ORDER BY name`).all(...remainingIds)
-          : [];
-        const waitingNames = remainingWorkers.map((worker) => worker.name);
-        const waitingText = waitingNames.length <= 1
-          ? waitingNames[0]
-          : `${waitingNames.slice(0, -1).join(", ")} and ${waitingNames.at(-1)}`;
-        await recordTaskEvent(
-          task.id,
-          actor,
-          "worker_finished",
-          waitingNames.length
-            ? `${actor.name} → finished · waiting for ${waitingText} to approve`
-            : `${actor.name} → finished · all workers approved, waiting for admin review`
-        );
-        if (remainingIds.length) {
-          await db.prepare("UPDATE tasks SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
-          for (const userId of remainingIds) await notify(userId, "approval", "Worker approval needed", `${actor.name} finished ${task.task_code}. Waiting for your approval.`, task.id);
-        } else {
-          await db.prepare("UPDATE tasks SET status = 'under_review', progress = 100, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
-          await notifyTaskAudience(task, actor.id, "Task ready for admin review", `All workers approved ${task.task_code}: ${task.title}`);
-        }
+        await db.transaction(async () => {
+          const task = await db.prepare("SELECT * FROM tasks WHERE id = ? FOR UPDATE").get(actionMatch[1]);
+          const assignedUserIds = await taskAssigneeIds(task.id);
+          if (task.action_request?.state === "pending") throw Object.assign(new Error("Review the pending task action first."), { status: 409 });
+          if (task.allocation_request?.state === "pending") throw Object.assign(new Error("Review the pending allocation first."), { status: 409 });
+          if (actor.role !== "user" || !assignedUserIds.includes(actor.id) || ["done", "under_review"].includes(task.status)) throw Object.assign(new Error("This task cannot be submitted."), { status: 403 });
+          const submitted = await db.prepare("INSERT OR IGNORE INTO task_worker_approvals (task_id, user_id) VALUES (?, ?)").run(task.id, actor.id);
+          if (!submitted.changes) throw Object.assign(new Error("You already submitted this task for review."), { status: 409 });
+          const approvedIds = (await db.prepare("SELECT user_id FROM task_worker_approvals WHERE task_id = ?").all(task.id)).map((item) => item.user_id);
+          const remainingIds = assignedUserIds.filter((userId) => !approvedIds.includes(userId));
+          const remainingWorkers = remainingIds.length
+            ? await db.prepare(`SELECT name FROM users WHERE id IN (${remainingIds.map(() => "?").join(",")}) ORDER BY name`).all(...remainingIds)
+            : [];
+          const waitingNames = remainingWorkers.map((worker) => worker.name);
+          const waitingText = waitingNames.length <= 1
+            ? waitingNames[0]
+            : `${waitingNames.slice(0, -1).join(", ")} and ${waitingNames.at(-1)}`;
+          await recordTaskEvent(
+            task.id,
+            actor,
+            "worker_finished",
+            waitingNames.length
+              ? `${actor.name} → finished · waiting for ${waitingText} to approve`
+              : `${actor.name} → finished · all workers approved, waiting for team leader / admin review`
+          );
+          if (remainingIds.length) {
+            await db.prepare("UPDATE tasks SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
+            for (const userId of remainingIds) await notify(userId, "approval", "Worker approval needed", `${actor.name} finished ${task.task_code}. Waiting for your approval.`, task.id);
+          } else {
+            await db.prepare("UPDATE tasks SET status = 'under_review', progress = 100, leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
+            await notifyTaskAudience(task, actor.id, "Task ready for review", `All workers approved ${task.task_code}: ${task.title}`);
+          }
+        });
       }
-      if (action === "approve") {
-        if (!canManage(actor, task) || task.status !== "under_review") return send(response, 403, { message: "This task cannot be approved." });
-        await db.prepare("UPDATE tasks SET status = 'done', progress = 100, review_comment = 'Approved.', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
-        await deleteTaskChatGroup(task.id);
-        await recordTaskEvent(task.id, actor, "approved", "Manager approved the work and completed the task");
-        for (const userId of assignedUserIds) await notify(userId, "approval", "Task approved", `${actor.name} approved: ${task.title}`, task.id);
-      }
-      if (action === "reopen") {
-        const comment = String(body.comment ?? "").trim();
-        if (!canManage(actor, task) || !["under_review", "done"].includes(task.status) || !comment) return send(response, 403, { message: "A review comment is required." });
-        const reopenedAfterCompletion = task.status === "done";
-        await db.prepare("UPDATE tasks SET status = 'in_progress', progress = MIN(progress, 90), review_comment = ?, completed_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(comment, task.id);
-        await db.prepare("INSERT INTO task_reopen_events (id, task_id, reviewer_id, comment) VALUES (?, ?, ?, ?)")
-          .run(randomUUID(), task.id, actor.id, comment);
-        await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(task.id);
-        await ensureTaskChatGroup(task.id);
-        await recordTaskEvent(task.id, actor, "reopened", `${reopenedAfterCompletion ? "Completed task reopened" : "Review rejected"}: ${comment}`);
-        for (const userId of assignedUserIds) await notify(userId, "review", "Task reopened", `${actor.name}: ${comment}`, task.id);
+      if (["approve", "finish", "reopen", "request-approve", "request-reject"].includes(action)) {
+        await db.transaction(async () => {
+          const task = await db.prepare("SELECT * FROM tasks WHERE id = ? FOR UPDATE").get(actionMatch[1]);
+          const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
+          if (!canLead(actor, task)) fail(403, "You cannot review tasks in this department.");
+          if (task.allocation_request?.isNew || task.allocation_request?.state === "pending") fail(409, "Review the pending allocation first.");
+          const proposal = task.action_request;
+          if (action === "request-approve" || action === "request-reject") {
+            if (!canManage(actor, task)) fail(403, "An admin must review this request.");
+            if (proposal?.state !== "pending" || proposal.id !== body.requestId) fail(409, "This request has changed. Refresh and review it again.");
+            if (action === "request-reject") {
+              await db.prepare("UPDATE tasks SET action_request = NULL, leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(task.id);
+              await recordTaskEvent(task.id, actor, "action_rejected", "Rejected team leader request: " + proposal.action);
+            } else {
+              if (task.status !== proposal.previousStatus) fail(409, "The task has changed since this request. Reject it and request again.");
+              if (proposal.action === "reopen") await reopenCompletedTask(task, actor, proposal.comment);
+              else await completeTask(task, actor);
+              await recordTaskEvent(task.id, actor, "action_approved", "Approved team leader request: " + proposal.action);
+            }
+            await notify(proposal.requesterId, "approval", action === "request-approve" ? "Task request approved" : "Task request rejected", actor.name + " reviewed your " + proposal.action + " request for " + task.title, task.id);
+            return;
+          }
+          // Keep the existing final-approval button compatible with pending leader approvals.
+          if (proposal?.state === "pending") {
+            if (action !== "approve" || proposal.action !== "approve" || !canManage(actor, task)) fail(409, "Review the pending task request first.");
+            await completeTask(task, actor);
+            await notify(proposal.requesterId, "approval", "Task request approved", actor.name + " approved " + task.title, task.id);
+            return;
+          }
+          const comment = String(body.comment ?? "").trim();
+          if (action === "approve" && task.status !== "under_review") fail(409, "This task is not ready for approval.");
+                    if (action === "finish" && (actor.role !== "team_leader" || !["assigned", "in_progress", "blocked"].includes(task.status))) fail(403, "This task cannot be finished by this user.");
+          if (action === "reopen") {
+            if (!comment) fail(400, "A review comment is required.");
+            if (!["done", "under_review"].includes(task.status) && actor.role !== "team_leader") fail(403, "This task cannot be reopened.");
+          }
+          if (actor.role === "team_leader") {
+            if (body.requiresApproval !== false) {
+              const request = { id: randomUUID(), action, comment, requesterId: actor.id, requesterName: actor.name, previousStatus: task.status, state: "pending" };
+              await notifyDepartmentAdmins(task, "Task " + action + " needs approval", actor.name + " requested to " + action + ": " + task.title);
+              await db.prepare("UPDATE tasks SET action_request = ?::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(request), task.id);
+              if (action === "approve" || action === "finish") await db.prepare("UPDATE tasks SET leader_approved_by_id = ?, leader_approved_at = CURRENT_TIMESTAMP WHERE id = ?").run(actor.id, task.id);
+              await recordTaskEvent(task.id, actor, "action_requested", "Requested department admin approval to " + action + (comment ? ": " + comment : ""));
+              return;
+            }
+            if (action !== "reopen") await db.prepare("UPDATE tasks SET leader_approved_by_id = ?, leader_approved_at = CURRENT_TIMESTAMP WHERE id = ?").run(actor.id, task.id);
+            await recordTaskEvent(task.id, actor, "approval_not_required", "Team leader chose to " + action + " without admin approval");
+          } else if (action === "approve" && actor.role !== "technical_manager" && await needsLeaderApproval(task)) {
+            fail(409, "Team leader approval is required before final admin approval.");
+          }
+          if (action === "reopen") await reopenCompletedTask(task, actor, comment);
+          else await completeTask(task, actor);
+        });
       }
       if (action === "messages") {
         if (!await canView(actor, task)) return send(response, 403, { message: "You cannot view this task." });
         if (actor.role === "user" && !assignedUserIds.includes(actor.id)) return send(response, 403, { message: "Take or be assigned to this task before adding comments." });
         if (task.status === "done") return send(response, 409, { message: "Approved tasks are read-only. Existing comments remain available." });
         const message = String(body.body ?? "").trim();
-        if (!message) throw new Error("Message cannot be empty.");
+        if (!message || message.length > 2000) fail(400, "Write a comment between 1 and 2000 characters.");
+        const people = await taskConversationPeople(task);
+        const mentions = taskMentionRecipients(message, people);
         await db.prepare("INSERT INTO task_messages (id, task_id, author_id, author_name, body) VALUES (?, ?, ?, ?, ?)")
           .run(randomUUID(), task.id, actor.id, actor.name, message);
         await recordTaskEvent(task.id, actor, "commented", message.slice(0, 240));
-        await notifyTaskAudience(task, actor.id, `New chat on ${task.title}`, `${actor.name}: ${message}`);
+        for (const person of people) {
+          if (person.id === actor.id) continue;
+          await notify(person.id, mentions.has(person.id) ? "mention" : "task", mentions.has(person.id) ? `You were mentioned on ${task.task_code}` : `New comment on ${task.task_code}`, `${actor.name}: ${message}`, task.id);
+        }
       }
       if (action === "files") {
         if (!await canView(actor, task)) return send(response, 403, { message: "You cannot view this task." });
         if (actor.role === "user" && !assignedUserIds.includes(actor.id)) return send(response, 403, { message: "Take or be assigned to this task before attaching documents." });
         if (task.status === "done") return send(response, 409, { message: "Approved tasks are locked. Existing documents remain available for download." });
         const uploadedFiles = Array.isArray(body.files) ? body.files : [];
-        await saveTaskFiles(task.id, actor, uploadedFiles);
+        const category = body.category ?? "completion";
+        if (!["task", "reference", "completion"].includes(category)) fail(400, "Choose task, reference, or completion documents.");
+        if (category === "task" && !canLead(actor, task)) fail(403, "Only managers and team leaders can add task instruction documents.");
+        await saveTaskFiles(task.id, actor, uploadedFiles, category);
         await recordTaskEvent(task.id, actor, "files_uploaded", `Uploaded ${uploadedFiles.length} file(s): ${uploadedFiles.map((file) => basename(String(file.name ?? "attachment"))).join(", ").slice(0, 600)}`);
       }
       await touchSession(request);
@@ -1970,14 +2372,14 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && path === "/api/notifications/read") {
       await db.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?").run(actor.id);
-      return send(response, 200, { ok: true });
+      return send(response, 200, { ok: true, unreadCount: (await db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0").get(actor.id)).count });
     }
 
     const notificationReadMatch = path.match(/^\/api\/notifications\/([^/]+)\/read$/);
     if (request.method === "POST" && notificationReadMatch) {
       const result = await db.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?").run(notificationReadMatch[1], actor.id);
       if (!result.changes) return send(response, 404, { message: "Notification not found." });
-      return send(response, 200, { ok: true });
+      return send(response, 200, { ok: true, unreadCount: (await db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND is_read = 0").get(actor.id)).count });
     }
 
     if (request.method === "POST" && path === "/api/ai/chat") {
@@ -2056,6 +2458,7 @@ const server = createServer(async (request, response) => {
       if (!name) throw new Error("Group name is required.");
       const departmentExists = await db.prepare("SELECT id FROM departments WHERE lower(name) = lower(?) LIMIT 1").get(department);
       if (!departmentExists || department === "Executive") throw new Error("Choose a valid department.");
+      if (!canAccessDepartment(actor, department)) return send(response, 403, { message: "This department is outside your management scope." });
       const id = randomUUID();
       await db.prepare("INSERT INTO chat_groups (id, name, department, created_by_id) VALUES (?, ?, ?, ?)")
         .run(id, name, department, actor.id);
@@ -2081,7 +2484,7 @@ const server = createServer(async (request, response) => {
       requireManager(actor);
       const group = await db.prepare("SELECT * FROM chat_groups WHERE id = ?").get(chatGroupMatch[1]);
       if (!group) return send(response, 404, { message: "Chat group not found." });
-      if (actor.role === "admin" && !sameDepartment(group.department, actor.department)) {
+      if (!canAccessDepartment(actor, group.department)) {
         return send(response, 403, { message: "Admins can delete group chats in their own department only." });
       }
       const channelId = `group:${group.id}`;
@@ -2214,7 +2617,7 @@ server.listen(port, "0.0.0.0", () => {
 void runTaskReminders().catch((error) => console.error("Reminder automation failed", error));
 const reminderInterval = setInterval(() => {
   void runTaskReminders().catch((error) => console.error("Reminder automation failed", error));
-}, 60 * 60 * 1000);
+}, 60 * 1000);
 reminderInterval.unref();
 
 async function shutdown() {

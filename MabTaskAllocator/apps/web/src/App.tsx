@@ -1,3 +1,10 @@
+import { BetaNotice } from "./components/BetaNotice";
+import { TaskDocuments } from "./components/TaskDocuments";
+import { WorkStepsEditor } from "./components/WorkStepsEditor";
+import { TaskChecklist } from "./components/TaskChecklist";
+import { LeaderOverview } from "./components/LeaderOverview";
+import { peopleForViewer } from "./peopleVisibility";
+import { archiveProjects, archiveSummary, filterArchive, isFreeTask, localDateKey, needsReview } from "./taskCounts";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -42,8 +49,9 @@ import {
 import type { AppUser, DepartmentName, TaskPriority, TaskStatus, TaskType, UserRole } from "@mab/shared";
 import { api, getLastActivity, hasSession, inactivityLimitMs, markActivity } from "./api";
 import type { AppNotification, AttendanceProfile, AuditLog, ChatChannel, ChatMessage, ChatMessageFile, ManagedTask, OperationalIntelligence, PerformanceTask, Project, TodoItem } from "./api";
+import { PersonPlacementFields, technicalDepartment, technicalDisciplines, isTechnicalDiscipline, disciplineLabel, departmentPath, positionLabel } from "./components/PersonPlacementFields";
 import { StatCard } from "./components/StatCard";
-import { useSiteTranslation } from "./i18n";
+import { translateText, useSiteTranslation } from "./i18n";
 import type { SiteLanguage } from "./i18n";
 
 const mabLogo = "/mab-logo.jpeg";
@@ -145,6 +153,16 @@ const statusLabels: Record<TaskStatus, string> = {
 };
 
 const taskEventLabels: Record<string, string> = {
+  action_requested: "Admin approval requested",
+  action_approved: "Admin request approved",
+  action_rejected: "Admin request rejected",
+  approval_not_required: "Applied without admin approval",
+  allocation_requested: "Allocation requested",
+  checklist_updated: "Work steps updated",
+  leader_allocated: "Task allocated by team leader",
+  allocation_approved: "Allocation approved",
+  allocation_rejected: "Allocation rejected",
+  leader_approved: "Team leader approved",
   created: "Task created",
   updated: "Task updated",
   claim_requested: "Task requested",
@@ -164,6 +182,8 @@ const taskEventLabels: Record<string, string> = {
 const roleLabels: Record<UserRole, string> = {
   superadmin: "Super Admin",
   admin: "Admin",
+  technical_manager: "Technical Manager",
+  team_leader: "Team Leader",
   user: "Normal User"
 };
 
@@ -185,6 +205,10 @@ const viewTitles = {
 } as const;
 
 type AppView = keyof typeof viewTitles;
+const pageIcons = {chat:MessageSquare,dashboard:Gauge,tasks:ClipboardList,finished:Archive,people:Users,projects:FolderKanban,team:Users,todos:ListTodo,intelligence:Sparkles,achievements:Trophy,attendance:Calendar,productivity:FileSpreadsheet,audit:ShieldCheck,settings:Settings};
+const pageDescriptions = {chat:"Conversations with your teams",dashboard:"Your workspace at a glance",tasks:"Assign, track and review your team's work",finished:"Completed work, delivery records and documents",people:"People, positions and department responsibilities",projects:"Project teams, leaders and shared work",team:"Team capacity and leadership performance",todos:"Your personal priorities and checklist",intelligence:"Risks, overdue work and matters needing attention",achievements:"Recognize delivery, quality and team contribution",attendance:"Attendance records and working days",productivity:"Workload, delivery and performance reports",audit:"A record of management actions",settings:"Manage your workspace preferences"};
+function WorkspacePageHeader({view,department}:{view:AppView;department:string}) { const Icon=pageIcons[view]; return <header className="workspace-page-header"><span className="workspace-page-icon"><Icon size={25}/></span><div><p>{department}</p><h2>{viewTitles[view]}</h2><small>{pageDescriptions[view]}</small></div></header>; }
+
 const appViews = Object.keys(viewTitles) as AppView[];
 
 function isAppView(value: string | null): value is AppView {
@@ -293,6 +317,14 @@ function sameDepartment(first?: string | null, second?: string | null) {
   return String(first ?? "").trim().toLocaleLowerCase() === String(second ?? "").trim().toLocaleLowerCase();
 }
 
+function projectContainsDepartment(projectDepartment: string, department: string) {
+  return sameDepartment(projectDepartment, department) || (sameDepartment(projectDepartment, technicalDepartment) && isTechnicalDiscipline(department));
+}
+function projectTaskDepartment(project: Project | undefined, fallback: string) {
+  if (!project) return fallback;
+  return sameDepartment(project.department, technicalDepartment) ? (isTechnicalDiscipline(fallback) ? fallback : technicalDisciplines[0]) : project.department;
+}
+
 function initials(name: string) {
   return name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "?";
 }
@@ -307,7 +339,7 @@ function renderMentionedText(body: string, currentUserName: string) {
 }
 
 function isTaskOverdue(task: Pick<ManagedTask, "dueDate" | "status">) {
-  return Boolean(task.dueDate && task.status !== "done" && task.dueDate < new Date().toISOString().slice(0, 10));
+  return Boolean(task.dueDate && task.status !== "done" && task.dueDate < currentRiyadhDate());
 }
 
 interface CandidatePickerProps {
@@ -333,11 +365,13 @@ function CandidatePicker({ candidates, emptyMessage, onChange, selectedIds }: Ca
         <Search aria-hidden="true" size={16} />
         <input
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name, email, or department..."
+          aria-label="Search available people"
+          placeholder="Search people..."
           type="search"
           value={query}
         />
       </label>
+      <div className="candidate-selection-summary"><span>{selectedIds.length} selected</span>{selectedIds.length ? <button type="button" className="candidate-clear" onClick={() => onChange([])}>Clear selection</button> : null}</div>
       <div className="candidate-picker" role="group" aria-label="Available candidates">
       {filteredCandidates.map((candidate) => {
         const selected = selectedIds.includes(candidate.id);
@@ -542,7 +576,12 @@ export function App() {
     browserNotificationsAvailable() ? Notification.permission : "denied"
   );
   const [users, setUsers] = useState<AppUser[]>([]);
-  const [departments, setDepartments] = useState<DepartmentName[]>(defaultDepartments);
+  const [departmentHierarchy, setDepartmentHierarchy] = useState<Array<{ id: string; name: string; parentId: string | null }>>([]);
+  const [peopleFormVersion, setPeopleFormVersion] = useState(0);
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [peoplePosition, setPeoplePosition] = useState("");
+  const [peopleDepartment, setPeopleDepartment] = useState("");
+  const [departments, setDepartments] = useState<DepartmentName[]>([]);
   const [tasks, setTasks] = useState<ManagedTask[]>([]);
   const [performanceTasks, setPerformanceTasks] = useState<PerformanceTask[]>([]);
   const [attendanceProfiles, setAttendanceProfiles] = useState<AttendanceProfile[]>([]);
@@ -550,6 +589,12 @@ export function App() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const notificationOwner = useRef(currentUser?.id);
+  notificationOwner.current = currentUser?.id;
+  const notificationEpoch = useRef(0);
+  const bootstrapSequence = useRef(0);
+  const notificationReads = useRef(Promise.resolve());
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const knownNotificationIdsRef = useRef<Set<string>>(new Set());
   const notificationHydratedRef = useRef(false);
@@ -582,15 +627,30 @@ export function App() {
   const navigationFromPopRef = useRef(false);
   const appNavigationDepthRef = useRef(0);
   const [canGoBackInApp, setCanGoBackInApp] = useState(false);
-  const [activeTaskSection, setActiveTaskSection] = useState<"assigned" | "free">("assigned");
-  const [managerTaskSection, setManagerTaskSection] = useState<"all" | "review" | "free">("all");
+  const [activeTaskSection, setActiveTaskSection] = useState<"assigned" | "free" | "overdue">("assigned");
+  const [managerTaskSection, setManagerTaskSection] = useState<"all" | "review" | "free" | "overdue">("all");
+  const [activeWorkerId, setActiveWorkerId] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [appLoading, setAppLoading] = useState(hasSession());
   const [loginError, setLoginError] = useState("");
+  const [toast, setToast] = useState<{id: number; message: string} | null>(null);
+  const toastSequence = useRef(0);
+  function showSuccess(message: string) {
+    setToast({ id: ++toastSequence.current, message });
+    setTaskMessageStatus({});
+    setPeopleMessage(""); setDepartmentMessage(""); setAllocationMessage(""); setProjectMessage(""); setTodoMessage("");
+  }
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
   const [peopleMessage, setPeopleMessage] = useState("");
   const [departmentDraft, setDepartmentDraft] = useState("");
   const [departmentMessage, setDepartmentMessage] = useState("");
   const [allocationMessage, setAllocationMessage] = useState("");
+  const [approvalPrompt, setApprovalPrompt] = useState<string | null>(null);
+  const approvalChoiceRef = useRef<((choice: boolean | null) => void) | null>(null);
   const [showTaskComposer, setShowTaskComposer] = useState(false);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<AppUser | null>(null);
@@ -606,6 +666,7 @@ export function App() {
   const [reportUserId, setReportUserId] = useState("");
   const [archiveFilters, setArchiveFilters] = useState({
     taskId: "",
+    projectId: "",
     from: "",
     to: "",
     assigneeId: "",
@@ -678,6 +739,8 @@ export function App() {
     });
   }
 
+  const displayText = (text: string) => language === "ar" ? translateText(text) : text;
+
   function updateUserSettings(partial: Partial<UserSettings>) {
     setUserSettingsPreference((preference) => ({
       ownerId: themeOwnerId,
@@ -743,6 +806,7 @@ export function App() {
   const [todoDraft, setTodoDraft] = useState({ title: "", taskId: "" });
   const [todoFilter, setTodoFilter] = useState<"all" | "open" | "completed">("all");
   const [todoMessage, setTodoMessage] = useState("");
+  const [draftSteps, setDraftSteps] = useState<string[]>([]);
   const [taskDraft, setTaskDraft] = useState({
     title: "Prepare client visit checklist",
     assigneeIds: [] as string[],
@@ -762,6 +826,7 @@ export function App() {
   });
   const [projectMessage, setProjectMessage] = useState("");
   const [projectMemberDrafts, setProjectMemberDrafts] = useState<Record<string, string[]>>({});
+  const [projectLeaderDrafts, setProjectLeaderDrafts] = useState<Record<string, string[]>>({});
   const [projectEditDrafts, setProjectEditDrafts] = useState<Record<string, { name: string; description: string }>>({});
   const [confirmation, setConfirmation] = useState<{
     title: string;
@@ -771,8 +836,20 @@ export function App() {
     onConfirm: () => Promise<void> | void;
   } | null>(null);
 
-  const canManagePeople = currentUser?.role === "superadmin" || currentUser?.role === "admin";
-  const canAllocateTasks = currentUser?.role === "superadmin" || currentUser?.role === "admin";
+  const canManagePeople = Boolean(currentUser && ["superadmin", "admin", "technical_manager"].includes(currentUser.role));
+  const canCreatePeople = canManagePeople || currentUser?.role === "team_leader";
+  const canChooseDepartment = currentUser?.role === "superadmin" || currentUser?.role === "technical_manager";
+  function inDepartmentScope(department: string) {
+    if (!currentUser) return false;
+    if (currentUser.role === "superadmin") return true;
+    return currentUser.role === "technical_manager"
+      ? technicalDisciplines.some((name) => sameDepartment(name, department))
+      : sameDepartment(currentUser.department, department);
+  }
+  const managedDepartments = departments.filter(inDepartmentScope);
+  const projectDepartments = [...(canChooseDepartment && departmentHierarchy.some(node => node.name === technicalDepartment) ? [technicalDepartment] : []), ...managedDepartments];
+  const editingLastSuperAdmin = users.find((user) => user.id === editingUserId)?.role === "superadmin" && users.filter((user) => user.role === "superadmin").length === 1;
+  const canAllocateTasks = canManagePeople || currentUser?.role === "team_leader";
 
   function requestConfirmation(
     message: string,
@@ -826,8 +903,11 @@ export function App() {
   }
 
   async function refreshData(silent = false) {
+    const sequence = ++bootstrapSequence.current;
+    const epoch = notificationEpoch.current;
     try {
       const data = await api.bootstrap();
+      if (sequence !== bootstrapSequence.current || !hasSession()) return;
       const safeTasks = (data.tasks ?? []).map((task) => ({
         ...task,
         assigneeIds: task.assigneeIds ?? [],
@@ -854,7 +934,8 @@ export function App() {
         files: message.files ?? []
       }));
       setCurrentUser(data.currentUser);
-      setDepartments(data.departments?.length ? data.departments : defaultDepartments);
+      setDepartments(data.departments ?? []);
+      setDepartmentHierarchy(data.departmentHierarchy ?? []);
       setUsers(data.users ?? []);
       setTasks(safeTasks);
       setPerformanceTasks(safePerformanceTasks);
@@ -864,7 +945,10 @@ export function App() {
       setTodos(data.todos ?? []);
       setProjects((data.projects ?? []).map((project) => ({ ...project, members: project.members ?? [] })));
       announceNewNotifications(data.notifications ?? []);
-      setNotifications(data.notifications ?? []);
+      if (epoch === notificationEpoch.current) {
+        setNotifications(data.notifications ?? []);
+        setUnreadNotificationCount(data.unreadNotificationCount);
+      }
       setChatChannels(data.chatChannels ?? []);
       setChatMessages(safeChatMessages);
       setLoginError("");
@@ -991,20 +1075,19 @@ export function App() {
     setSelectedChannelId(chatChannels[0]?.id ?? "");
   }, [chatChannels, selectedChannelId]);
 
-  const visibleUsers = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === "superadmin") return users;
-    if (currentUser.role === "admin") {
-      return users.filter((user) => sameDepartment(user.department, currentUser.department) && user.role !== "superadmin");
-    }
-    return users.filter((user) => user.id === currentUser.id);
-  }, [currentUser, users]);
+  const visibleUsers = useMemo(() => peopleForViewer(users, currentUser), [currentUser, users]);
+
+  const filteredPeople = visibleUsers.filter((user) => {
+    const query = peopleQuery.trim().toLocaleLowerCase();
+    return (!peoplePosition || user.role === peoplePosition) && (!peopleDepartment || user.department === peopleDepartment) &&
+      (!query || [user.name, user.username, positionLabel(user), departmentPath(user.department)].some((text) => text.toLocaleLowerCase().includes(query)));
+  });
 
   const assignableUsers = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === "superadmin") return users.filter((user) => user.role === "user");
-    if (currentUser.role === "admin") {
-      return users.filter((user) => user.role === "user" && sameDepartment(user.department, currentUser.department));
+    if (["admin", "technical_manager", "team_leader"].includes(currentUser.role)) {
+      return users.filter((user) => user.role === "user" && inDepartmentScope(user.department));
     }
     return [];
   }, [currentUser, users]);
@@ -1014,12 +1097,17 @@ export function App() {
     setReportUserId(assignableUsers[0]?.id ?? "");
   }, [assignableUsers, reportUserId]);
 
+  useEffect(() => {
+    if (!activeWorkerId || assignableUsers.some((user) => user.id === activeWorkerId)) return;
+    setActiveWorkerId("");
+  }, [activeWorkerId, assignableUsers]);
+
   const visibleTasks = useMemo(() => {
     if (!currentUser) return [];
     const matchingTasks =
       currentUser.role === "superadmin"
         ? tasks
-        : tasks.filter((task) => sameDepartment(task.department, currentUser.department));
+        : tasks.filter((task) => inDepartmentScope(task.department));
 
     return sortTasksByPriority(matchingTasks);
   }, [currentUser, tasks]);
@@ -1037,17 +1125,21 @@ export function App() {
   );
 
   const freeActiveTasks = useMemo(
-    () => activeTasks.filter((task) => task.assigneeIds.length === 0),
+    () => activeTasks.filter(isFreeTask),
     [activeTasks]
   );
 
   const activeTaskSectionTasks = currentUser?.role === "user"
-    ? activeTaskSection === "assigned" ? assignedActiveTasks : freeActiveTasks
-    : managerTaskSection === "review"
-      ? activeTasks.filter((task) => task.status === "under_review")
+    ? activeTaskSection === "overdue" ? assignedActiveTasks.filter(isTaskOverdue) : activeTaskSection === "assigned" ? assignedActiveTasks : freeActiveTasks
+    : managerTaskSection === "overdue" ? activeTasks.filter(isTaskOverdue) : managerTaskSection === "review"
+      ? visibleTasks.filter(needsReview)
       : managerTaskSection === "free" ? freeActiveTasks : activeTasks;
-  const activeSectionUrgentCount = activeTaskSectionTasks.filter((task) => task.priority === "urgent").length;
-  const activeSectionOverdueCount = activeTaskSectionTasks.filter(isTaskOverdue).length;
+  const filteredActiveTaskSectionTasks = useMemo(() => activeWorkerId
+    ? activeTaskSectionTasks.filter((task) => task.assigneeIds.includes(activeWorkerId))
+    : activeTaskSectionTasks, [activeTaskSectionTasks, activeWorkerId]);
+  const selectedActiveWorker = assignableUsers.find((worker) => worker.id === activeWorkerId);
+  const activeSectionUrgentCount = filteredActiveTaskSectionTasks.filter((task) => task.priority === "urgent").length;
+  const activeSectionOverdueCount = filteredActiveTaskSectionTasks.filter(isTaskOverdue).length;
   const dashboardTasks = currentUser?.role === "user" ? assignedActiveTasks : activeTasks;
 
   const todoLinkableTasks = useMemo(() => activeTasks.filter((task) =>
@@ -1066,21 +1158,13 @@ export function App() {
     [visibleTasks]
   );
 
-  const filteredArchiveTasks = useMemo(() => finishedTasks.filter((task) => {
-    const normalizedQuery = archiveFilters.taskId.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
-    const normalizedTaskCode = task.taskCode.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
-    if (normalizedQuery && !normalizedTaskCode.includes(normalizedQuery)) return false;
-    if (archiveFilters.priority && task.priority !== archiveFilters.priority) return false;
-    if (archiveFilters.assigneeId && !task.assigneeIds.includes(archiveFilters.assigneeId)) return false;
-    const referenceDate = (task.completedAtIso ?? task.createdAt).slice(0, 10);
-    if (archiveFilters.from && referenceDate < archiveFilters.from) return false;
-    if (archiveFilters.to && referenceDate > archiveFilters.to) return false;
-    return true;
-  }), [archiveFilters, finishedTasks]);
+  const filteredArchiveTasks = useMemo(() => filterArchive(finishedTasks, archiveFilters), [finishedTasks, archiveFilters]);
+  const finishedProjects = useMemo(() => archiveProjects(finishedTasks), [finishedTasks]);
+  const finishedSummary = archiveSummary(filteredArchiveTasks);
 
   const teamCandidates = useMemo(() => {
     const normalUsers = visibleUsers.filter((user) => user.role === "user");
-    if (currentUser?.role === "superadmin" && teamDepartment) {
+    if (canChooseDepartment && teamDepartment) {
       return normalUsers.filter((user) => user.department === teamDepartment);
     }
     return normalUsers;
@@ -1099,44 +1183,44 @@ export function App() {
   }, [currentUser, tasks]);
 
   const selectedDraftProject = projects.find((project) => project.id === taskDraft.projectId);
+  const taskDepartmentOptions = managedDepartments.filter(department => !selectedDraftProject || projectContainsDepartment(selectedDraftProject.department, department));
   const taskDraftAssignableUsers = assignableUsers.filter((user) =>
     selectedDraftProject
-      ? selectedDraftProject.members.some((member) => member.id === user.id)
+      ? selectedDraftProject.members.some((member) => member.id === user.id) && sameDepartment(user.department, projectTaskDepartment(selectedDraftProject, taskDraft.department))
       : sameDepartment(user.department, taskDraft.department)
   );
-  const projectDraftCandidates = assignableUsers.filter((user) => sameDepartment(
-    user.department,
-    currentUser?.role === "admin" ? currentUser.department : projectDraft.department
+  const projectDraftCandidates = assignableUsers.filter((user) => projectContainsDepartment(
+    currentUser?.role === "admin" ? currentUser.department : projectDraft.department, user.department
   ));
 
   useEffect(() => {
-    if (currentUser?.role !== "superadmin" || !departments.length) return;
-    setProjectDraft((draft) => departments.some((department) => sameDepartment(department, draft.department))
+    if (!canChooseDepartment || !managedDepartments.length) return;
+    setProjectDraft((draft) => projectDepartments.some((department) => sameDepartment(department, draft.department))
       ? draft
-      : { ...draft, department: departments[0], memberIds: [] });
-    setTaskDraft((draft) => draft.projectId || departments.some((department) => sameDepartment(department, draft.department))
+      : { ...draft, department: projectDepartments[0], memberIds: [] });
+    setTaskDraft((draft) => draft.projectId || managedDepartments.some((department) => sameDepartment(department, draft.department))
       ? draft
-      : { ...draft, department: departments[0], assigneeIds: [] });
-  }, [currentUser?.id, departments.join("|")]);
+      : { ...draft, department: managedDepartments[0], assigneeIds: [] });
+  }, [currentUser?.id, currentUser?.role, departments.join("|")]);
 
   useEffect(() => {
     if (!currentUser || !canAllocateTasks) return;
     setTaskDraft((draft) => ({
       ...draft,
       assigneeIds: draft.assigneeIds.filter((id) => taskDraftAssignableUsers.some((user) => user.id === id)),
-      department: selectedDraftProject?.department ?? (currentUser.role === "admin" ? currentUser.department : draft.department)
+      department: projectTaskDepartment(selectedDraftProject, !canChooseDepartment ? currentUser.department : draft.department)
     }));
   }, [canAllocateTasks, currentUser?.id, selectedDraftProject?.id, taskDraftAssignableUsers.map((user) => user.id).join(",")]);
 
   const openTasks = dashboardTasks.length;
   const urgentTasks = dashboardTasks.filter((task) => task.priority === "urgent").length;
-  const reviewTasks = dashboardTasks.filter((task) => task.status === "under_review").length;
-  const overdueTasks = dashboardTasks.filter((task) => task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10)).length;
+  const reviewTasks = visibleTasks.filter(needsReview).length;
+  const overdueTasks = dashboardTasks.filter((task) => task.dueDate && task.dueDate < currentRiyadhDate()).length;
   const dashboardComplexity = dashboardTasks.reduce((sum, task) => sum + complexityPoints(task), 0);
   const averageProgress = dashboardComplexity
     ? Math.round(dashboardTasks.reduce((sum, task) => sum + task.progress * complexityPoints(task), 0) / dashboardComplexity)
     : 0;
-  const unreadNotifications = notifications.filter((notification) => !notification.isRead).length;
+  const unreadNotifications = unreadNotificationCount;
   const selectedChatChannel = chatChannels.find((channel) => channel.id === selectedChannelId);
   const selectedChatMessages = chatMessages.filter((message) => message.channelId === selectedChannelId);
   const selectedChatTask = selectedChatChannel?.taskId ? tasks.find((task) => task.id === selectedChatChannel.taskId) : undefined;
@@ -1147,7 +1231,7 @@ export function App() {
         if (user.role === "superadmin") return true;
         if (!sameDepartment(user.department, selectedChatChannel.department)) return false;
         if (!selectedChatTask) return true;
-        return user.role === "admin" || selectedChatTask.assigneeIds.includes(user.id);
+        return ["admin", "team_leader"].includes(user.role) || selectedChatTask.assigneeIds.includes(user.id);
       });
   const mentionMatch = chatDraft.match(/@([^@\[\]\n]*)$/);
   const mentionQuery = mentionMatch?.[1].trim().toLocaleLowerCase() ?? "";
@@ -1204,12 +1288,12 @@ export function App() {
   }, [showAiAssistant, showChatPanel, showGroupForm, showNotifications]);
   const canDeleteSelectedChatGroup = Boolean(selectedChatChannel?.isGroup && (
     currentUser?.role === "superadmin" ||
-    (currentUser?.role === "admin" && selectedChatChannel.department === currentUser.department)
+    (canManagePeople && inDepartmentScope(selectedChatChannel.department))
   ));
 
-  function openTaskQueue(section: "assigned" | "free" | "all" | "review") {
-    if (currentUser?.role === "user") setActiveTaskSection(section === "free" ? "free" : "assigned");
-    else setManagerTaskSection(section === "review" ? "review" : section === "free" ? "free" : "all");
+  function openTaskQueue(section: "assigned" | "free" | "all" | "review" | "overdue") {
+    if (currentUser?.role === "user") setActiveTaskSection(section === "overdue" ? "overdue" : section === "free" ? "free" : "assigned");
+    else setManagerTaskSection(section === "overdue" ? "overdue" : section === "review" ? "review" : section === "free" ? "free" : "all");
     setActiveView("tasks");
   }
 
@@ -1380,6 +1464,15 @@ export function App() {
       setIntelligence({ generatedAt: "", portfolio: { activeTasks: 0, highRiskTasks: 0, overloadedUsers: 0, unassignedTasks: 0, healthScore: 100 }, taskInsights: [], workforceInsights: [] });
       setTodos([]);
       setProjects([]);
+      setProjectLeaderDrafts({});
+      setPeopleQuery("");
+      setPeoplePosition("");
+      setPeopleDepartment("");
+      bootstrapSequence.current++;
+      notificationEpoch.current++;
+      setToast(null);
+      setUnreadNotificationCount(0);
+      setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" });
       setNotifications([]);
       knownNotificationIdsRef.current = new Set();
       notificationHydratedRef.current = false;
@@ -1400,6 +1493,11 @@ export function App() {
       setIntelligence({ generatedAt: "", portfolio: { activeTasks: 0, highRiskTasks: 0, overloadedUsers: 0, unassignedTasks: 0, healthScore: 100 }, taskInsights: [], workforceInsights: [] });
       setTodos([]);
       setProjects([]);
+      bootstrapSequence.current++;
+      notificationEpoch.current++;
+      setToast(null);
+      setUnreadNotificationCount(0);
+      setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" });
       setNotifications([]);
       knownNotificationIdsRef.current = new Set();
       notificationHydratedRef.current = false;
@@ -1411,11 +1509,33 @@ export function App() {
 
   async function openNotifications() {
     setShowNotifications((visible) => !visible);
+    if (!showNotifications && unreadNotifications > 0) {
+      try {
+        await markAllNotificationsRead();
+      } catch (error) {
+        console.error("Could not mark notifications as read.", error);
+      }
+    }
+  }
+
+  function markNotificationsRead(id?: string) {
+    const owner = currentUser?.id;
+    const ids = new Set(notifications.map((item) => item.id));
+    notificationEpoch.current++;
+    const pending = notificationReads.current.catch(() => undefined).then(async () => {
+      if (owner !== notificationOwner.current) return;
+      const result = id ? await api.markNotificationRead(id) : await api.markNotificationsRead();
+      notificationEpoch.current++;
+      if (!hasSession() || owner !== notificationOwner.current) return;
+      setUnreadNotificationCount(result.unreadCount);
+      setNotifications((items) => items.map((item) => (id ? item.id === id : ids.has(item.id)) ? { ...item, isRead: true } : item));
+    });
+    notificationReads.current = pending;
+    return pending;
   }
 
   async function markAllNotificationsRead() {
-    await api.markNotificationsRead();
-    setNotifications((items) => items.map((item) => ({ ...item, isRead: true })));
+    await markNotificationsRead();
   }
 
   function selectChatChannel(channelId: string) {
@@ -1423,8 +1543,9 @@ export function App() {
     setReplyingTo(null);
     setChatFiles([]);
     if (!channelId) return;
-    setChatChannels((channels) => channels.map((channel) => channel.id === channelId ? { ...channel, unreadCount: 0 } : channel));
-    void api.markChatRead(channelId).catch(() => undefined);
+    void api.markChatRead(channelId).then(() => {
+      setChatChannels((channels) => channels.map((channel) => channel.id === channelId ? { ...channel, unreadCount: 0 } : channel));
+    }).catch((error) => setChatStatus(error instanceof Error ? error.message : "Could not mark messages as read."));
   }
 
   async function openDepartmentChat(preferredChannelId?: string) {
@@ -1440,7 +1561,7 @@ export function App() {
       setChatMessages(data.chatMessages);
       const preferredChannel = preferredChannelId ? data.chatChannels.find((channel) => channel.id === preferredChannelId) : undefined;
       const departmentChannel = data.chatChannels.find((channel) =>
-        !channel.isGroup && !channel.isDirect && (currentUser?.role === "superadmin" || channel.department === currentUser?.department));
+        !channel.isGroup && !channel.isDirect && inDepartmentScope(channel.department));
       selectChatChannel(preferredChannel?.id ?? departmentChannel?.id ?? data.chatChannels[0]?.id ?? "");
     } catch (error) {
       setChatStatus(error instanceof Error ? error.message : "Could not open Department Chat.");
@@ -1449,8 +1570,7 @@ export function App() {
 
   function openNotificationTarget(notification: AppNotification) {
     if (!notification.isRead) {
-      void api.markNotificationRead(notification.id).catch(() => undefined);
-      setNotifications((items) => items.map((item) => item.id === notification.id ? { ...item, isRead: true } : item));
+      void markNotificationsRead(notification.id).catch(console.error);
     }
     setShowNotifications(false);
     if (notification.channelId) {
@@ -1460,14 +1580,19 @@ export function App() {
     if (notification.taskId) {
       setShowChatPanel(false);
       const task = tasks.find((item) => item.id === notification.taskId);
-      if (task?.status === "done") setActiveView("finished");
+      if (task?.status === "done") {
+        setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" });
+        setActiveView("finished");
+      }
       else {
         setActiveView("tasks");
         if (currentUser?.role === "user") setActiveTaskSection("assigned");
-        else setManagerTaskSection(task?.status === "under_review" ? "review" : "all");
+        else setManagerTaskSection(task?.status === "under_review" || task?.allocationRequest?.state === "pending" || task?.actionRequest ? "review" : "all");
       }
       window.setTimeout(() => {
-        document.getElementById(`task-${notification.taskId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const card = document.getElementById(`task-${notification.taskId}`);
+        if (card instanceof HTMLDetailsElement) card.open = true;
+        card?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
       return;
     }
@@ -1519,7 +1644,7 @@ export function App() {
       const { todo } = await api.createTodo({ title, taskId: todoDraft.taskId || undefined });
       setTodos((items) => [todo, ...items]);
       setTodoDraft({ title: "", taskId: "" });
-      setTodoMessage("TODO item added.");
+      showSuccess("TODO item added.");
     } catch (error) {
       setTodoMessage(error instanceof Error ? error.message : "Could not add the TODO item.");
     }
@@ -1529,10 +1654,18 @@ export function App() {
     try {
       const result = await api.updateTodo({ ...todo, completed: !todo.completed });
       setTodos((items) => items.map((item) => item.id === todo.id ? result.todo : item));
-      setTodoMessage(result.todo.completed ? "TODO item completed." : "TODO item reopened.");
+      showSuccess(result.todo.completed ? "TODO item completed." : "TODO item reopened.");
     } catch (error) {
       setTodoMessage(error instanceof Error ? error.message : "Could not update the TODO item.");
     }
+  }
+
+  function deleteAllTodos() {
+    if (!todos.length) return;
+    requestConfirmation("Delete all " + todos.length + " of your TODO items, including completed items?", async () => {
+      try { await api.deleteAllTodos(); await refreshData(true); showSuccess("All TODO items deleted."); }
+      catch (error) { setTodoMessage(error instanceof Error ? error.message : "Could not delete TODO items."); }
+    }, { title: "Delete all TODOs?", confirmLabel: "Delete all", danger: true });
   }
 
   function deleteTodo(todo: TodoItem) {
@@ -1540,20 +1673,37 @@ export function App() {
       try {
         await api.deleteTodo(todo.id);
         setTodos((items) => items.filter((item) => item.id !== todo.id));
-        setTodoMessage("TODO item deleted.");
+        showSuccess("TODO item deleted.");
       } catch (error) {
         setTodoMessage(error instanceof Error ? error.message : "Could not delete the TODO item.");
       }
     });
   }
 
+  function renderCreateUserFields() {
+    return <>
+      {currentUser ? <PersonPlacementFields key={`${currentUser.id}-${peopleFormVersion}`} actor={currentUser} departments={managedDepartments} /> : null}
+      {currentUser?.role === "team_leader" ? <label>Existing project (optional)<select name="projectId" defaultValue=""><option value="">Assign to a project later</option>{projects.filter((project) => inDepartmentScope(project.department) || projectContainsDepartment(project.department, currentUser!.department)).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label> : null}
+    </>;
+  }
+
+  async function addProjectMembers(project: Project) {
+    const memberIds = (projectMemberDrafts[project.id] ?? []).filter((id) => !project.members.some((member) => member.id === id));
+    if (!memberIds.length) { setProjectMessage("Select normal users to add to this project."); return; }
+    try {
+      await api.addProjectMembers(project.id, memberIds);
+      await refreshData(true);
+      setProjectMemberDrafts((drafts) => ({ ...drafts, [project.id]: [] }));
+      showSuccess("People added to the existing project.");
+    } catch (error) { setProjectMessage(error instanceof Error ? error.message : "Could not add project members."); }
+  }
+
   function getFormDepartment(formData: FormData): DepartmentName {
-    if (currentUser?.role === "admin") return currentUser.department;
+    if (currentUser && !canChooseDepartment) return currentUser.department;
     return String(formData.get("department") ?? departments[0]) as DepartmentName;
   }
 
   function getFormRole(formData: FormData): UserRole {
-    if (currentUser?.role === "admin") return "user";
     return String(formData.get("role") ?? "user") as UserRole;
   }
 
@@ -1569,7 +1719,7 @@ export function App() {
       const result = await api.createDepartment(name);
       await refreshData(true);
       setDepartmentDraft("");
-      setDepartmentMessage(`${result.department} was created.`);
+      showSuccess(`${result.department} was created.`);
     } catch (error) {
       setDepartmentMessage(error instanceof Error ? error.message : "Could not create this department.");
     }
@@ -1577,7 +1727,7 @@ export function App() {
 
   async function handleCreatePerson(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!currentUser || !canManagePeople) return;
+    if (!currentUser || !canCreatePeople) return;
 
     const form = event.currentTarget;
     const formData = new FormData(form);
@@ -1593,10 +1743,11 @@ export function App() {
     }
 
     try {
-      await api.createUser({ name, username, password, role, department });
+      await api.createUser({ name, username, password, role, department, projectId: String(formData.get("projectId") ?? "") || undefined });
       await refreshData(true);
       form.reset();
-      setPeopleMessage(`${name} was created as ${roleLabels[role]} in ${department}.`);
+      setPeopleFormVersion((version) => version + 1);
+      showSuccess(`${name} was created as ${positionLabel({ role, department })} in ${role === "technical_manager" ? "Technical Department (Electrical + Mechanical)" : departmentPath(department)}.`);
     } catch (error) {
       setPeopleMessage(error instanceof Error ? error.message : "Could not create this user.");
     }
@@ -1611,14 +1762,14 @@ export function App() {
     if (!currentUser || !editDraft) return;
 
     const updatedUser = currentUser.role === "admin"
-      ? { ...editDraft, department: currentUser.department, role: "user" as UserRole }
+      ? { ...editDraft, department: currentUser.department }
       : editDraft;
     try {
       await api.updateUser(updatedUser);
       await refreshData(true);
       setEditingUserId(null);
       setEditDraft(null);
-      setPeopleMessage(`${updatedUser.name} was updated.`);
+      showSuccess(`${updatedUser.name} was updated.`);
     } catch (error) {
       setPeopleMessage(error instanceof Error ? error.message : "Could not update this user.");
     }
@@ -1631,7 +1782,7 @@ export function App() {
       try {
         await api.deleteUser(userId);
         await refreshData(true);
-        setPeopleMessage(`${user.name} was deleted.`);
+        showSuccess(`${user.name} was deleted.`);
       } catch (error) {
         setPeopleMessage(error instanceof Error ? error.message : "Could not delete this user.");
       }
@@ -1641,7 +1792,68 @@ export function App() {
   function canManageTask(task: ManagedTask) {
     if (!currentUser) return false;
     if (currentUser.role === "superadmin") return true;
-    return currentUser.role === "admin" && task.department === currentUser.department;
+    return ["admin", "technical_manager"].includes(currentUser.role) && inDepartmentScope(task.department);
+  }
+
+  function chooseApproval(choice: boolean | null) {
+    const resolve = approvalChoiceRef.current;
+    approvalChoiceRef.current = null;
+    setApprovalPrompt(null);
+    resolve?.(choice);
+  }
+
+  useEffect(() => () => {
+    approvalChoiceRef.current?.(null);
+    approvalChoiceRef.current = null;
+    setApprovalPrompt(null);
+  }, [currentUser?.id]);
+
+  async function askForAdminApproval(action: string): Promise<boolean | null> {
+    if (currentUser?.role !== "team_leader") return false;
+    if (approvalChoiceRef.current) return null;
+    return new Promise((resolve) => {
+      approvalChoiceRef.current = resolve;
+      setApprovalPrompt(action);
+    });
+  }
+
+  async function reviewTaskRequest(task: ManagedTask, approve: boolean) {
+    if (!canManageTask(task) || !task.actionRequest) return;
+    try {
+      await api.taskAction(task.id, approve ? "request-approve" : "request-reject", { requestId: task.actionRequest.id });
+      await refreshData(true);
+      showSuccess(approve ? "Task request approved and applied." : "Task request rejected; the task is unchanged.");
+    } catch (error) {
+      setAllocationMessage(error instanceof Error ? error.message : "Could not review the request.");
+    }
+  }
+
+  function renderTaskRequest(task: ManagedTask) {
+    const request = task.actionRequest;
+    if (!request) return null;
+    return <div className="claim-request-note manager"><div className="claim-request-panel">
+      <strong>Pending admin approval: {request.action}</strong>
+      <p>Requested by {request.requesterName}{request.comment ? " ? " + request.comment : ""}</p>
+      {canManageTask(task) ? <div className="row-actions">
+        <button type="button" className="task-action-button" onClick={() => void reviewTaskRequest(task, true)}>Approve request</button>
+        <button type="button" className="task-action-button secondary" onClick={() => void reviewTaskRequest(task, false)}>Reject request</button>
+      </div> : null}
+    </div></div>;
+  }
+
+  function canLeadTask(task: ManagedTask) {
+    return canManageTask(task) || (currentUser?.role === "team_leader" && inDepartmentScope(task.department));
+  }
+
+  async function reviewAllocation(task: ManagedTask, approve: boolean) {
+    if (!canManageTask(task) || !task.allocationRequest) return;
+    try {
+      await api.taskAction(task.id, approve ? "allocation-approve" : "allocation-reject", { requestId: task.allocationRequest.id });
+      await refreshData(true);
+      showSuccess(approve ? "Allocation approved." : "Allocation rejected.");
+    } catch (error) {
+      setAllocationMessage(error instanceof Error ? error.message : "Could not review allocation.");
+    }
   }
 
   async function handleAllocateTask(event: FormEvent<HTMLFormElement>) {
@@ -1650,9 +1862,7 @@ export function App() {
 
     const title = taskDraft.title.trim();
     const assignees = taskDraftAssignableUsers.filter((user) => taskDraft.assigneeIds.includes(user.id));
-    const department = selectedDraftProject?.department ?? (
-      currentUser.role === "admin" ? currentUser.department : taskDraft.department
-    );
+    const department = projectTaskDepartment(selectedDraftProject, !canChooseDepartment ? currentUser.department : taskDraft.department);
 
     if (!title) {
       setAllocationMessage("Please enter a task title.");
@@ -1664,11 +1874,13 @@ export function App() {
       return;
     }
 
-    if (currentUser.role === "admin" && department !== currentUser.department) {
-      setAllocationMessage("Admins can allocate tasks only inside their own department.");
+    if (!inDepartmentScope(department)) {
+      setAllocationMessage("Tasks can be allocated only inside your own department.");
       return;
     }
 
+    const requiresApproval = await askForAdminApproval(`Add "${title}"`);
+    if (requiresApproval === null) return;
     try {
       await api.createTask({
         title,
@@ -1684,14 +1896,16 @@ export function App() {
         complexity: taskDraft.complexity,
         dueDate: taskDraft.dueDate,
         progress: assignees.length ? clampProgress(taskDraft.progress) : 0,
+        checklist: draftSteps.filter(title => title.trim()).map((title, index) => ({ id: String(index), title: title.trim(), completed: false })),
         reviewComment: undefined,
         completedAt: undefined
-      }, taskFiles);
+      }, taskFiles, requiresApproval);
       await refreshData(true);
       setTaskFiles([]);
+      setDraftSteps([]);
       setShowTaskComposer(false);
-      setAllocationMessage(
-        assignees.length
+      showSuccess(
+        requiresApproval ? `Allocation of "${title}" was sent for admin approval.` : assignees.length
           ? `${currentUser.name} allocated "${title}" to ${assignees.map((assignee) => assignee.name).join(", ")}.`
           : `${currentUser.name} added "${title}" as a free ${department} task.`
       );
@@ -1718,7 +1932,7 @@ export function App() {
 
     const project = projects.find((item) => item.id === taskEditDraft.projectId);
     const allowedUsers = assignableUsers.filter((user) => project
-      ? project.members.some((member) => member.id === user.id)
+      ? project.members.some((member) => member.id === user.id) && sameDepartment(user.department, taskEditDraft.department)
       : sameDepartment(user.department, taskEditDraft.department));
     const assignees = allowedUsers.filter((user) => taskEditDraft.assigneeIds.includes(user.id));
     if (assignees.length !== taskEditDraft.assigneeIds.length) {
@@ -1726,7 +1940,7 @@ export function App() {
       return;
     }
 
-    if (currentUser.role === "admin" && taskEditDraft.department !== currentUser.department) {
+    if (!inDepartmentScope(taskEditDraft.department)) {
       setAllocationMessage("Admins can edit tasks only inside their own department.");
       return;
     }
@@ -1736,7 +1950,7 @@ export function App() {
       return;
     }
 
-    const department = project?.department ?? taskEditDraft.department;
+    const department = projectTaskDepartment(project, taskEditDraft.department);
     const progress = clampProgress(taskEditDraft.progress);
 
     const updatedTask: ManagedTask = {
@@ -1757,7 +1971,7 @@ export function App() {
       await refreshData(true);
       setEditingTaskId(null);
       setTaskEditDraft(null);
-      setAllocationMessage(`"${title}" was updated.`);
+      showSuccess(`"${title}" was updated.`);
     } catch (error) {
       setAllocationMessage(error instanceof Error ? error.message : "Could not update this task.");
     }
@@ -1766,16 +1980,16 @@ export function App() {
   function directAssignableUsersFor(task: ManagedTask) {
     const project = projects.find((item) => item.id === task.projectId);
     return assignableUsers.filter((user) => project
-      ? project.members.some((member) => member.id === user.id)
+      ? project.members.some((member) => member.id === user.id) && sameDepartment(user.department, task.department)
       : sameDepartment(user.department, task.department));
   }
 
   function startAssignTask(task: ManagedTask) {
-    if (!canManageTask(task)) return;
+    if (!canLeadTask(task)) return;
     setEditingTaskId(null);
     setTaskEditDraft(null);
     setAssigningTaskId(task.id);
-    setAssignDraft({ assigneeIds: task.assigneeIds, dueDate: task.dueDate ?? "" });
+    setAssignDraft({ assigneeIds: task.allocationRequest?.assigneeIds ?? task.assigneeIds, dueDate: task.allocationRequest?.dueDate ?? task.dueDate ?? "" });
   }
 
   function cancelAssignTask() {
@@ -1784,7 +1998,7 @@ export function App() {
   }
 
   async function saveAssignTask(task: ManagedTask) {
-    if (!currentUser || !canManageTask(task)) return;
+    if (!currentUser || !canLeadTask(task)) return;
 
     const allowedUsers = directAssignableUsersFor(task);
     const assignees = allowedUsers.filter((user) => assignDraft.assigneeIds.includes(user.id));
@@ -1807,11 +2021,17 @@ export function App() {
       dueDate: assignDraft.dueDate
     };
 
+    const requiresApproval = await askForAdminApproval(`Allocate "${task.title}"`);
+    if (requiresApproval === null) return;
     try {
-      await api.updateTask(updatedTask);
+      if (currentUser.role === "team_leader") {
+        await api.taskAction(task.id, "allocation-request", { assigneeIds: updatedTask.assigneeIds, dueDate: updatedTask.dueDate, requiresApproval });
+      } else {
+        await api.updateTask(updatedTask);
+      }
       await refreshData(true);
       cancelAssignTask();
-      setAllocationMessage(`"${task.title}" was assigned to ${assignees.map((assignee) => assignee.name).join(", ")}.`);
+      showSuccess(requiresApproval ? "Allocation request sent to the department admin." : `"${task.title}" was assigned to ${assignees.map((assignee) => assignee.name).join(", ")}.`);
     } catch (error) {
       setAllocationMessage(error instanceof Error ? error.message : "Could not assign this task.");
     }
@@ -1826,7 +2046,7 @@ export function App() {
         setEditingTaskId((activeTaskId) => (activeTaskId === task.id ? null : activeTaskId));
         setTaskEditDraft((draft) => (draft?.id === task.id ? null : draft));
         setAssigningTaskId((activeTaskId) => (activeTaskId === task.id ? null : activeTaskId));
-        setAllocationMessage(`"${task.title}" was deleted.`);
+        showSuccess(`"${task.title}" was deleted.`);
       } catch (error) {
         setAllocationMessage(error instanceof Error ? error.message : "Could not delete this task.");
       }
@@ -1840,7 +2060,7 @@ export function App() {
     try {
       await api.taskAction(task.id, "claim");
       await refreshData(true);
-      setTaskMessageStatus((statuses) => ({ ...statuses, [task.id]: "Claim request sent. Waiting for manager approval." }));
+      showSuccess("Task request sent for approval.");
     } catch (error) {
       setTaskMessageStatus((statuses) => ({ ...statuses, [task.id]: error instanceof Error ? error.message : "Could not request this task." }));
     }
@@ -1848,7 +2068,7 @@ export function App() {
 
   function confirmTaskClaim(task: ManagedTask) {
     requestConfirmation(
-      `Are you sure you want to request Task #${task.taskCode}: “${task.title}”? An admin must approve before the task starts.`,
+      `Are you sure you want to request Task #${task.taskCode}: “${task.title}”? An admin or team leader must approve before the task starts.`,
       () => claimTask(task),
       { title: "Request this task?", confirmLabel: "Yes, request task", danger: false }
     );
@@ -1868,7 +2088,7 @@ export function App() {
       await api.taskAction(task.id, approve ? "claim-approve" : "claim-reject", approve ? { userIds } : { userId: userIds[0] });
       await refreshData(true);
       setClaimSelection((selection) => ({ ...selection, [task.id]: [] }));
-      setTaskMessageStatus((statuses) => ({ ...statuses, [task.id]: approve ? "Claim request approved. The task start was recorded." : "Claim request declined." }));
+      showSuccess(approve ? "Task request approved." : "Task request declined.");
     } catch (error) {
       setTaskMessageStatus((statuses) => ({ ...statuses, [task.id]: error instanceof Error ? error.message : "Could not review this request." }));
     }
@@ -1881,7 +2101,7 @@ export function App() {
     try {
       await api.taskAction(task.id, "submit");
       await refreshData(true);
-      setTaskMessageStatus((statuses) => ({ ...statuses, [task.id]: `Task #${task.taskCode} was submitted as finished.` }));
+      showSuccess(`Task #${task.taskCode} submitted as finished.`);
     } catch (error) {
       setAllocationMessage(error instanceof Error ? error.message : "Could not submit this task.");
     }
@@ -1895,20 +2115,22 @@ export function App() {
     );
   }
 
-  async function approveTask(task: ManagedTask) {
-    if (!currentUser || !canManageTask(task) || task.status !== "under_review") return;
+  async function approveTask(task: ManagedTask, finish = false) {
+    if (!currentUser || !canLeadTask(task) || (!finish && task.status !== "under_review")) return;
+    const requiresApproval = await askForAdminApproval(`${finish ? "Finish" : "Approve"} "${task.title}"`);
+    if (requiresApproval === null) return;
 
     try {
-      await api.taskAction(task.id, "approve");
+      await api.taskAction(task.id, finish ? "finish" : "approve", { requiresApproval });
       await refreshData(true);
-      setAllocationMessage(`"${task.title}" was approved and moved to Finished Tasks.`);
+      showSuccess(requiresApproval ? `"${task.title}" was sent to the department admin for approval.` : `"${task.title}" was approved and moved to Finished Tasks.`);
     } catch (error) {
       setAllocationMessage(error instanceof Error ? error.message : "Could not approve this task.");
     }
   }
 
   async function reopenTask(task: ManagedTask) {
-    if (!currentUser || !canManageTask(task) || !["under_review", "done"].includes(task.status)) return;
+    if (!currentUser || !canLeadTask(task) || (currentUser.role !== "team_leader" && !["under_review", "done"].includes(task.status))) return;
 
     const comment = reviewDrafts[task.id]?.trim();
     if (!comment) {
@@ -1917,10 +2139,12 @@ export function App() {
     }
 
     try {
-      await api.reopenTask(task.id, comment);
+      const requiresApproval = await askForAdminApproval(`Reopen "${task.title}"`);
+      if (requiresApproval === null) return;
+      await api.reopenTask(task.id, comment, requiresApproval);
       await refreshData(true);
       setReviewDrafts((drafts) => ({ ...drafts, [task.id]: "" }));
-      setAllocationMessage(`"${task.title}" was reopened with comments.`);
+      showSuccess(requiresApproval ? `Reopen request for "${task.title}" sent to the department admin. The task remains unchanged until approval.` : `"${task.title}" was reopened${task.assigneeIds.length ? " with comments" : " and is ready to assign"}.`);
     } catch (error) {
       setAllocationMessage(error instanceof Error ? error.message : "Could not reopen this task.");
     }
@@ -1946,7 +2170,7 @@ export function App() {
     }
   }
 
-  async function addTaskFiles(task: ManagedTask, fileList: FileList | null) {
+  async function addTaskFiles(task: ManagedTask, fileList: FileList | null, category: "task" | "reference" | "completion" = "reference") {
     if (!currentUser || !fileList?.length) return;
     const canCollaborate = currentUser.role !== "user" || task.assigneeIds.includes(currentUser.id);
     if (!canCollaborate) {
@@ -1956,9 +2180,9 @@ export function App() {
 
     const files = Array.from(fileList);
     try {
-      await api.addFiles(task.id, files);
+      await api.addFiles(task.id, files, category);
       await refreshData(true);
-      setAllocationMessage(`${files.length} file(s) added to "${task.title}".`);
+      showSuccess(`${files.length} file(s) added to ${category === "reference" ? "Reference documents" : "this task"} for "${task.title}".`);
     } catch (error) {
       setAllocationMessage(error instanceof Error ? error.message : "Could not add these files.");
     }
@@ -1981,7 +2205,7 @@ export function App() {
       if (month) await api.downloadMonthlyProductivityReport(userId, month);
       else await api.downloadProductivityReport(userId);
       const user = assignableUsers.find((person) => person.id === userId);
-      setPeopleMessage(`${month || "All-time"} productivity report downloaded for ${user?.name ?? "the selected user"}.`);
+      showSuccess(`${month || "All-time"} productivity report downloaded for ${user?.name ?? "the selected user"}.`);
     } catch (error) {
       setPeopleMessage(error instanceof Error ? error.message : "Could not create the productivity report.");
     }
@@ -2036,7 +2260,7 @@ export function App() {
       setChatMessages((messages) => messages.map((message) => message.id === messageId ? { ...message, body } : message));
       setEditingChatMessageId("");
       setChatMessageEditDraft("");
-      setChatStatus("Message updated.");
+      setChatStatus(""); showSuccess("Message updated.");
     } catch (error) {
       setChatStatus(error instanceof Error ? error.message : "Could not edit this message.");
     }
@@ -2049,7 +2273,7 @@ export function App() {
         ? messages.filter((item) => item.id !== message.id)
         : messages.map((item) => item.id === message.id ? { ...item, body: "", files: [], isDeleted: true } : item));
       setDeletingChatMessage(null);
-      setChatStatus(scope === "me" ? "Message removed from your chat." : "Message deleted for everyone.");
+      setChatStatus(""); showSuccess(scope === "me" ? "Message removed from your chat." : "Message deleted for everyone.");
     } catch (error) {
       setChatStatus(error instanceof Error ? error.message : "Could not delete this message.");
     }
@@ -2098,7 +2322,7 @@ export function App() {
   function deleteChatGroup(channel: ChatChannel) {
     const canDelete = channel.isGroup && currentUser && (
       currentUser.role === "superadmin" ||
-      (currentUser.role === "admin" && channel.department === currentUser.department)
+      (canManagePeople && inDepartmentScope(channel.department))
     );
     if (!canDelete) return;
     requestConfirmation(`Delete the group chat “${channel.name}” and all messages inside it?`, async () => {
@@ -2125,11 +2349,20 @@ export function App() {
     try {
       await api.createProject({ ...projectDraft, name: projectDraft.name.trim(), department });
       setProjectDraft({ name: "", description: "", department, memberIds: [] });
-      setProjectMessage("Project created successfully.");
+      showSuccess("Project created successfully.");
       await refreshData(true);
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : "Could not create this project.");
     }
+  }
+
+  async function saveProjectLeaders(project: Project) {
+    try {
+      await api.assignProjectLeaders(project.id, projectLeaderDrafts[project.id] ?? (project.leaders ?? []).map(person => person.id));
+      setProjectLeaderDrafts(drafts => { const next = { ...drafts }; delete next[project.id]; return next; });
+      await refreshData(true);
+      showSuccess("Team leader assignments saved.");
+    } catch (error) { setProjectMessage(error instanceof Error ? error.message : "Could not assign team leaders."); }
   }
 
   async function saveProject(project: Project) {
@@ -2142,7 +2375,7 @@ export function App() {
     }
     try {
       await api.updateProject(project.id, { name, description: details.description.trim(), memberIds });
-      setProjectMessage(`Saved project ${name}.`);
+      showSuccess(`Saved project ${name}.`);
       setProjectEditDrafts((drafts) => {
         const next = { ...drafts };
         delete next[project.id];
@@ -2163,7 +2396,7 @@ export function App() {
     if (!file) return;
     try {
       const result = await api.importProjectTasks(project.id, file);
-      setProjectMessage(`Imported ${result.imported} task(s) into ${project.name}.`);
+      showSuccess(`Imported ${result.imported} task(s) into ${project.name}.`);
       await refreshData(true);
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : "Could not import this task sheet.");
@@ -2173,7 +2406,7 @@ export function App() {
   async function exportProjectSheet(project: Project) {
     try {
       await api.downloadProjectTaskTemplate(project.id, project.name);
-      setProjectMessage(`Editable task-sheet template downloaded for ${project.name}.`);
+      showSuccess(`Editable task-sheet template downloaded for ${project.name}.`);
     } catch (error) {
       setProjectMessage(error instanceof Error ? error.message : "Could not export this task sheet.");
     }
@@ -2183,7 +2416,7 @@ export function App() {
     requestConfirmation(`Are you sure you want to delete project "${project.name}"? Its tasks will remain without a project.`, async () => {
       try {
         await api.deleteProject(project.id);
-        setProjectMessage(`${project.name} was deleted.`);
+        showSuccess(`${project.name} was deleted.`);
         await refreshData(true);
       } catch (error) {
         setProjectMessage(error instanceof Error ? error.message : "Could not delete this project.");
@@ -2193,7 +2426,7 @@ export function App() {
 
   function renderTaskChatter(task: ManagedTask, mode: "active" | "archive" = "active") {
     const chatterItems = [
-      ...task.events.map((event, index) => ({
+      ...task.events.filter((event) => !["commented", "comment_edited"].includes(event.type)).map((event, index) => ({
         id: `event-${event.id}`,
         kind: "event" as const,
         actorId: event.actorId,
@@ -2208,10 +2441,14 @@ export function App() {
         actorId: message.authorId,
         actorName: message.authorName,
         createdAt: message.createdAt,
-        sort: Date.parse(message.createdAt) || 10_000 + index,
+        sort: Date.parse(message.createdAtIso ?? "") || index,
         message
       }))
     ].sort((first, second) => second.sort - first.sort);
+    const workflowEventCount = task.events.filter((event) => !["commented", "comment_edited"].includes(event.type)).length;
+    const draft = messageDrafts[task.id] ?? "";
+    const taskMention = draft.match(/@([^@\[\]\n]*)$/);
+    const taskMentionOptions = taskMention ? (task.mentionableUsers ?? []).filter((person) => person.id !== currentUser?.id && person.name.toLocaleLowerCase().includes(taskMention[1].trim().toLocaleLowerCase())) : [];
     const readOnly = task.status === "done";
     const canCollaborate = Boolean(currentUser && (currentUser.role !== "user" || task.assigneeIds.includes(currentUser.id)));
     const collaborationLocked = mode === "active" && !readOnly && !canCollaborate;
@@ -2221,53 +2458,21 @@ export function App() {
         <header className="task-chatter-header">
           <div>
             <MessageSquare aria-hidden="true" size={17} />
-            <span><strong>Workflow updates</strong><small>{task.events.length} updates · {task.messages.length} comments · {task.files.length} attachments</small></span>
+            <span><strong>Workflow updates</strong><small>{workflowEventCount} updates · {task.messages.length} comments · {task.files.length} attachments</small></span>
           </div>
           {readOnly ? <span className="chatter-lock"><Lock aria-hidden="true" size={13} />Read-only</span> : null}
         </header>
 
         <div className="workflow-chatter-meta">
-          <span>{task.events.length} updates</span>
+          <span>{workflowEventCount} updates</span>
           <span>{task.messages.length} comments</span>
           <span>{task.files.length} attachments</span>
           {readOnly ? <span><Lock aria-hidden="true" size={12} />Read-only</span> : null}
         </div>
 
-        <div className="workflow-files-area">
-          <div className="workflow-files-title">
-            <span />
-            <strong>Files</strong>
-            <span />
-          </div>
-          <div className="workflow-files-content">
-            {task.files.length ? (
-              <div className="workflow-file-list">
-                {[...task.files].reverse().map((file) => (
-                  <button className="workflow-file-card" onClick={() => downloadTaskFile(file)} type="button" key={file.id}>
-                    <Paperclip aria-hidden="true" size={13} />
-                    <span><b>{file.name}</b><small>{formatFileSize(file.size)} · {file.uploadedBy}</small></span>
-                    <Download aria-hidden="true" size={13} />
-                  </button>
-                ))}
-              </div>
-            ) : <small className="workflow-files-empty">No files attached yet.</small>}
-            {mode === "active" && !readOnly && canCollaborate ? (
-              <label className="file-upload chatter-upload workflow-attach-action">
-                <Paperclip aria-hidden="true" size={13} />
-                Attach files
-                <input
-                  multiple
-                  onChange={(event) => {
-                    addTaskFiles(task, event.target.files);
-                    event.target.value = "";
-                  }}
-                  type="file"
-                />
-              </label>
-            ) : null}
-          </div>
-        </div>
+        <TaskDocuments task={task} canManage={canLeadTask(task)} canSubmit={canCollaborate} onSaved={() => refreshData(true)} notify={showSuccess} confirm={(message, action) => requestConfirmation(message, action)} />
 
+        <TaskChecklist task={task} canManage={canLeadTask(task)} canUpdate={canLeadTask(task) || Boolean(currentUser && task.assigneeIds.includes(currentUser.id))} onSaved={() => refreshData(true)} confirm={(message, action) => requestConfirmation(message, action, { title: "Confirm work step", confirmLabel: "Yes, confirm", danger: false })} />
         <div className="chatter-feed">
           {chatterItems.length ? chatterItems.map((item) => {
             const mine = item.actorId === currentUser?.id;
@@ -2283,7 +2488,7 @@ export function App() {
                   {item.kind === "event" ? (
                     <p><b>{taskEventLabels[item.event.type] ?? item.event.type}</b> {item.event.details}</p>
                   ) : item.kind === "message" ? (
-                    <p>{item.message.body}</p>
+                    <p>{renderMentionedText(item.message.body, currentUser?.name ?? "")}</p>
                   ) : null}
                 </div>
               </article>
@@ -2305,7 +2510,8 @@ export function App() {
                     className={messageDrafts[task.id] ? "typing-input" : ""}
                     maxLength={2000}
                     onChange={(event) => setMessageDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))}
-                    placeholder="Write a comment or update..."
+                    placeholder="Write a comment? Type @ to mention task people"
+                    aria-label="Task comment"
                     value={messageDrafts[task.id] ?? ""}
                   />
                   <button type="button" className="task-action-button" onClick={() => addTaskMessage(task)}>
@@ -2313,7 +2519,11 @@ export function App() {
                     Add comment
                   </button>
                 </div>
+                {taskMention ? <div className="task-mention-picker" aria-label="Mention task people"><small>People involved in this task</small>{taskMentionOptions.length ? taskMentionOptions.map((person) => <button type="button" key={person.id} onClick={() => { setMessageDrafts((drafts) => ({ ...drafts, [task.id]: (drafts[task.id] ?? "").replace(/@([^@\[\]\n]*)$/, `@[${person.name}] `) })); }}><span className="chatter-avatar">{initials(person.name)}</span>{person.name}</button>) : <small>No matching task people</small>}</div> : null}
                 <div className="chatter-tools">
+                  <label className="file-upload chatter-upload workflow-attach-action"><Paperclip aria-hidden="true" size={13} />Attach reference
+                    <input multiple type="file" aria-label="Attach reference documents" onChange={(event) => { void addTaskFiles(task, event.target.files, "reference"); event.target.value = ""; }} />
+                  </label>
                   <div className="emoji-picker workflow-emoji-picker" aria-label="Quick emojis">
                     {quickEmojis.map((emoji) => (
                       <button className="workflow-emoji-button" key={emoji} type="button" onClick={() => setMessageDrafts((drafts) => ({ ...drafts, [task.id]: `${drafts[task.id] ?? ""}${emoji}` }))} aria-label={`Add ${emoji}`}>{emoji}</button>
@@ -2333,7 +2543,9 @@ export function App() {
     const isEditingTask = editingTaskId === task.id && taskEditDraft;
     const isAssigningTask = assigningTaskId === task.id;
     const canDeleteTask = canManageTask(task);
-    const canEditTask = canDeleteTask && task.status !== "done";
+    const allocationPending = task.allocationRequest?.state === "pending";
+    const actionPending = Boolean(task.actionRequest);
+    const canEditTask = canDeleteTask && task.status !== "done" && !allocationPending && !actionPending && !task.allocationRequest?.isNew;
     const claimRequests = task.claimRequests ?? (task.claimRequest ? [task.claimRequest] : []);
     const userHasClaimRequest = Boolean(currentUser && claimRequests.some((request) => request.userId === currentUser.id));
     const selectedClaimIds = claimSelection[task.id] ?? [];
@@ -2341,29 +2553,38 @@ export function App() {
       currentUser?.role === "user" &&
       task.department === currentUser.department &&
       !task.assigneeIds.length &&
-      !userHasClaimRequest &&
+      !userHasClaimRequest && !allocationPending && !actionPending &&
       task.status === "new";
     const hasPendingClaim = Boolean(claimRequests.length && !task.assigneeIds.length);
-    const canReviewClaim = Boolean(hasPendingClaim && currentUser && ["admin", "superadmin"].includes(currentUser.role));
+    const canReviewClaim = Boolean(hasPendingClaim && !allocationPending && !actionPending && currentUser && canLeadTask(task));
+    const canRequestAllocation = currentUser?.role === "team_leader" && canLeadTask(task) && !allocationPending && !actionPending && !["done", "under_review"].includes(task.status);
     const canDirectAssign = Boolean(canEditTask && !task.assigneeIds.length && !claimRequests.length);
     const canSubmitForReview =
       currentUser?.role === "user" &&
       task.assigneeIds.includes(currentUser.id) &&
-      !task.workerApprovals.some((approval) => approval.id === currentUser.id) &&
+      !allocationPending && !actionPending && !task.workerApprovals.some((approval) => approval.id === currentUser.id) &&
       task.status !== "done" &&
       task.status !== "under_review";
-    const canReviewTask = canDeleteTask && task.status === "under_review";
-    const canReopenCompletedTask = canDeleteTask && task.status === "done";
+    const requiresLeaderApproval = users.some((user) => user.role === "team_leader" && sameDepartment(user.department, task.department)) && !task.leaderApprovedAt;
+    const canReviewTask = canLeadTask(task) && task.status === "under_review" && !allocationPending && !actionPending && (currentUser?.role === "team_leader" ? !task.leaderApprovedAt : currentUser?.role === "technical_manager" || !requiresLeaderApproval);
+    const canFinishTask = currentUser?.role === "team_leader" && canLeadTask(task) && !allocationPending && !actionPending && ["assigned", "in_progress", "blocked"].includes(task.status);
+    const canReopenCompletedTask = canLeadTask(task) && task.status === "done";
+    const canReopenTask = canLeadTask(task) && !allocationPending && !actionPending && !task.allocationRequest?.isNew && (currentUser?.role === "team_leader" || ["under_review", "done"].includes(task.status));
     const taskEditProject = projects.find((project) => project.id === taskEditDraft?.projectId);
     const taskAssignableUsers = assignableUsers.filter((user) => taskEditProject
-      ? taskEditProject.members.some((member) => member.id === user.id)
+      ? taskEditProject.members.some((member) => member.id === user.id) && sameDepartment(user.department, taskEditDraft?.department)
       : sameDepartment(user.department, taskEditDraft?.department ?? task.department));
     const overdue = isTaskOverdue(task);
     const taskInsight = intelligence.taskInsights.find((insight) => insight.taskId === task.id);
-    const workflowStatusText = task.status === "done"
+    const departmentAdmins = users.filter(person => person.role === "superadmin" || (person.role === "admin" && sameDepartment(person.department, task.department)) || (person.role === "technical_manager" && isTechnicalDiscipline(task.department)));
+    const departmentLeaders = users.filter(person => person.role === "team_leader" && sameDepartment(person.department, task.department));
+    const adminNames = departmentAdmins.filter(person => person.role !== "superadmin").map(person => person.name).join(", ") || "Superadmin";
+    const leaderNames = departmentLeaders.map(person => person.name).join(", ");
+    const pendingWith = task.status === "done" && !actionPending ? "Nobody - completed" : actionPending || allocationPending ? adminNames : task.status === "under_review" ? (requiresLeaderApproval ? leaderNames || adminNames : adminNames) : !task.assigneeIds.length ? (leaderNames ? leaderNames + "; " : "") + adminNames : task.pendingApprovalNames.join(", ") || task.candidateNames.join(", ");
+    const workflowStatusText = actionPending ? `Waiting for admin approval to ${task.actionRequest!.action}` : allocationPending ? "Waiting for allocation approval" : task.allocationRequest?.isNew ? "Allocation rejected ? revise and resubmit" : task.status === "done"
       ? "Completed and locked"
       : task.status === "under_review"
-        ? "Waiting for admin approval"
+        ? requiresLeaderApproval ? "Waiting for team leader approval" : "Waiting for final admin approval"
         : task.pendingApprovalNames.length
           ? `Waiting for ${task.pendingApprovalNames.join(", ")}`
           : task.assigneeIds.length
@@ -2378,11 +2599,14 @@ export function App() {
           <span className="archive-check"><ClipboardList aria-hidden="true" size={17} /></span>
           <span className="archive-task-name">
             <strong>{task.title}</strong>
-            <small>Task #{task.taskCode}{task.projectName ? ` · ${task.projectName}` : ""}</small>
+            <small>Task #{task.taskCode}{` ? ${task.projectName || "No project"}`}</small>
           </span>
-          <span className={`status-pill status-${task.status}`}>{statusLabels[task.status]}</span>
+          <span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span>
           <span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span>
-          <span className="archive-owner">{task.candidateName || "Unassigned"}</span>
+          <span className={`task-responsible ${task.assigneeIds.length ? "" : "unassigned"}`} title={task.candidateNames.join(", ") || "Unassigned"}>
+            <span className="task-responsible-icon"><Users aria-hidden="true" size={14} /></span>
+            <span><small>Task owner · responsible for completion</small><strong>{task.candidateNames.join(", ") || task.candidateName || "Unassigned"}</strong><em>{task.assigneeIds.length > 1 ? "Shared responsibility" : task.assigneeIds.length ? "Primary responsibility" : "Needs assignment"}</em></span>
+          </span>
           <span className="archive-completed"><small>Progress</small><strong>{task.progress}%</strong></span>
         </summary>
         <div className="task-row">
@@ -2409,7 +2633,7 @@ export function App() {
                         ...taskEditDraft,
                         projectId: project?.id,
                         projectName: project?.name,
-                        department: project?.department ?? taskEditDraft.department,
+                        department: projectTaskDepartment(project, taskEditDraft.department),
                         assigneeId: undefined,
                         assigneeIds: [],
                         candidateName: "Unassigned",
@@ -2422,7 +2646,7 @@ export function App() {
                     {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
                 </label>
-                {currentUser?.role === "superadmin" ? (
+                {canChooseDepartment ? (
                   <label className="task-field-label">Department
                     <select
                       disabled={Boolean(taskEditDraft.projectId)}
@@ -2440,7 +2664,7 @@ export function App() {
                       }}
                       value={taskEditDraft.department}
                     >
-                      {departments.map((department) => (
+                      {managedDepartments.map((department) => (
                         <option key={department} value={department}>{department}</option>
                       ))}
                     </select>
@@ -2523,21 +2747,6 @@ export function App() {
                     value={taskEditDraft.dueDate}
                   />
                 </label>
-                <label className="task-field-label">Progress (%)
-                  <input
-                    disabled={!taskEditDraft.assigneeIds.length}
-                    max="100"
-                    min="0"
-                    onChange={(event) =>
-                      setTaskEditDraft({
-                        ...taskEditDraft,
-                        progress: clampProgress(Number(event.target.value))
-                      })
-                    }
-                    type="number"
-                    value={taskEditDraft.progress}
-                  />
-                </label>
               </div>
               <div className="edit-task-panel-actions">
                 <button type="button" className="task-action-button" onClick={saveEditTask}>
@@ -2584,7 +2793,7 @@ export function App() {
                   onClick={() => saveAssignTask(task)}
                 >
                   <CheckCircle2 aria-hidden="true" size={16} />
-                  Assign Task
+                  {currentUser?.role === "team_leader" ? "Send for admin approval" : "Assign Task"}
                 </button>
                 <button type="button" className="task-action-button secondary" onClick={cancelAssignTask}>
                   <X aria-hidden="true" size={16} />
@@ -2596,7 +2805,7 @@ export function App() {
             <div className="task-card-body">
               <div className="task-card-heading">
                 <span className="task-code">#{task.taskCode}</span>
-                <span className={`status-pill status-${task.status}`}>{statusLabels[task.status]}</span>
+                <span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span>
                 <span className={`priority priority-${task.priority}`}>
                   {priorityLabels[task.priority]}
                 </span>
@@ -2606,6 +2815,7 @@ export function App() {
                 {taskInsight && taskInsight.delayRisk >= 50 ? <span className={`risk-pill risk-${taskInsight.riskLevel}`} title={taskInsight.reasons.join(" · ")}><Sparkles aria-hidden="true" size={12} />{taskInsight.delayRisk}% delay risk</span> : null}
               </div>
               <h3 className="task-card-title">{task.title}</h3>
+              {task.leaderApprovedAt ? <p className="review-note">Team leader approved: {users.find((user) => user.id === task.leaderApprovedById)?.name ?? "Team Leader"}</p> : null}
               {task.reviewComment ? <p className="review-note">Review: {task.reviewComment}</p> : null}
               <div className="task-card-meta">
                 <span className="meta-item"><Building2 aria-hidden="true" size={13} />{task.department}</span>
@@ -2638,6 +2848,7 @@ export function App() {
                   )}
                 </div>
               </div>
+              <dl className="task-responsibility"><div><dt>Assigned to</dt><dd>{task.candidateNames.join(", ") || "Unassigned"}</dd></div><div><dt>Deadline</dt><dd>{task.dueDate || "Not set"}{overdue ? " (overdue)" : ""}</dd></div><div><dt>Pending with</dt><dd>{pendingWith}</dd></div><div><dt>Next action</dt><dd>{workflowStatusText}</dd></div></dl>
               <div className={`task-workflow-summary workflow-status-${task.status}`}>
                 <div className="workflow-summary-head">
                   <span><RotateCcw aria-hidden="true" size={15} />Workflow</span>
@@ -2660,14 +2871,15 @@ export function App() {
             </div>
           )}
 
-          {(canEditTask || canDeleteTask || canClaimTask) && !isEditingTask && !isAssigningTask ? (
+          {(canEditTask || canDeleteTask || canClaimTask || canRequestAllocation) && !isEditingTask && !isAssigningTask ? (
             <div className="row-actions task-actions">
               {canClaimTask ? (
                 <button type="button" className="task-action-button" onClick={() => confirmTaskClaim(task)}>
                   <Hand aria-hidden="true" size={16} />
-                  Request to Take
+                  Request free task
                 </button>
               ) : null}
+              {canRequestAllocation ? <button type="button" className="task-action-button" onClick={() => startAssignTask(task)}>Allocate task</button> : null}
               {canEditTask ? (
                 <>
                   {canDirectAssign ? <button type="button" className="task-action-button secondary" onClick={() => startAssignTask(task)}><UserPlus aria-hidden="true" size={16} />Assign User</button> : null}
@@ -2682,6 +2894,21 @@ export function App() {
             </div>
           ) : null}
         </div>
+
+        {task.allocationRequest ? (
+          <div className="claim-request-note manager">
+            <div className="claim-request-panel">
+              <strong>{allocationPending ? "Allocation awaiting admin approval" : "Allocation rejected"}</strong>
+              <p>Requested by {task.allocationRequest.requesterName} · Team: {task.allocationRequest.candidateNames.join(", ") || "Department free task queue"} · Deadline: {task.allocationRequest.dueDate || "None"}</p>
+              {allocationPending && canManageTask(task) ? (
+                <div className="row-actions">
+                  <button type="button" className="task-action-button" onClick={() => void reviewAllocation(task, true)}>Approve allocation</button>
+                  <button type="button" className="task-action-button secondary" onClick={() => void reviewAllocation(task, false)}>Reject allocation</button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {claimRequests.length ? (
           <div className={`claim-request-note ${canReviewClaim ? "manager" : ""}`}>
@@ -2706,15 +2933,15 @@ export function App() {
                 </div>
                 <div className="claim-request-actions">
                   <button className="task-action-button" disabled={!selectedClaimIds.length} onClick={() => reviewTaskClaim(task, true, selectedClaimIds)} type="button">
-                    <CheckCircle2 aria-hidden="true" size={15} />Approve selected
+                    <CheckCircle2 aria-hidden="true" size={15} />Approve selected ({selectedClaimIds.length})
                   </button>
                   <button className="task-action-button secondary" onClick={() => reviewTaskClaim(task, true, claimRequests.map((request) => request.userId))} type="button">
-                    <Users aria-hidden="true" size={15} />Approve all
+                    <Users aria-hidden="true" size={15} />Approve all ({claimRequests.length})
                   </button>
                 </div>
               </div>
             ) : (
-              <div><strong>{userHasClaimRequest ? "Your request is waiting for approval" : `${claimRequests.length} user${claimRequests.length === 1 ? "" : "s"} requested this task`}</strong><span>The task has not started. An admin can approve one or more requesters.</span></div>
+              <div><strong>{userHasClaimRequest ? "Your request is waiting for approval" : `${claimRequests.length} user${claimRequests.length === 1 ? "" : "s"} requested this task`}</strong><span>The task has not started. An admin or team leader can approve one or more requesters.</span></div>
             )}
           </div>
         ) : null}
@@ -2733,7 +2960,8 @@ export function App() {
           </div>
         ) : null}
 
-        {canReviewTask || canReopenCompletedTask ? (
+        {renderTaskRequest(task)}
+        {canReviewTask || canReopenTask || canFinishTask ? (
           <div className="review-box">
             <input
               onChange={(event) =>
@@ -2742,9 +2970,10 @@ export function App() {
               placeholder={canReopenCompletedTask ? "Explain why this completed task must be reopened" : "Add comments if this needs changes"}
               value={reviewDrafts[task.id] ?? ""}
             />
+            {canFinishTask ? <button type="button" className="task-action-button" onClick={() => void approveTask(task, true)}>Finish task</button> : null}
             {canReviewTask ? <button type="button" className="task-action-button" onClick={() => approveTask(task)}>
               <CheckCircle2 aria-hidden="true" size={16} />
-              Approve
+              {currentUser?.role === "team_leader" ? "Approve task" : currentUser?.role === "technical_manager" ? "Approve as department manager" : "Final approval"}
             </button> : null}
             <button type="button" className="task-action-button secondary" onClick={() => reopenTask(task)}>
               <RotateCcw aria-hidden="true" size={16} />
@@ -2828,6 +3057,7 @@ export function App() {
               <div>
                 <p>{selectedChatChannel?.isDirect ? `Private message · ${selectedChatChannel.department}` : selectedChatChannel?.department ?? currentUser.department}</p>
                 <h2>{selectedChatChannel?.name ?? "Department Chat"}</h2>
+                <BetaNotice feature="Department Chat" />
                 <details className="chat-participants" ref={chatParticipantsRef}>
                   <summary>
                     <span className="chat-participant-stack" aria-hidden="true">
@@ -2929,7 +3159,7 @@ export function App() {
                   placeholder="Group name"
                   value={groupDraft.name}
                 />
-                {currentUser.role === "superadmin" ? (
+                {canChooseDepartment ? (
                   <select
                     onChange={(event) => setGroupDraft((draft) => ({
                       ...draft,
@@ -2937,7 +3167,7 @@ export function App() {
                     }))}
                     value={groupDraft.department}
                   >
-                    {departments.map((department) => (
+                    {managedDepartments.map((department) => (
                       <option key={department} value={department}>{department}</option>
                     ))}
                   </select>
@@ -3140,120 +3370,117 @@ export function App() {
 
   return (
     <main className="app-shell">
+      {toast ? <div className="success-toast" role="status" aria-live="polite"><CheckCircle2 size={18}/><span>{toast.message}</span><button type="button" aria-label="Close success message" onClick={() => setToast(null)}><X size={15}/></button></div> : null}
       <aside className="sidebar" aria-label="Main navigation">
         <div className="brand">
           <img src={mabLogo} alt="MAB logo" />
           <div>
             <strong>Task Allocator</strong>
-            <span>{roleLabels[currentUser.role]}</span>
+            <span>{positionLabel(currentUser)}</span>
           </div>
         </div>
         <div className="sidebar-context" title={currentUser.department}>
           <span><Building2 aria-hidden="true" size={15} /></span>
-          <div><small>Current department</small><strong>{currentUser.department}</strong></div>
+          <div><small>Current department</small><strong>{departmentPath(currentUser.department)}</strong></div>
         </div>
-        <p className="sidebar-nav-label">Main navigation</p>
+        <p className="sidebar-nav-label">{displayText("Main navigation")}</p>
         <nav>
-          <button
+<button
             type="button"
             className={`sidebar-nav-button ${activeView === "dashboard" ? "active" : ""}`}
             onClick={() => setActiveView("dashboard")}
           >
             <Gauge aria-hidden="true" size={17} />
-            Dashboard
+            {displayText("Dashboard")}
           </button>
-          <button
+<button
             type="button"
             className={`sidebar-nav-button ${activeView === "tasks" ? "active" : ""}`}
             onClick={() => setActiveView("tasks")}
           >
             <ClipboardList aria-hidden="true" size={17} />
-            Active Tasks
-            <span>{activeTasks.length}</span>
+            {displayText("Active Tasks")}
+            <span>{dashboardTasks.length}</span>
           </button>
-          <button
-            type="button"
-            className={`sidebar-nav-button ${activeView === "todos" ? "active" : ""}`}
-            onClick={() => setActiveView("todos")}
-          >
-            <ListTodo aria-hidden="true" size={17} />
-            My TODOs
-            <span>{openTodos.length}</span>
-          </button>
-          <button
-            type="button"
-            className={`sidebar-nav-button ${activeView === "projects" ? "active" : ""}`}
-            onClick={() => setActiveView("projects")}
-          >
-            <FolderKanban aria-hidden="true" size={17} />
-            Projects
-            <span>{projects.length}</span>
-          </button>
-          <button
+<button
             type="button"
             className={`sidebar-nav-button ${activeView === "finished" ? "active" : ""}`}
             onClick={() => setActiveView("finished")}
           >
             <Archive aria-hidden="true" size={17} />
-            Finished Tasks
+            {displayText("Finished Tasks")}
             <span>{finishedTasks.length}</span>
           </button>
-          <button
-            type="button"
-            className={`sidebar-nav-button ${activeView === "achievements" ? "active" : ""}`}
-            onClick={() => setActiveView("achievements")}
-          >
-            <Trophy aria-hidden="true" size={17} />
-            Achievements
-          </button>
-          <button
-            type="button"
-            className={`sidebar-nav-button ${activeView === "attendance" ? "active" : ""}`}
-            onClick={() => setActiveView("attendance")}
-          >
-            <Calendar aria-hidden="true" size={17} />
-            Attendance
-          </button>
-          <button
-            type="button"
-            className={`sidebar-nav-button ${activeView === "intelligence" ? "active" : ""}`}
-            onClick={() => setActiveView("intelligence")}
-          >
-            <Sparkles aria-hidden="true" size={17} />
-            Work Intelligence
-            {intelligence.portfolio.highRiskTasks ? <span>{intelligence.portfolio.highRiskTasks}</span> : null}
-          </button>
-          <button
+<button
             type="button"
             className={`sidebar-nav-button ${activeView === "people" ? "active" : ""}`}
             onClick={() => setActiveView("people")}
           >
             <Users aria-hidden="true" size={17} />
-            People
+            {displayText("People")}
             <span>{visibleUsers.length}</span>
           </button>
-          <button
+<button
+            type="button"
+            className={`sidebar-nav-button ${activeView === "projects" ? "active" : ""}`}
+            onClick={() => setActiveView("projects")}
+          >
+            <FolderKanban aria-hidden="true" size={17} />
+            {displayText("Projects")}
+            <span>{projects.length}</span>
+          </button>
+<button
             type="button"
             className={`sidebar-nav-button ${activeView === "team" ? "active" : ""}`}
             onClick={() => setActiveView("team")}
           >
             <Users aria-hidden="true" size={17} />
-            Team
+            {displayText("Team")}
             <span>{teamCandidates.length}</span>
           </button>
-          {canManagePeople ? (
-            <>
-              <button type="button" className={`sidebar-nav-button ${activeView === "productivity" ? "active" : ""}`} onClick={() => setActiveView("productivity")}><FileSpreadsheet aria-hidden="true" size={17} />Productivity</button>
-              <button type="button" className={`sidebar-nav-button ${activeView === "audit" ? "active" : ""}`} onClick={() => setActiveView("audit")}><ShieldCheck aria-hidden="true" size={17} />Admin Audit</button>
-            </>
-          ) : null}
-          <button
+<button
+            type="button"
+            className={`sidebar-nav-button ${activeView === "todos" ? "active" : ""}`}
+            onClick={() => setActiveView("todos")}
+          >
+            <ListTodo aria-hidden="true" size={17} />
+            {displayText("My TODOs")}
+            <span>{openTodos.length}</span>
+          </button>
+<button
+            type="button"
+            className={`sidebar-nav-button ${activeView === "intelligence" ? "active" : ""}`}
+            onClick={() => setActiveView("intelligence")}
+          >
+            <Sparkles aria-hidden="true" size={17} />
+            {displayText("Work Intelligence")}
+            {intelligence.portfolio.highRiskTasks ? <span>{intelligence.portfolio.highRiskTasks}</span> : null}
+          </button>
+<button
+            type="button"
+            className={`sidebar-nav-button ${activeView === "achievements" ? "active" : ""}`}
+            onClick={() => setActiveView("achievements")}
+          >
+            <Trophy aria-hidden="true" size={17} />
+            {displayText("Achievements")}
+          </button>
+<button
+            type="button"
+            className={`sidebar-nav-button ${activeView === "attendance" ? "active" : ""}`}
+            onClick={() => setActiveView("attendance")}
+          >
+            <Calendar aria-hidden="true" size={17} />
+            {displayText("Attendance")}
+          </button>
+{canManagePeople ? (<button type="button" className={`sidebar-nav-button ${activeView === "productivity" ? "active" : ""}`} onClick={() => setActiveView("productivity")}><FileSpreadsheet aria-hidden="true" size={17} />{displayText("Productivity")}</button>) : null}
+{canManagePeople ? (<button type="button" className={`sidebar-nav-button ${activeView === "audit" ? "active" : ""}`} onClick={() => setActiveView("audit")}><ShieldCheck aria-hidden="true" size={17} />{displayText("Admin Audit")}</button>) : null}
+<button
             type="button"
             className={`sidebar-nav-button ${activeView === "settings" ? "active" : ""}`}
             onClick={() => setActiveView("settings")}
           >
             <Settings aria-hidden="true" size={17} />
-            Settings
+            {displayText("Settings")}
           </button>
         </nav>
         <div className="sidebar-user">
@@ -3320,7 +3547,7 @@ export function App() {
                   <div className="notification-heading">
                     <strong>Notifications</strong>
                     <span>{notifications.length} recent</span>
-                    {unreadNotifications ? <button type="button" onClick={() => void markAllNotificationsRead()}>Mark all read</button> : null}
+                    {unreadNotifications ? <button type="button" onClick={() => void markAllNotificationsRead().catch(console.error)}>Mark all read</button> : null}
                   </div>
                   <div className="notification-list">
                     {notifications.length ? notifications.map((notification) => (
@@ -3341,6 +3568,9 @@ export function App() {
           </div>
         </header>
 
+        <WorkspacePageHeader view={activeView} department={departmentPath(currentUser.department)} />
+        {["intelligence", "attendance", "achievements"].includes(activeView) ? <BetaNotice feature={viewTitles[activeView]} /> : null}
+        {allocationMessage ? <p className="success-message" role="status">{allocationMessage}</p> : null}
         {activeView === "dashboard" ? <>
         <section className="brand-strip" id="dashboard">
           <div>
@@ -3350,9 +3580,9 @@ export function App() {
               <strong>
                 {currentUser.role === "superadmin"
                   ? "Manage every department, user, and task from one superadmin control page."
-                  : currentUser.role === "admin"
-                    ? "Create normal users, edit your team, and allocate tasks inside your department."
-                    : "Track the tasks assigned within your technical office department."}
+                  : currentUser.role === "technical_manager" ? "Oversee Electrical and Mechanical teams, projects, approvals, and Work Intelligence." : currentUser.role === "admin"
+                    ? "Create users and team leaders, manage your team, and approve department tasks."
+                    : currentUser.role === "team_leader" ? "Request task allocations, review completed work, and reopen tasks in your department." : "Track the tasks assigned within your technical office department."}
               </strong>
             </div>
           </div>
@@ -3363,9 +3593,9 @@ export function App() {
         </section>
 
         <section className="stats-grid" aria-label="Task allocation metrics">
-          <StatCard label="Active Tasks" value={String(openTasks)} icon={ClipboardList} tone="blue" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} />
+          <StatCard label={currentUser.role === "user" ? "My Active Tasks" : "Active Tasks"} value={String(openTasks)} icon={ClipboardList} tone="blue" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} />
           <StatCard label="Needs Review" value={String(reviewTasks)} icon={CheckCircle2} tone="green" onClick={canAllocateTasks ? () => openTaskQueue("review") : undefined} />
-          <StatCard label="Overdue" value={String(overdueTasks)} icon={AlertTriangle} tone="red" />
+          <StatCard label="Overdue" value={String(overdueTasks)} icon={AlertTriangle} tone="red" onClick={() => openTaskQueue("overdue")} />
           <StatCard label="Average Progress" value={`${averageProgress}%`} icon={Gauge} tone="amber" />
         </section>
 
@@ -3402,6 +3632,7 @@ export function App() {
             </section>
             <section className="panel dashboard-health">
               <div className="panel-header"><div><p>At a glance</p><h2>Operations</h2></div></div>
+              <div className="health-row"><span>Total visible tasks</span><strong>{visibleTasks.length}</strong></div>
               <div className="health-row"><span>Projects</span><strong>{projects.length}</strong></div>
               <div className="health-row"><span>Team members</span><strong>{productivityCandidates.length}</strong></div>
               <div className="health-row"><span>Urgent tasks</span><strong>{urgentTasks}</strong></div>
@@ -3437,13 +3668,13 @@ export function App() {
                   </button>
                 </form>
                 <div className="department-list" aria-label="Available departments">
-                  {departments.map((department) => <span key={department}>{department}</span>)}
+                  {managedDepartments.map((department) => <span key={department}>{department}</span>)}
                 </div>
                 {departmentMessage ? <p className="success-message">{departmentMessage}</p> : null}
               </section>
             ) : null}
 
-            {canManagePeople ? (
+            {canCreatePeople ? (
               <section className="panel command-panel">
                 <div className="panel-header">
                   <div>
@@ -3456,23 +3687,8 @@ export function App() {
                   <input name="name" placeholder="Full name" />
                   <input name="username" placeholder="username@mabunited.com" type="email" />
                   <input name="password" placeholder="Temporary password" type="password" />
-                  {currentUser.role === "superadmin" ? (
-                    <>
-                      <select name="department" defaultValue={departments[0]}>
-                        {departments.map((department) => (
-                          <option key={department} value={department}>{department}</option>
-                        ))}
-                      </select>
-                      <select name="role" defaultValue="user">
-                        <option value="user">Normal User</option>
-                        <option value="admin">Admin</option>
-                        <option value="superadmin">Super Admin</option>
-                      </select>
-                    </>
-                  ) : (
-                    <input value={`${currentUser.department} - Normal User`} readOnly />
-                  )}
-                  <button type="submit" className="primary-button">
+                  {renderCreateUserFields()}
+                    <button type="submit" className="primary-button">
                     <Plus aria-hidden="true" size={18} />
                     Create User
                   </button>
@@ -3502,7 +3718,7 @@ export function App() {
                       setTaskDraft((draft) => ({
                         ...draft,
                         projectId: project?.id ?? "",
-                        department: project?.department ?? draft.department,
+                        department: projectTaskDepartment(project, draft.department),
                         assigneeIds: []
                       }));
                     }}
@@ -3511,7 +3727,7 @@ export function App() {
                     <option value="">No project</option>
                     {projects.map((project) => <option key={project.id} value={project.id}>{project.name} - {project.department}</option>)}
                   </select>
-                  {currentUser.role === "superadmin" && !taskDraft.projectId ? (
+                  {canChooseDepartment && (!taskDraft.projectId || sameDepartment(selectedDraftProject?.department, technicalDepartment)) ? (
                     <select
                       onChange={(event) =>
                         setTaskDraft((draft) => ({
@@ -3522,12 +3738,12 @@ export function App() {
                       }
                       value={taskDraft.department}
                     >
-                      {departments.map((department) => (
+                      {taskDepartmentOptions.map((department) => (
                         <option key={department} value={department}>{department}</option>
                       ))}
                     </select>
                   ) : null}
-                  <label className="multi-select-field">
+                  <div className="multi-select-field">
                     Assign one or more people
                     <CandidatePicker
                       candidates={taskDraftAssignableUsers}
@@ -3536,8 +3752,7 @@ export function App() {
                         : `No normal users are available in ${taskDraft.department}.`}
                       onChange={(assigneeIds) => setTaskDraft((draft) => ({ ...draft, assigneeIds }))}
                       selectedIds={taskDraft.assigneeIds}
-                    />
-                  </label>
+                    /></div>
                   <select onChange={(event) => setTaskDraft((draft) => ({ ...draft, taskType: event.target.value as TaskType }))} value={taskDraft.taskType}>
                     {taskTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                   </select>
@@ -3557,18 +3772,10 @@ export function App() {
                     type="date"
                     value={taskDraft.dueDate}
                   />
-                  <input
-                    max="100"
-                    min="0"
-                    onChange={(event) =>
-                      setTaskDraft((draft) => ({ ...draft, progress: Number(event.target.value) }))
-                    }
-                    type="number"
-                    value={taskDraft.progress}
-                  />
-                  <label className="file-upload task-create-files">
+                  <WorkStepsEditor steps={draftSteps} onChange={setDraftSteps} />
+              <label className="file-upload task-create-files">
                     <Paperclip aria-hidden="true" size={16} />
-                    Add task documents
+                    Attach task documents
                     <input
                       multiple
                       onChange={(event) => setTaskFiles(Array.from(event.target.files ?? []))}
@@ -3577,12 +3784,12 @@ export function App() {
                   </label>
                   {taskFiles.length ? (
                     <p className="selected-files">
-                      {taskFiles.map((file) => file.name).join(", ")}
+                      {taskFiles.map((file, index) => <span className="selected-file-item" key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" className="icon-button" aria-label={`Remove ${file.name}`} onClick={() => setTaskFiles(files => files.filter((_, itemIndex) => itemIndex !== index))}><X size={13}/></button></span>)}
                     </p>
                   ) : null}
                   <button type="submit" className="primary-button">
                     <Plus aria-hidden="true" size={18} />
-                    Allocate Task
+                    {currentUser.role === "team_leader" ? "Request allocation" : "Allocate Task"}
                   </button>
                 </form>
                 {allocationMessage ? <p className="success-message">{allocationMessage}</p> : null}
@@ -3665,7 +3872,7 @@ export function App() {
                 const isEditing = editingUserId === user.id && editDraft;
                 const canEditRow =
                   currentUser.role === "superadmin" ||
-                  (currentUser.role === "admin" && user.role === "user" && user.department === currentUser.department);
+                  (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department));
                 const canDeleteRow = canEditRow && user.id !== currentUser.id && user.role !== "superadmin";
 
                 return (
@@ -3686,31 +3893,7 @@ export function App() {
                           type="password"
                           value={editDraft.password}
                         />
-                        {currentUser.role === "superadmin" ? (
-                          <>
-                            <select
-                              onChange={(event) =>
-                                setEditDraft({ ...editDraft, department: event.target.value as DepartmentName })
-                              }
-                              value={editDraft.department}
-                            >
-                              <option value="Executive">Executive</option>
-                              {departments.map((department) => (
-                                <option key={department} value={department}>{department}</option>
-                              ))}
-                            </select>
-                            <select
-                              onChange={(event) =>
-                                setEditDraft({ ...editDraft, role: event.target.value as UserRole })
-                              }
-                              value={editDraft.role}
-                            >
-                              <option value="user">Normal User</option>
-                              <option value="admin">Admin</option>
-                              <option value="superadmin">Super Admin</option>
-                            </select>
-                          </>
-                        ) : null}
+                        <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
                       </div>
                     ) : (
                       <>
@@ -3719,10 +3902,10 @@ export function App() {
                             <strong>{user.name}</strong>
                             <p>{user.username}</p>
                           </div>
-                          <span>{roleLabels[user.role]}</span>
+                          <span>{positionLabel(user)}</span>
                         </div>
                         <div className="user-line">
-                          <span>{user.department}</span>
+                          <span>{departmentPath(user.department)}</span>
                           <span>{user.role === "user" ? "Receives tasks" : "Can manage"}</span>
                         </div>
                       </>
@@ -3770,7 +3953,7 @@ export function App() {
           <section className="panel page-panel todo-page" id="todos-page">
             <div className="panel-header">
               <div><p>Personal checklist for {currentUser.name}</p><h2>My TODO List</h2></div>
-              <strong className="result-count">{openTodos.length} open</strong>
+              <div className="row-actions"><strong className="result-count">{openTodos.length} open</strong><button className="ghost-button danger" type="button" disabled={!todos.length} onClick={deleteAllTodos}><Trash2 size={15}/>Delete all</button></div>
             </div>
 
             <div className="todo-summary">
@@ -3854,37 +4037,42 @@ export function App() {
               <strong className="result-count">{projects.length} projects</strong>
             </div>
             {canManagePeople ? (
-              <form className="project-create-form" onSubmit={createProject}>
-                <input placeholder="Project name" value={projectDraft.name} onChange={(event) => setProjectDraft((draft) => ({ ...draft, name: event.target.value }))} />
-                <input placeholder="Short description" value={projectDraft.description} onChange={(event) => setProjectDraft((draft) => ({ ...draft, description: event.target.value }))} />
-                {currentUser.role === "superadmin" ? (
+              <details className="management-panel"><summary><Plus size={17}/><strong>Create project</strong><span>Name, department and team members</span></summary><form className="project-create-form" onSubmit={createProject}>
+                <input aria-label="Project name" placeholder="Project name" value={projectDraft.name} onChange={(event) => setProjectDraft((draft) => ({ ...draft, name: event.target.value }))} />
+                <input aria-label="Project description" placeholder="Short description" value={projectDraft.description} onChange={(event) => setProjectDraft((draft) => ({ ...draft, description: event.target.value }))} />
+                {canChooseDepartment ? (
                   <select value={projectDraft.department} onChange={(event) => setProjectDraft((draft) => ({ ...draft, department: event.target.value as DepartmentName, memberIds: [] }))}>
-                    {departments.map((department) => <option key={department} value={department}>{department}</option>)}
+                    {projectDepartments.map((department) => <option key={department} value={department}>{sameDepartment(department, technicalDepartment) ? "Technical Department (Electrical + Mechanical)" : department}</option>)}
                   </select>
                 ) : <input readOnly value={currentUser.department} />}
-                <label className="multi-select-field">Project members
+                <div className="multi-select-field">Project members
                   <CandidatePicker
                     candidates={projectDraftCandidates}
                     emptyMessage={`No normal users are available in ${currentUser.role === "admin" ? currentUser.department : projectDraft.department}.`}
                     onChange={(memberIds) => setProjectDraft((draft) => ({ ...draft, memberIds }))}
                     selectedIds={projectDraft.memberIds}
-                  />
-                </label>
+                  /></div>
                 <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />Create Project</button>
-              </form>
+              </form></details>
             ) : null}
             {projectMessage ? <p className="success-message">{projectMessage}</p> : null}
             <div className="projects-grid">
               {projects.length ? projects.map((project) => {
-                const eligibleMembers = assignableUsers.filter((user) => sameDepartment(user.department, project.department));
+                const eligibleMembers = assignableUsers.filter((user) => projectContainsDepartment(project.department, user.department));
                 const memberIds = projectMemberDrafts[project.id] ?? project.members.map((member) => member.id);
                 const projectDetails = projectEditDrafts[project.id] ?? { name: project.name, description: project.description };
                 return (
                   <article className="project-card" key={project.id}>
                     <div className="member-heading"><div><strong>{project.name}</strong><p>{project.department}</p></div><span>{project.taskCount} tasks</span></div>
+                    <div className="project-members"><strong>Team leaders</strong><span>{(project.leaders ?? []).map(person => person.name).join(", ") || "No team leader assigned"}{currentUser.role === "team_leader" && project.leaders?.some(person => person.id === currentUser.id) ? " ? Your project" : ""}</span></div>
+                    {canManagePeople ? <details className="project-leader-assignment"><summary>Manage team leaders</summary><div className="multi-select-field">Assign team leaders<CandidatePicker candidates={users.filter(person => person.role === "team_leader" && projectContainsDepartment(project.department, person.department))} selectedIds={projectLeaderDrafts[project.id] ?? (project.leaders ?? []).map(person => person.id)} onChange={ids => setProjectLeaderDrafts(drafts => ({ ...drafts, [project.id]: ids }))} emptyMessage="Create a team leader in this department first." /></div><button className="ghost-button" type="button" onClick={() => void saveProjectLeaders(project)}>Save team leaders</button></details> : null}
                     <div className="project-members"><strong>Members</strong><span>{project.members.map((member) => member.name).join(", ") || "No members yet"}</span></div>
+                    {currentUser.role === "team_leader" ? <div className="project-edit-fields">
+                      <div className="multi-select-field">Add normal users to this project<CandidatePicker candidates={eligibleMembers.filter((user) => !project.members.some((member) => member.id === user.id))} emptyMessage="All available normal users are already project members." selectedIds={projectMemberDrafts[project.id] ?? []} onChange={(ids) => setProjectMemberDrafts((drafts) => ({ ...drafts, [project.id]: ids }))} /></div>
+                      <button className="primary-button" type="button" onClick={() => void addProjectMembers(project)}>Add selected people</button>
+                    </div> : null}
                     {canManagePeople ? (
-                      <>
+                      <details className="project-edit-accordion"><summary><Edit3 size={15}/>Edit project &amp; members</summary>
                         <div className="project-edit-fields">
                           <label>Project name
                             <input
@@ -3906,14 +4094,13 @@ export function App() {
                             />
                           </label>
                         </div>
-                        <label className="multi-select-field">Choose project members
+                        <div className="multi-select-field">Choose project members
                           <CandidatePicker
                             candidates={eligibleMembers}
                             emptyMessage={`No normal users are available in ${project.department}.`}
                             onChange={(ids) => setProjectMemberDrafts((drafts) => ({ ...drafts, [project.id]: ids }))}
                             selectedIds={memberIds}
-                          />
-                        </label>
+                          /></div>
                         <div className="project-actions">
                           <button className="primary-button" type="button" onClick={() => saveProject(project)}><Save aria-hidden="true" size={16} />Save Project</button>
                           <button className="ghost-button" type="button" onClick={() => exportProjectSheet(project)}><Download aria-hidden="true" size={16} />Export Task Sheet</button>
@@ -3923,7 +4110,7 @@ export function App() {
                           <button className="icon-button danger" type="button" onClick={() => deleteProject(project)} aria-label={`Delete ${project.name}`}><Trash2 aria-hidden="true" size={16} /></button>
                         </div>
                         <small className="import-hint">Columns: Task, Priority, Complexity (1–5), Due Date, Progress, Task Type, Assignees (name or username).</small>
-                      </>
+                      </details>
                     ) : null}
                   </article>
                 );
@@ -3937,10 +4124,11 @@ export function App() {
                 <p>{currentUser.role === "superadmin" ? "Organization work queue" : currentUser.department}</p>
                 <h2>{currentUser.role === "user" ? "My Active Tasks" : "Active Task Control"}</h2>
               </div>
-              <strong className="result-count">{activeTaskSectionTasks.length} shown</strong>
+              <strong className="result-count">{filteredActiveTaskSectionTasks.length} shown</strong>
             </div>
             {currentUser.role === "user" ? (
               <nav className="task-view-tabs" aria-label="Active task sections">
+                <button className={activeTaskSection === "overdue" ? "active overdue-tab" : "overdue-tab"} onClick={() => setActiveTaskSection("overdue")} type="button"><AlertTriangle size={17}/><span><strong>Overdue tasks</strong><small>Past their deadline</small></span><b>{overdueTasks}</b></button>
                 <button className={activeTaskSection === "assigned" ? "active" : ""} onClick={() => setActiveTaskSection("assigned")} type="button">
                   <ClipboardList aria-hidden="true" size={17} />
                   <span><strong>Assigned to me</strong><small>Tasks only you can work on</small></span>
@@ -3954,20 +4142,31 @@ export function App() {
               </nav>
             ) : (
               <nav className="task-view-tabs manager-task-tabs" aria-label="Manager task filters">
+                <button className={managerTaskSection === "overdue" ? "active overdue-tab" : "overdue-tab"} onClick={() => setManagerTaskSection("overdue")} type="button"><AlertTriangle size={17}/><span><strong>Overdue tasks</strong><small>Past their deadline</small></span><b>{overdueTasks}</b></button>
                 <button className={managerTaskSection === "all" ? "active" : ""} onClick={() => setManagerTaskSection("all")} type="button">
                   <ClipboardList aria-hidden="true" size={17} /><span><strong>All active</strong><small>Complete work queue</small></span><b>{activeTasks.length}</b>
                 </button>
-                <button className={managerTaskSection === "review" ? "active" : ""} onClick={() => setManagerTaskSection("review")} type="button">
-                  <CheckCircle2 aria-hidden="true" size={17} /><span><strong>Needs review</strong><small>Submitted by workers</small></span><b>{reviewTasks}</b>
+                <button data-queue="review" className={managerTaskSection === "review" ? "active" : ""} onClick={() => setManagerTaskSection("review")} type="button">
+                  <CheckCircle2 aria-hidden="true" size={17} /><span><strong>Needs review</strong><small>Allocations and completed work</small></span><b>{reviewTasks}</b>
                 </button>
-                <button className={managerTaskSection === "free" ? "active" : ""} onClick={() => setManagerTaskSection("free")} type="button">
+                <button data-queue="free" className={managerTaskSection === "free" ? "active" : ""} onClick={() => setManagerTaskSection("free")} type="button">
                   <Hand aria-hidden="true" size={17} /><span><strong>Unassigned</strong><small>Free or awaiting a claim</small></span><b>{freeActiveTasks.length}</b>
                 </button>
               </nav>
             )}
+            {currentUser.role !== "user" ? <div className="worker-task-filter">
+              <div className="worker-filter-intro"><span className="worker-filter-icon"><Users aria-hidden="true" size={17} /></span><div><strong>Worker workload</strong><small>See what each person is working on right now.</small></div></div>
+              <label className="worker-filter-select" htmlFor="active-worker-filter"><span>Show active work for</span>
+                <select id="active-worker-filter" value={activeWorkerId} onChange={(event) => setActiveWorkerId(event.target.value)}>
+                  <option value="">All workers</option>
+                  {assignableUsers.map((worker) => <option key={worker.id} value={worker.id}>{worker.name} · {worker.department}</option>)}
+                </select>
+              </label>
+              {selectedActiveWorker ? <div className="worker-filter-summary"><span className="worker-filter-avatar">{selectedActiveWorker.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("")}</span><div><strong>{selectedActiveWorker.name}</strong><small>{selectedActiveWorker.department}</small></div><b>{filteredActiveTaskSectionTasks.length} active</b><button className="ghost-button worker-filter-reset" onClick={() => setActiveWorkerId("")} type="button">Show all</button></div> : <span className="worker-filter-help">Choose a worker to see their current work and updates.</span>}
+            </div> : null}
             <div className="active-queue-heading">
               <div>
-                <strong>{currentUser.role === "user" ? activeTaskSection === "free" ? "Available tasks" : "Your workload" : managerTaskSection === "review" ? "Review queue" : managerTaskSection === "free" ? "Unassigned work" : "Current work"}</strong>
+                <strong>{(currentUser.role === "user" ? activeTaskSection : managerTaskSection) === "overdue" ? "Overdue tasks" : currentUser.role === "user" ? activeTaskSection === "free" ? "Available tasks" : "Your workload" : managerTaskSection === "review" ? "Review queue" : managerTaskSection === "free" ? "Unassigned work" : "Current work"}</strong>
                 <span>
                   Sorted by priority and due date
                   {activeSectionUrgentCount ? <span className="queue-flag queue-flag-urgent">{activeSectionUrgentCount} urgent</span> : null}
@@ -3977,25 +4176,39 @@ export function App() {
               {canAllocateTasks ? <button className="primary-button" onClick={() => setShowTaskComposer(true)} type="button"><Plus aria-hidden="true" size={16} />New Task</button> : null}
             </div>
             <div className="task-list">
-              {activeTaskSectionTasks.length
-                ? activeTaskSectionTasks.map((task) => renderTaskCard(task))
-                : <p className="empty-state">{currentUser.role === "user"
+              {filteredActiveTaskSectionTasks.length
+                ? filteredActiveTaskSectionTasks.map((task) => renderTaskCard(task))
+                : <p className="empty-state">{(currentUser.role === "user" ? activeTaskSection : managerTaskSection) === "overdue" ? "There are no overdue tasks." : currentUser.role === "user"
                   ? activeTaskSection === "free" ? "There are no free tasks in your department right now." : "No active tasks are assigned to you."
-                  : managerTaskSection === "review" ? "No tasks are waiting for review." : managerTaskSection === "free" ? "No tasks are currently unassigned." : "There are no active tasks."}</p>}
+                  : activeWorkerId ? "This worker has no tasks in the selected queue." : managerTaskSection === "review" ? "No tasks are waiting for review." : managerTaskSection === "free" ? "No tasks are currently unassigned." : "There are no active tasks."}</p>}
             </div>
           </section>
         ) : activeView === "people" ? (
-          <section className="panel page-panel" id="people-page">
+          <section className="panel page-panel people-workspace" id="people-page">
             <div className="panel-header">
               <div>
                 <p>{currentUser.role === "superadmin" ? "Organization directory" : currentUser.department}</p>
                 <h2>People</h2>
+                <p>{currentUser.role === "superadmin" ? "All users across the organization" : currentUser.role === "technical_manager" ? "All people in Electrical and Mechanical, including department leadership" : "People in your department"}</p>
               </div>
-              <strong className="result-count">{visibleUsers.length} people</strong>
+              <div className="people-header-actions">{canCreatePeople ? <button className="primary-button" type="button" onClick={() => {
+                const panel = document.getElementById("people-management-panel");
+                if (panel instanceof HTMLDetailsElement) { panel.open = true; panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); panel.querySelector<HTMLInputElement>('input[name="name"]')?.focus({ preventScroll: true }); }
+              }}><UserPlus aria-hidden="true" size={15} />Add person</button> : null}</div>
             </div>
-            {canManagePeople ? (
-              <details className="people-management">
-                <summary><UserPlus aria-hidden="true" size={17} /><span><strong>People management</strong><small>Create users{currentUser.role === "superadmin" ? " and departments" : " in your department"}</small></span></summary>
+            <details className="technical-organization"><summary><Building2 aria-hidden="true" size={16} /><span>Department structure</span><small>Technical Manager / Electrical & Mechanical</small><span className="details-toggle" aria-hidden="true">+</span></summary><div className="technical-organization-body">
+              <header><div><span className="organization-eyebrow">Department structure</span><h3>{technicalDepartment}</h3><p>One department. Two specialist teams.</p></div><span className="organization-access">{currentUser.role === "technical_manager" || currentUser.role === "superadmin" ? "You oversee both disciplines" : isTechnicalDiscipline(currentUser.department) ? "Your team: " + disciplineLabel(currentUser.department) : "Organization overview"}</span></header>
+              <div className="technical-manager-node"><ShieldCheck aria-hidden="true" size={22} /><div><strong>Technical Manager</strong><p>Department admin ? Electrical + Mechanical</p><small>{users.filter((user) => user.role === "technical_manager").map((user) => user.name).join(", ") || "No Technical Manager assigned yet"}</small></div></div>
+              <div className="technical-discipline-grid">{departmentHierarchy.filter((node) => node.parentId === departmentHierarchy.find((parent) => parent.name === technicalDepartment)?.id && isTechnicalDiscipline(node.name)).map((node) => {
+                const team = users.filter((user) => sameDepartment(user.department, node.name));
+                const leaders = team.filter((user) => user.role === "team_leader");
+                return <article className="technical-discipline-card" key={node.id}><span className="organization-eyebrow">Discipline</span><h4>{disciplineLabel(node.name)} Technical Office</h4><p><strong>Team Leader</strong><span>{leaders.map((user) => user.name).join(", ") || "Not assigned yet"}</span></p><p><strong>Technical Engineers</strong><span>{team.filter((user) => user.role === "user").length} people</span></p></article>;
+              })}</div>
+              <p className="organization-guide">The Technical Manager manages both teams. Team leaders organize their discipline. Engineers work within their assigned team and projects.</p>
+            </div></details>
+            {canCreatePeople ? (
+              <details className="people-management" id="people-management-panel">
+                <summary><UserPlus aria-hidden="true" size={17} /><span><strong>Add people & departments</strong><small>Create users{currentUser.role === "superadmin" ? " and departments" : " in your department"}</small></span></summary>
                 <div className="people-management-grid">
                   {currentUser.role === "superadmin" ? (
                     <form className="person-form management-form" onSubmit={handleCreateDepartment}>
@@ -4007,25 +4220,29 @@ export function App() {
                   ) : null}
                   <form className="person-form management-form" onSubmit={handleCreatePerson}>
                     <h3>Create user</h3>
-                    <input name="name" placeholder="Full name" />
-                    <input name="username" placeholder="username@mabunited.com" type="email" />
-                    <input name="password" placeholder="Temporary password" type="password" />
-                    {currentUser.role === "superadmin" ? <>
-                      <select name="department" defaultValue={departments[0]}>{departments.map((department) => <option key={department} value={department}>{department}</option>)}</select>
-                      <select name="role" defaultValue="user"><option value="user">Normal User</option><option value="admin">Admin</option><option value="superadmin">Super Admin</option></select>
-                    </> : <input readOnly value={`${currentUser.department} - Normal User`} />}
+                    <label>Full name<input name="name" placeholder="e.g. Ali Ahmed" required /></label>
+                    <label>Email address<input name="username" placeholder="name@mabunited.com" type="email" required /></label>
+                    <label>Temporary password<input name="password" placeholder="At least 10 characters, including a number" type="password" minLength={10} required /></label>
+                    {renderCreateUserFields()}
                     <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />Create User</button>
                     {peopleMessage ? <p className="success-message">{peopleMessage}</p> : null}
                   </form>
                 </div>
               </details>
             ) : null}
+            <div className="people-directory-toolbar">
+              <label className="people-search"><Search aria-hidden="true" size={16} /><input aria-label="Search people" type="search" placeholder="Search name, email or position?" value={peopleQuery} onChange={(event) => setPeopleQuery(event.target.value)} /></label>
+              <label className="people-filter"><span>Position</span><select aria-label="Filter by position" value={peoplePosition} onChange={(event) => setPeoplePosition(event.target.value)}><option value="">All positions</option>{[...new Set(visibleUsers.map((user) => user.role))].map((role) => <option key={role} value={role}>{role === "user" ? "Engineers & users" : positionLabel({ role, department: "" })}</option>)}</select></label>
+              <label className="people-filter"><span>Team</span><select aria-label="Filter by team" value={peopleDepartment} onChange={(event) => setPeopleDepartment(event.target.value)}><option value="">All teams</option>{[...new Set(visibleUsers.map((user) => user.department))].map((department) => <option key={department} value={department}>{departmentPath(department)}</option>)}</select></label>
+            </div>
+            <div className="people-list-heading"><strong>Team directory <span>{filteredPeople.length}</span></strong><small>{filteredPeople.length} of {visibleUsers.length} people</small></div>
+            {filteredPeople.length === 0 ? <div className="people-empty"><Users aria-hidden="true" size={28} /><strong>No people found</strong><p>Try another name or adjust your filters.</p><button className="ghost-button" type="button" onClick={() => { setPeopleQuery(""); setPeopleDepartment(""); setPeoplePosition(""); }}>Clear filters</button></div> : null}
             <div className="directory-grid">
-              {visibleUsers.map((user) => {
+              {filteredPeople.map((user) => {
                 const metrics = user.role === "user" ? userMetrics(user.id) : null;
                 const isEditing = editingUserId === user.id && editDraft;
                 const canEditPerson = currentUser.role === "superadmin" || (
-                  currentUser.role === "admin" && user.role === "user" && sameDepartment(user.department, currentUser.department)
+                  ["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department)
                 );
                 const canDeletePerson = canEditPerson && user.id !== currentUser.id && user.role !== "superadmin";
                 return (
@@ -4036,17 +4253,7 @@ export function App() {
                         <label>Full name<input onChange={(event) => setEditDraft({ ...editDraft, name: event.target.value })} value={editDraft.name} /></label>
                         <label>Email / username<input onChange={(event) => setEditDraft({ ...editDraft, username: event.target.value })} type="email" value={editDraft.username} /></label>
                         <label>New password <small>Leave blank to keep the current password</small><input onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })} placeholder="Unchanged" type="password" value={editDraft.password} /></label>
-                        {currentUser.role === "superadmin" ? (
-                          <div className="directory-edit-grid">
-                            <label>Role<select onChange={(event) => {
-                              const role = event.target.value as UserRole;
-                              setEditDraft({ ...editDraft, role, department: role === "superadmin" ? "Executive" : editDraft.department === "Executive" ? departments[0] : editDraft.department });
-                            }} value={editDraft.role}><option value="user">Normal User</option><option value="admin">Admin</option><option value="superadmin">Super Admin</option></select></label>
-                            <label>Department<select disabled={editDraft.role === "superadmin"} onChange={(event) => setEditDraft({ ...editDraft, department: event.target.value as DepartmentName })} value={editDraft.department}>
-                              {editDraft.role === "superadmin" ? <option value="Executive">Executive</option> : departments.map((department) => <option key={department} value={department}>{department}</option>)}
-                            </select></label>
-                          </div>
-                        ) : null}
+                        <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
                         <div className="directory-edit-actions">
                           <button className="ghost-button" onClick={() => { setEditingUserId(null); setEditDraft(null); }} type="button"><X aria-hidden="true" size={16} />Cancel</button>
                           <button className="primary-button" onClick={saveEditUser} type="button"><Save aria-hidden="true" size={16} />Save Changes</button>
@@ -4054,15 +4261,17 @@ export function App() {
                       </div>
                     ) : <>
                       <div className="member-heading">
-                        <div><strong>{user.name}</strong><p>{user.username}</p></div>
-                        <span>{roleLabels[user.role]}</span>
+                        <span className="people-avatar" aria-hidden="true">{user.name.split(" ").filter(Boolean).slice(0, 2).map((name) => name[0]).join("").toUpperCase()}</span>
+                        <div className="people-identity"><strong>{user.name}</strong><p title={user.username}>{user.username}</p></div>
+                        <span className={`people-role people-role-${user.role}`}>{positionLabel(user)}</span>
                       </div>
                       <div className="user-line">
-                        <span>{user.department}</span>
+                        <span>{departmentPath(user.department)}</span>
                         {metrics ? <span>{metrics.active} active tasks</span> : <span>Management access</span>}
+                        {user.role === "team_leader" ? <span>Working on: {projects.filter(project => project.leaders?.some(person => person.id === user.id)).map(project => project.name).join(", ") || "No project assigned"}</span> : null}
                       </div>
                       {canEditPerson ? <div className="directory-card-actions">
-                        <button className="ghost-button" onClick={() => startEditUser(user)} type="button"><Edit3 aria-hidden="true" size={15} />Edit User</button>
+                        <button className="ghost-button" onClick={() => startEditUser(user)} type="button"><Edit3 aria-hidden="true" size={15} />Edit</button>
                         {canDeletePerson ? <button className="icon-button danger" onClick={() => deleteUser(user.id)} type="button" aria-label={`Delete ${user.name}`}><Trash2 aria-hidden="true" size={15} /></button> : null}
                       </div> : null}
                     </>}
@@ -4080,19 +4289,18 @@ export function App() {
               </div>
             </div>
             <div className="analytics-filters compact-filters">
-              {currentUser.role === "superadmin" ? (
+              {canChooseDepartment ? (
                 <label>Department<select value={teamDepartment} onChange={(event) => setTeamDepartment(event.target.value)}>
                   <option value="">All departments</option>
-                  {departments.map((department) => <option key={department} value={department}>{department}</option>)}
+                  {managedDepartments.map((department) => <option key={department} value={department}>{department}</option>)}
                 </select></label>
               ) : null}
               <label>Completion month<input type="month" value={teamMonth} onChange={(event) => setTeamMonth(event.target.value)} /></label>
             </div>
+            {canManagePeople ? <LeaderOverview users={visibleUsers} tasks={visibleTasks} projects={projects} department={teamDepartment} /> : null}
             <div className="department-groups">
               {departments
-                .filter((department) => currentUser.role === "superadmin"
-                  ? !teamDepartment || department === teamDepartment
-                  : department === currentUser.department)
+                .filter((department) => inDepartmentScope(department) && (!teamDepartment || department === teamDepartment))
                 .map((department) => {
                   const candidates = teamCandidates.filter((user) => user.department === department);
                   return (
@@ -4164,8 +4372,8 @@ export function App() {
             </header>
 
             <div className="settings-status-row">
-              <span><strong>{roleLabels[currentUser.role]}</strong><small>Current role</small></span>
-              <span><strong>{currentUser.department}</strong><small>Department scope</small></span>
+              <span><strong>{positionLabel(currentUser)}</strong><small>Current role</small></span>
+              <span><strong>{departmentPath(currentUser.department)}</strong><small>Department scope</small></span>
               <span><strong>{desktopNotificationsEnabled ? "On" : notificationPermission === "denied" ? "Blocked" : "Off"}</strong><small>Desktop notifications</small></span>
               <span><strong>{userSettings.autoRefresh ? userSettings.backgroundNotifications ? "Live + background" : "Live" : "Manual"}</strong><small>Workspace refresh</small></span>
             </div>
@@ -4358,9 +4566,9 @@ export function App() {
             </section>
           );
         })() : activeView === "achievements" ? (() => {
-          const availableDepartments = departments.filter((department) => department !== "Executive");
-          const selectedDepartment = currentUser.role === "superadmin"
-            ? achievementDepartment || availableDepartments[0] || ""
+          const availableDepartments = departments.filter((department) => department !== "Executive" && inDepartmentScope(department));
+          const selectedDepartment = canChooseDepartment
+            ? (availableDepartments.includes(achievementDepartment) ? achievementDepartment : availableDepartments[0] || "")
             : currentUser.department;
           const leaderboard = users
             .filter((user) => user.role === "user" && sameDepartment(user.department, selectedDepartment))
@@ -4371,7 +4579,7 @@ export function App() {
               <header className="achievements-hero">
                 <div><span><Trophy aria-hidden="true" size={24} /></span><div><p>Department performance race</p><h2>Monthly Achievements</h2><small>Fair scoring rewards difficult work, reliable quality, speed, and collaboration—not task count alone.</small></div></div>
                 <div className="achievement-controls">
-                  {currentUser.role === "superadmin" ? <label>Department<select value={selectedDepartment} onChange={(event) => setAchievementDepartment(event.target.value)}>{availableDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label> : null}
+                  {canChooseDepartment ? <label>Department<select disabled={!availableDepartments.length} value={selectedDepartment} onChange={(event) => setAchievementDepartment(event.target.value)}>{!availableDepartments.length ? <option value="">No departments available</option> : null}{availableDepartments.map((department) => <option key={department} value={department}>{department}</option>)}</select></label> : null}
                   <label>Month<input type="month" value={achievementMonth} onChange={(event) => setAchievementMonth(event.target.value)} /></label>
                 </div>
               </header>
@@ -4413,7 +4621,7 @@ export function App() {
                 <div>
                   <p><strong>Complexity-weighted output:</strong> harder completed tasks start with more points.</p>
                   <p><strong>Comparable speed:</strong> cycle time is compared with the department median for work of the same complexity. It is capped to prevent gaming.</p>
-                  <p><strong>Quality:</strong> each admin reopen reduces the task score. Reopen history is permanently recorded.</p>
+                  <p><strong>Quality:</strong> each admin or team leader reopen reduces the task score. Reopen history is permanently recorded.</p>
                   <p><strong>Reliability:</strong> on-time delivery earns a bonus; late delivery receives a measured penalty.</p>
                   <p><strong>Teamwork:</strong> collaborative tasks earn a bonus, while points are shared fairly across assignees.</p>
                   <p><strong>Confidence:</strong> low sample sizes are adjusted toward neutral, so one easy task cannot create a misleading top score.</p>
@@ -4467,9 +4675,9 @@ export function App() {
                 <div><p>Completed work archive</p><h2>Finished Tasks</h2><span>Find completed work, delivery dates, and documents without the noise.</span></div>
               </div>
               <div className="archive-summary" aria-label="Archive summary">
-                <span><strong>{finishedTasks.length}</strong>Total completed</span>
-                <span><strong>{finishedTasks.filter((task) => task.completedAtIso?.startsWith(new Date().toISOString().slice(0, 7))).length}</strong>This month</span>
-                <span><strong>{finishedTasks.length ? Math.round((finishedTasks.filter((task) => task.completedAtIso && task.completedAtIso.slice(0, 10) <= task.dueDate).length / finishedTasks.length) * 100) : 0}%</strong>On time</span>
+                <span><strong>{finishedSummary.total}</strong>Completed in results</span>
+                <span><strong>{finishedSummary.thisMonth}</strong>This month</span>
+                <span><strong>{finishedSummary.onTimePercent === null ? "?" : `${finishedSummary.onTimePercent}%`}</strong>On time</span>
               </div>
             </header>
 
@@ -4484,6 +4692,7 @@ export function App() {
                   value={archiveFilters.taskId}
                 />
               </label>
+              <label className="archive-project-filter">Project<select value={archiveFilters.projectId} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, projectId: event.target.value }))}><option value="">All projects ({finishedTasks.length})</option>{finishedProjects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.count})</option>)}</select></label>
               <strong className="archive-result-count">{filteredArchiveTasks.length} result{filteredArchiveTasks.length === 1 ? "" : "s"}</strong>
             </div>
 
@@ -4500,7 +4709,7 @@ export function App() {
                 </select></label>
                 <label>Completed from<input type="date" value={archiveFilters.from} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, from: event.target.value }))} /></label>
                 <label>Completed to<input type="date" value={archiveFilters.to} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, to: event.target.value }))} /></label>
-                <button className="ghost-button" type="button" onClick={() => setArchiveFilters({ taskId: "", from: "", to: "", assigneeId: "", priority: "" })}>Clear filters</button>
+                <button className="ghost-button" type="button" onClick={() => setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" })}>Clear filters</button>
               </div>
             </details>
 
@@ -4509,12 +4718,13 @@ export function App() {
                 <details className="archive-task-card" id={`task-${task.id}`} key={`archive-${task.id}`}>
                   <summary>
                     <span className="archive-check"><CheckCircle2 aria-hidden="true" size={17} /></span>
-                    <span className="archive-task-name"><strong>{task.title}</strong><small>Task #{task.taskCode}{task.projectName ? ` · ${task.projectName}` : ""}</small></span>
+                    <span className="archive-task-name"><strong>{task.title}</strong><small>Task #{task.taskCode}{` ? ${task.projectName || "No project"}`}</small></span>
                     <span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span>
                     <span className="archive-owner">{task.candidateName || "Unassigned"}</span>
                     <span className="archive-completed"><small>Completed</small><strong>{task.completedAt || "Recorded"}</strong></span>
                   </summary>
                   <div className="archive-task-details">
+                    <div><span>Project</span><strong>{task.projectName || "No project"}</strong></div>
                     <div><span>Department</span><strong>{task.department}</strong></div>
                     <div><span>Task type</span><strong>{task.taskType}</strong></div>
                     <div><span>Due date</span><strong>{task.dueDate || "Not scheduled"}</strong></div>
@@ -4524,7 +4734,8 @@ export function App() {
                   </div>
                   {task.reviewComment ? <p className="archive-review-note"><strong>Final review</strong>{task.reviewComment}</p> : null}
                   {renderTaskChatter(task, "archive")}
-                  {canManageTask(task) ? <div className="archive-reopen"><input value={reviewDrafts[task.id] ?? ""} onChange={(event) => setReviewDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))} placeholder="Explain why this completed task must be reopened" /><button className="task-action-button secondary" onClick={() => reopenTask(task)} type="button"><RotateCcw aria-hidden="true" size={15} />Reopen Completed Task</button></div> : null}
+                  {renderTaskRequest(task)}
+                  {canLeadTask(task) && !task.actionRequest ? <div className="archive-reopen"><input value={reviewDrafts[task.id] ?? ""} onChange={(event) => setReviewDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))} placeholder="Explain why this completed task must be reopened" /><button className="task-action-button secondary" onClick={() => reopenTask(task)} type="button"><RotateCcw aria-hidden="true" size={15} />Reopen Completed Task</button></div> : null}
                 </details>
               )) : <div className="archive-empty"><Search aria-hidden="true" size={24} /><strong>No finished tasks found</strong><span>Try a shorter task ID or clear the additional filters.</span></div>}
             </div>
@@ -4562,7 +4773,7 @@ export function App() {
                 <select
                   onChange={(event) => {
                     const project = projects.find((item) => item.id === event.target.value);
-                    setTaskDraft((draft) => ({ ...draft, projectId: project?.id ?? "", department: project?.department ?? draft.department, assigneeIds: [] }));
+                    setTaskDraft((draft) => ({ ...draft, projectId: project?.id ?? "", department: projectTaskDepartment(project, draft.department), assigneeIds: [] }));
                   }}
                   value={taskDraft.projectId}
                 >
@@ -4570,36 +4781,49 @@ export function App() {
                   {projects.map((project) => <option key={project.id} value={project.id}>{project.name} - {project.department}</option>)}
                 </select>
               </label>
-              {currentUser.role === "superadmin" && !taskDraft.projectId ? (
+              {canChooseDepartment && (!taskDraft.projectId || sameDepartment(selectedDraftProject?.department, technicalDepartment)) ? (
                 <label>Department
                   <select onChange={(event) => setTaskDraft((draft) => ({ ...draft, department: event.target.value as DepartmentName, assigneeIds: [] }))} value={taskDraft.department}>
-                    {departments.map((department) => <option key={department} value={department}>{department}</option>)}
+                    {taskDepartmentOptions.map((department) => <option key={department} value={department}>{department}</option>)}
                   </select>
                 </label>
               ) : null}
-              <label className="multi-select-field task-composer-candidates">Assign people
+              <div className="multi-select-field task-composer-candidates">Assign people
                 <CandidatePicker
                   candidates={taskDraftAssignableUsers}
                   emptyMessage={selectedDraftProject ? "This project has no available members. Add people to the project first." : `No normal users are available in ${taskDraft.department}.`}
                   onChange={(assigneeIds) => setTaskDraft((draft) => ({ ...draft, assigneeIds }))}
                   selectedIds={taskDraft.assigneeIds}
-                />
-              </label>
+                /></div>
               <div className="task-composer-grid">
                 <label>Task type<select onChange={(event) => setTaskDraft((draft) => ({ ...draft, taskType: event.target.value as TaskType }))} value={taskDraft.taskType}>{taskTypes.map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
                 <label>Priority<select onChange={(event) => setTaskDraft((draft) => ({ ...draft, priority: event.target.value as TaskPriority }))} value={taskDraft.priority}><option value="low">Low priority</option><option value="medium">Medium priority</option><option value="high">High priority</option><option value="urgent">Urgent priority</option></select></label>
                 <label>Complexity <small>Manager-selected workload score; unrelated to duration</small><select onChange={(event) => setTaskDraft((draft) => ({ ...draft, complexity: Number(event.target.value) }))} value={taskDraft.complexity}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} / 5 · {complexityLabels[value]}</option>)}</select></label>
                 <label>Planned due date <small>{taskDraft.assigneeIds.length ? "Optional and set independently by the manager" : "Available after a user is assigned"}</small><input disabled={!taskDraft.assigneeIds.length} onChange={(event) => setTaskDraft((draft) => ({ ...draft, dueDate: event.target.value }))} type="date" value={taskDraft.assigneeIds.length ? taskDraft.dueDate : ""} /></label>
-                <label>Initial progress<input disabled={!taskDraft.assigneeIds.length} max="100" min="0" onChange={(event) => setTaskDraft((draft) => ({ ...draft, progress: Number(event.target.value) }))} type="number" value={taskDraft.assigneeIds.length ? taskDraft.progress : 0} /></label>
               </div>
-              <label className="file-upload task-create-files"><Paperclip aria-hidden="true" size={16} />Add task documents<input multiple onChange={(event) => setTaskFiles(Array.from(event.target.files ?? []))} type="file" /></label>
-              {taskFiles.length ? <p className="selected-files">{taskFiles.map((file) => file.name).join(", ")}</p> : null}
+              <WorkStepsEditor steps={draftSteps} onChange={setDraftSteps} />
+              <label className="file-upload task-create-files"><Paperclip aria-hidden="true" size={16} />Attach task documents<input multiple onChange={(event) => setTaskFiles(Array.from(event.target.files ?? []))} type="file" /></label>
+              {taskFiles.length ? <p className="selected-files">{taskFiles.map((file, index) => <span className="selected-file-item" key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" className="icon-button" aria-label={`Remove ${file.name}`} onClick={() => setTaskFiles(files => files.filter((_, itemIndex) => itemIndex !== index))}><X size={13}/></button></span>)}</p> : null}
               {allocationMessage ? <p className="success-message">{allocationMessage}</p> : null}
               <div className="task-composer-actions">
                 <button className="ghost-button" onClick={() => setShowTaskComposer(false)} type="button">Cancel</button>
-                <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />Create Task</button>
+                <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />{currentUser.role === "team_leader" ? "Request allocation" : "Create Task"}</button>
               </div>
             </form>
+          </section>
+        </div>
+      ) : null}
+      {approvalPrompt ? (
+        <div className="confirmation-backdrop approval-choice-backdrop" role="presentation" onMouseDown={() => chooseApproval(null)}>
+          <section className="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="approval-choice-title" onMouseDown={(event) => event.stopPropagation()} onKeyDown={(event) => { if (event.key === "Escape") chooseApproval(null); }}>
+            <h2 id="approval-choice-title">Requires admin approval?</h2>
+            <p>{approvalPrompt}</p>
+            <p>Yes sends a request to your department admin only and waits for approval. No applies the action immediately.</p>
+            <div className="confirmation-actions">
+              <button className="ghost-button" type="button" onClick={() => chooseApproval(null)}>Cancel</button>
+              <button className="ghost-button" type="button" onClick={() => chooseApproval(false)}>No, apply now</button>
+              <button autoFocus className="primary-button" type="button" onClick={() => chooseApproval(true)}>Yes, request approval</button>
+            </div>
           </section>
         </div>
       ) : null}
