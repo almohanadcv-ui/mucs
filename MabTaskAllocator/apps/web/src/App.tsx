@@ -62,6 +62,15 @@ const OWNER_USERNAME = "j.chehade@mabunited.com";
 const isOwnerUser = (user?: { username?: string } | null) =>
   !!user && (user.username ?? "").trim().toLowerCase() === OWNER_USERNAME;
 
+// Human label for the inactivity window (e.g. "30 days"), kept in step with api.
+const inactivityLabel = (() => {
+  const minutes = Math.round(inactivityLimitMs / 60000);
+  const day = 24 * 60;
+  if (minutes % day === 0) { const d = minutes / day; return `${d} day${d > 1 ? "s" : ""}`; }
+  if (minutes % 60 === 0) { const h = minutes / 60; return `${h} hour${h > 1 ? "s" : ""}`; }
+  return `${minutes} minute${minutes > 1 ? "s" : ""}`;
+})();
+
 const defaultDepartments: DepartmentName[] = [
   "Mechanical Technical office engineer",
   "Electrical Technical office engineer",
@@ -1020,7 +1029,7 @@ export function App() {
       if (!silent) setLoginError(error instanceof Error ? error.message : "Could not connect to the server.");
       if (!hasSession()) {
         setCurrentUser(null);
-        setLoginError("Your session expired after 10 minutes of inactivity. Please log in again.");
+        setLoginError(`Your session expired after ${inactivityLabel} of inactivity. Please log in again.`);
       }
     } finally {
       if (!silent) setAppLoading(false);
@@ -1567,7 +1576,7 @@ export function App() {
       notificationHydratedRef.current = false;
       setChatChannels([]);
       setChatMessages([]);
-      setLoginError("Your session expired after 10 minutes of inactivity. Please log in again.");
+      setLoginError(`Your session expired after ${inactivityLabel} of inactivity. Please log in again.`);
     }
   }
 
@@ -4638,7 +4647,7 @@ export function App() {
                   <small>Useful defaults for shared office laptops and duplicated tabs.</small>
                 </div>
                 <div className="settings-facts">
-                  <span><strong>Auto logout</strong><small>After 10 minutes without activity</small></span>
+                  <span><strong>Auto logout</strong><small>{`After ${inactivityLabel} without activity`}</small></span>
                   <span><strong>Session storage</strong><small>Each browser tab has its own login session</small></span>
                   <span><strong>Saved locally</strong><small>Settings stay on this browser, not every employee device</small></span>
                 </div>
