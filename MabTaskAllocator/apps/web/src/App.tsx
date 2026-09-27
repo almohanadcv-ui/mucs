@@ -1725,6 +1725,18 @@ export function App() {
     }
   }
 
+  async function handleDeleteDepartment(dept: { id: string; name: string }) {
+    if (currentUser?.role !== "superadmin") return;
+    if (!window.confirm(`Delete the department "${dept.name}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteDepartment(dept.id);
+      await refreshData(true);
+      showSuccess(`${dept.name} was deleted.`);
+    } catch (error) {
+      setDepartmentMessage(error instanceof Error ? error.message : "Could not delete this department.");
+    }
+  }
+
   async function handleCreatePerson(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!currentUser || !canCreatePeople) return;
@@ -4211,12 +4223,42 @@ export function App() {
                 <summary><UserPlus aria-hidden="true" size={17} /><span><strong>Add people & departments</strong><small>Create users{currentUser.role === "superadmin" ? " and departments" : " in your department"}</small></span></summary>
                 <div className="people-management-grid">
                   {currentUser.role === "superadmin" ? (
-                    <form className="person-form management-form" onSubmit={handleCreateDepartment}>
-                      <h3>Create department</h3>
-                      <label>Department name<input onChange={(event) => setDepartmentDraft(event.target.value)} value={departmentDraft} /></label>
-                      <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />Create Department</button>
-                      {departmentMessage ? <p className="success-message">{departmentMessage}</p> : null}
-                    </form>
+                    <div className="person-form management-form">
+                      <form onSubmit={handleCreateDepartment}>
+                        <h3>Create department</h3>
+                        <label>Department name<input onChange={(event) => setDepartmentDraft(event.target.value)} value={departmentDraft} /></label>
+                        <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />Create Department</button>
+                        {departmentMessage ? <p className="success-message">{departmentMessage}</p> : null}
+                      </form>
+                      {departmentHierarchy.length ? (
+                        <div className="department-manage-list">
+                          <h3>Existing departments</h3>
+                          <ul>
+                            {departmentHierarchy.map((dept) => {
+                              const reserved = ["Technical Department", "Executive", "Technical Management"]
+                                .some((name) => name.toLowerCase() === dept.name.trim().toLowerCase());
+                              return (
+                                <li key={dept.id}>
+                                  <span>{departmentPath(dept.name)}</span>
+                                  {reserved ? (
+                                    <small className="department-reserved">Reserved</small>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="ghost-button danger"
+                                      aria-label={`Delete ${dept.name}`}
+                                      onClick={() => void handleDeleteDepartment(dept)}
+                                    >
+                                      <Trash2 aria-hidden="true" size={15} /> Delete
+                                    </button>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
                   <form className="person-form management-form" onSubmit={handleCreatePerson}>
                     <h3>Create user</h3>

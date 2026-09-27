@@ -1615,6 +1615,30 @@ const server = createServer(async (request, response) => {
       return send(response, 201, { department: name });
     }
 
+    const departmentMatch = path.match(/^\/api\/departments\/([^/]+)$/);
+    if (departmentMatch && request.method === "DELETE") {
+      if (actor.role !== "superadmin") {
+        return send(response, 403, { message: "Only Super Admin can delete departments." });
+      }
+      const dept = await db.prepare("SELECT id, name FROM departments WHERE id = ?").get(departmentMatch[1]);
+      if (!dept) return send(response, 404, { message: "Department not found." });
+      // Reserved departments the org structure depends on may never be deleted.
+      if (["Technical Department", "Executive", "Technical Management"].some((n) => sameDepartment(n, dept.name))) {
+        return send(response, 400, { message: "This is a reserved department and cannot be deleted." });
+      }
+      // Block deletion while anything still points at it, so nothing is orphaned.
+      const children = await db.prepare("SELECT count(*)::int AS n FROM departments WHERE parent_id = ?").get(dept.id);
+      if (children.n > 0) return send(response, 409, { message: "Move or delete its sub-departments first." });
+      const usersInDept = await db.prepare("SELECT count(*)::int AS n FROM users WHERE lower(trim(department)) = lower(trim(?))").get(dept.name);
+      if (usersInDept.n > 0) return send(response, 409, { message: `Reassign the ${usersInDept.n} user(s) in this department first.` });
+      const tasksInDept = await db.prepare("SELECT count(*)::int AS n FROM tasks WHERE lower(trim(department)) = lower(trim(?))").get(dept.name);
+      if (tasksInDept.n > 0) return send(response, 409, { message: "This department still has tasks — remove them first." });
+      await db.prepare("DELETE FROM departments WHERE id = ?").run(dept.id);
+      await audit(actor, "deleted", "department", dept.name, dept.name, `Deleted department ${dept.name}`);
+      await touchSession(request);
+      return send(response, 200, { deleted: dept.name });
+    }
+
     if (request.method === "POST" && path === "/api/todos") {
       const title = String(body.title ?? "").trim().slice(0, 240);
       const taskId = String(body.taskId ?? "").trim() || null;

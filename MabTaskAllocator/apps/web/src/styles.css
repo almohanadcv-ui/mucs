@@ -8098,3 +8098,12 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--mab-blue)
 .beta-notice svg { flex-shrink:0; margin-top:1px; } .beta-notice p { margin:0; color:inherit; } .beta-notice strong { color:inherit; }
 .chat-panel .beta-notice { margin:10px 0 0; max-width:560px; }
 [data-theme="dark"] .beta-notice { background:#302917; color:#f0d597; border-color:#6b5930; }
+
+/* Department management list (superadmin) */
+.department-manage-list { margin-top: 16px; }
+.department-manage-list h3 { margin: 0 0 8px; }
+.department-manage-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.department-manage-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--border, #e2e8f0); border-radius: 8px; background: #fff; }
+.department-manage-list .department-reserved { color: #94a3b8; font-size: 12px; }
+.ghost-button.danger { color: #dc2626; display: inline-flex; align-items: center; gap: 6px; }
+.ghost-button.danger:hover { background: #fef2f2; }

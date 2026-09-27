@@ -351,6 +351,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name })
     }),
+  deleteDepartment: (id: string) =>
+    request<{ deleted: string }>(`/api/departments/${id}`, { method: "DELETE" }),
   createTodo: (todo: { title: string; taskId?: string }) =>
     request<{ todo: TodoItem }>("/api/todos", { method: "POST", body: JSON.stringify(todo) }),
   updateTodo: (todo: TodoItem) =>
