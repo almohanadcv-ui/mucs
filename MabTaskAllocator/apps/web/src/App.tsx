@@ -4390,10 +4390,17 @@ export function App() {
               {filteredPeople.map((user) => {
                 const metrics = user.role === "user" ? userMetrics(user.id) : null;
                 const isEditing = editingUserId === user.id && editDraft;
-                const canEditPerson = currentUser.role === "superadmin" || (
-                  ["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department)
-                );
-                const canDeletePerson = canEditPerson && user.id !== currentUser.id && user.role !== "superadmin";
+                const canEditPerson = isOwnerUser(user)
+                  ? currentIsOwner // only the owner may edit the owner
+                  : currentIsOwner || // the owner may edit anyone
+                    currentUser.role === "superadmin" ||
+                    (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department)) ||
+                    // A team leader may edit anyone on their own team (normal users).
+                    (currentUser.role === "team_leader" && user.role === "user" && inDepartmentScope(user.department));
+                const canDeletePerson = isOwnerUser(user)
+                  ? false // the owner can never be deleted
+                  : user.id !== currentUser.id &&
+                    (currentIsOwner || (canEditPerson && user.role !== "superadmin"));
                 return (
                   <article className="directory-card" key={`people-${user.id}`}>
                     {isEditing ? (
