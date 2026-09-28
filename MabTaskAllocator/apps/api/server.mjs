@@ -200,12 +200,13 @@ function formatDate(value) {
   if (!value) return undefined;
   // Stored timestamps are UTC; show them in Riyadh time (not the server's UTC),
   // otherwise every time reads 3 hours early for users here.
-  return new Date(`${value.replace(" ", "T")}Z`).toLocaleString("en-GB", {
+  return new Date(`${value.replace(" ", "T")}Z`).toLocaleString("en-US", {
     timeZone: "Asia/Riyadh",
     day: "2-digit",
     month: "short",
-    hour: "2-digit",
-    minute: "2-digit"
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
   });
 }
 
