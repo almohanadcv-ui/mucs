@@ -4380,7 +4380,7 @@ export function App() {
               </details>
             ) : null}
             <div className="people-directory-toolbar">
-              <label className="people-search"><Search aria-hidden="true" size={16} /><input aria-label="Search people" type="search" placeholder="Search name, email or position?" value={peopleQuery} onChange={(event) => setPeopleQuery(event.target.value)} /></label>
+              <label className="people-search"><Search aria-hidden="true" size={16} /><input aria-label="Search people" type="search" name="people-directory-search" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Search name, email or position?" value={peopleQuery} onChange={(event) => setPeopleQuery(event.target.value)} /></label>
               <label className="people-filter"><span>Position</span><select aria-label="Filter by position" value={peoplePosition} onChange={(event) => setPeoplePosition(event.target.value)}><option value="">All positions</option>{[...new Set(visibleUsers.map((user) => user.role))].map((role) => <option key={role} value={role}>{role === "user" ? "Engineers & users" : positionLabel({ role, department: "" })}</option>)}</select></label>
               <label className="people-filter"><span>Team</span><select aria-label="Filter by team" value={peopleDepartment} onChange={(event) => setPeopleDepartment(event.target.value)}><option value="">All teams</option>{[...new Set(visibleUsers.map((user) => user.department))].map((department) => <option key={department} value={department}>{departmentPath(department)}</option>)}</select></label>
             </div>
