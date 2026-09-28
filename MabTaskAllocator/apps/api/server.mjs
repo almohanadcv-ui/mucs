@@ -42,7 +42,6 @@ function appLink(taskId) {
   if (!appUrl) return "";
   return taskId ? `${appUrl}/?task=${encodeURIComponent(taskId)}` : appUrl;
 }
-const loginAttempts = new Map();
 const taskTypes = ["Technical", "QS", "Shop Drawings", "BIM", "Variation"];
 const connectionString =
   process.env.DATABASE_URL ??
@@ -1499,20 +1498,10 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && path === "/api/auth/login") {
       const username = String(body.username ?? "").trim().toLocaleLowerCase();
-      const address = String(request.headers["x-forwarded-for"] ?? request.socket.remoteAddress ?? "unknown").split(",")[0].trim();
-      const attemptKey = `${address}:${username}`;
-      const attempt = loginAttempts.get(attemptKey);
-      if (attempt?.blockedUntil > Date.now()) {
-        response.setHeader("Retry-After", Math.ceil((attempt.blockedUntil - Date.now()) / 1000));
-        return send(response, 429, { message: "Too many login attempts. Try again later." });
-      }
       const row = await db.prepare("SELECT * FROM users WHERE lower(username) = lower(?)").get(username);
       if (!row || !passwordMatches(String(body.password ?? ""), row.password_hash)) {
-        const failures = (attempt?.failures ?? 0) + 1;
-        loginAttempts.set(attemptKey, { failures, blockedUntil: failures >= 5 ? Date.now() + 15 * 60_000 : 0 });
         return send(response, 401, { message: "Username or password is incorrect." });
       }
-      loginAttempts.delete(attemptKey);
 
       // New-device verification: only when email is configured to deliver the
       // code (otherwise fall through to a normal sign-in so local/dev still works).
@@ -1548,23 +1537,13 @@ const server = createServer(async (request, response) => {
       const username = String(body.username ?? "").trim().toLocaleLowerCase();
       const deviceId = String(body.deviceId ?? "").trim().slice(0, 128);
       const code = String(body.code ?? "").trim();
-      const address = String(request.headers["x-forwarded-for"] ?? request.socket.remoteAddress ?? "unknown").split(",")[0].trim();
-      const attemptKey = `verify:${address}:${username}`;
-      const attempt = loginAttempts.get(attemptKey);
-      if (attempt?.blockedUntil > Date.now()) {
-        response.setHeader("Retry-After", Math.ceil((attempt.blockedUntil - Date.now()) / 1000));
-        return send(response, 429, { message: "Too many attempts. Try again later." });
-      }
       const row = await db.prepare("SELECT * FROM users WHERE lower(username) = lower(?)").get(username);
       if (!row || !deviceId || !code) return send(response, 400, { message: "Invalid verification request." });
       const record = await db.prepare("SELECT * FROM login_codes WHERE user_id = ? AND device_id = ? AND consumed_at IS NULL ORDER BY created_at DESC LIMIT 1").get(row.id, deviceId);
       const nowIso = new Date().toISOString();
       if (!record || record.expires_at < nowIso || !passwordMatches(code, record.code_hash)) {
-        const failures = (attempt?.failures ?? 0) + 1;
-        loginAttempts.set(attemptKey, { failures, blockedUntil: failures >= 5 ? Date.now() + 15 * 60_000 : 0 });
         return send(response, 401, { message: "The verification code is invalid or has expired." });
       }
-      loginAttempts.delete(attemptKey);
       await db.prepare("UPDATE login_codes SET consumed_at = (timezone('UTC', now())::text) WHERE id = ?").run(record.id);
       await db.prepare("INSERT INTO trusted_devices (user_id, device_id) VALUES (?, ?) ON CONFLICT (user_id, device_id) DO UPDATE SET last_seen_at = (timezone('UTC', now())::text)").run(row.id, deviceId);
       const token = randomBytes(32).toString("hex");
