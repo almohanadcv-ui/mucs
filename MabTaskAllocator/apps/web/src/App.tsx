@@ -62,6 +62,17 @@ const OWNER_USERNAME = "j.chehade@mabunited.com";
 const isOwnerUser = (user?: { username?: string } | null) =>
   !!user && (user.username ?? "").trim().toLowerCase() === OWNER_USERNAME;
 
+// Password rule (mirrors the server). Returns a warning string, or null if fine.
+// An empty password is allowed here — on edit it means "keep the current one".
+const PASSWORD_MIN = 10;
+function passwordWarning(password: string | undefined | null): string | null {
+  const pw = password ?? "";
+  if (!pw) return null;
+  if (pw.length < PASSWORD_MIN) return `Password is too short — use at least ${PASSWORD_MIN} characters.`;
+  if (!/[a-zA-Z]/.test(pw) || !/\d/.test(pw)) return "Password must include at least one letter and one number.";
+  return null;
+}
+
 // Human label for the inactivity window (e.g. "30 days"), kept in step with api.
 const inactivityLabel = (() => {
   const minutes = Math.round(inactivityLimitMs / 60000);
@@ -1824,6 +1835,11 @@ export function App() {
       setPeopleMessage("Please fill name, username, and password.");
       return;
     }
+    const pwWarning = passwordWarning(password);
+    if (pwWarning) {
+      setPeopleMessage(pwWarning);
+      return;
+    }
 
     try {
       await api.createUser({ name, username, password, role, department, projectId: String(formData.get("projectId") ?? "") || undefined });
@@ -1843,6 +1859,13 @@ export function App() {
 
   async function saveEditUser() {
     if (!currentUser || !editDraft) return;
+
+    // Block a weak new password early with a clear message (empty = unchanged).
+    const pwWarning = passwordWarning((editDraft as { password?: string }).password);
+    if (pwWarning) {
+      setPeopleMessage(pwWarning);
+      return;
+    }
 
     const updatedUser = currentUser.role === "admin"
       ? { ...editDraft, department: currentUser.department }
@@ -3959,7 +3982,9 @@ export function App() {
                   ? currentIsOwner // only the owner may edit the owner
                   : currentIsOwner || // the owner may edit anyone
                     currentUser.role === "superadmin" ||
-                    (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department));
+                    (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department)) ||
+                    // A team leader may edit anyone on their own team (normal users).
+                    (currentUser.role === "team_leader" && user.role === "user" && inDepartmentScope(user.department));
                 const canDeleteRow = isOwnerUser(user)
                   ? false // the owner can never be deleted
                   : user.id !== currentUser.id &&
@@ -3981,8 +4006,12 @@ export function App() {
                         <input
                           onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })}
                           type="password"
+                          placeholder={`New password (min ${PASSWORD_MIN} chars) — leave blank to keep`}
                           value={editDraft.password}
                         />
+                        {passwordWarning(editDraft.password) ? (
+                          <small className="form-error">⚠️ {passwordWarning(editDraft.password)}</small>
+                        ) : null}
                         <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
                       </div>
                     ) : (
@@ -4372,7 +4401,8 @@ export function App() {
                         <div className="directory-edit-heading"><div><p>Edit user</p><h3>{user.name}</h3></div><Edit3 aria-hidden="true" size={18} /></div>
                         <label>Full name<input onChange={(event) => setEditDraft({ ...editDraft, name: event.target.value })} value={editDraft.name} /></label>
                         <label>Email / username<input onChange={(event) => setEditDraft({ ...editDraft, username: event.target.value })} type="email" value={editDraft.username} /></label>
-                        <label>New password <small>Leave blank to keep the current password</small><input onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })} placeholder="Unchanged" type="password" value={editDraft.password} /></label>
+                        <label>New password <small>Leave blank to keep the current password</small><input onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })} placeholder={`Unchanged (min ${PASSWORD_MIN} chars)`} type="password" value={editDraft.password} /></label>
+                        {passwordWarning(editDraft.password) ? <p className="form-error">⚠️ {passwordWarning(editDraft.password)}</p> : null}
                         <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
                         <div className="directory-edit-actions">
                           <button className="ghost-button" onClick={() => { setEditingUserId(null); setEditDraft(null); }} type="button"><X aria-hidden="true" size={16} />Cancel</button>
