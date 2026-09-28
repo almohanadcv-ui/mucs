@@ -2240,7 +2240,11 @@ const server = createServer(async (request, response) => {
             items = items.map(item => item.id === body.id ? {...item, completed: body.completed} : item);
           } else fail(400, "Invalid checklist action.");
         }
-        await db.prepare("UPDATE tasks SET checklist = ?::jsonb, status = CASE WHEN status = 'assigned' THEN 'in_progress' ELSE status END, leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(items), task.id);
+        // Fill the progress bar automatically from completed work steps (capped
+        // at 90% — the final 10% is reserved for the leader's approval → 100%).
+        const doneCount = items.filter(item => item.completed).length;
+        const stepProgress = items.length ? Math.min(90, Math.round((doneCount / items.length) * 100)) : null;
+        await db.prepare("UPDATE tasks SET checklist = ?::jsonb, status = CASE WHEN status = 'assigned' THEN 'in_progress' ELSE status END, progress = COALESCE(?, progress), leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(items), stepProgress, task.id);
         await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(task.id);
         await recordTaskEvent(task.id, actor, "checklist_updated", items.filter(item => item.completed).length + " of " + items.length + " work steps completed");
       });
