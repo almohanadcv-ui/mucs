@@ -2618,7 +2618,7 @@ const server = createServer(async (request, response) => {
           parts: [{ text: String(item.text).slice(0, 2000) }]
         }));
       contents.push({ role: "user", parts: [{ text: message }] });
-      const model = String(process.env.GEMINI_MODEL ?? "gemini-2.5-flash-lite");
+      const model = String(process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite");
       const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
