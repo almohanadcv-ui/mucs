@@ -1421,6 +1421,16 @@ export function App() {
     document.addEventListener("pointerdown", closeOpenPopovers);
     return () => document.removeEventListener("pointerdown", closeOpenPopovers);
   }, [showAiAssistant, showChatPanel, showGroupForm, showNotifications]);
+
+  // Close the AI assistant with the Esc key.
+  useEffect(() => {
+    if (!showAiAssistant) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowAiAssistant(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showAiAssistant]);
   const canDeleteSelectedChatGroup = Boolean(selectedChatChannel?.isGroup && (
     currentUser?.role === "superadmin" ||
     (canManagePeople && inDepartmentScope(selectedChatChannel.department))
