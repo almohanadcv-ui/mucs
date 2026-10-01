@@ -37,6 +37,8 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  Eye,
+  EyeOff,
   Sun,
   Trophy,
   Trash2,
@@ -721,6 +723,7 @@ export function App() {
   const [chatGroupNameDraft, setChatGroupNameDraft] = useState("");
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [aiDraft, setAiDraft] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiMessages, setAiMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
@@ -1398,7 +1401,7 @@ export function App() {
         setShowGroupForm(false);
       }
 
-      if (showAiAssistant && !target.closest(".ai-assistant") && !target.closest(".ai-toggle-button")) {
+      if (showAiAssistant && !target.closest(".ai-assistant") && !target.closest(".ai-toggle-button") && !target.closest(".topbar-ai-button")) {
         setShowAiAssistant(false);
       }
 
@@ -3565,26 +3568,6 @@ export function App() {
                 </form>
               </div>
             </div>
-
-            {showAiAssistant ? (
-              <section className="ai-assistant" aria-label="MAB AI assistant">
-                <header>
-                  <span><Sparkles aria-hidden="true" size={17} /></span>
-                  <div><strong>MAB AI Assistant</strong><small>Private conversation · responses may need review</small></div>
-                  <button className="icon-button" type="button" onClick={() => setShowAiAssistant(false)} aria-label="Close AI assistant"><X size={15} /></button>
-                </header>
-                <div className="ai-message-list" aria-live="polite">
-                  {aiMessages.map((message, index) => (
-                    <p className={message.role} key={`${message.role}-${index}`}>{message.text}</p>
-                  ))}
-                  {aiLoading ? <p className="assistant ai-thinking">Thinking…</p> : null}
-                </div>
-                <form onSubmit={sendAiMessage}>
-                  <input maxLength={2000} value={aiDraft} onChange={(event) => setAiDraft(event.target.value)} placeholder="Ask the MAB assistant…" />
-                  <button className="primary-button" disabled={!aiDraft.trim() || aiLoading} type="submit">Ask</button>
-                </form>
-              </section>
-            ) : null}
             {chatStatus ? <p className="success-message">{chatStatus}</p> : null}
           </section>
 
@@ -3594,6 +3577,27 @@ export function App() {
   return (
     <main className="app-shell">
       {toast ? <div className="success-toast" role="status" aria-live="polite"><CheckCircle2 size={18}/><span>{toast.message}</span><button type="button" aria-label="Close success message" onClick={() => setToast(null)}><X size={15}/></button></div> : null}
+
+      {/* Global AI assistant — opens from the top bar (AI Chat) on any page. */}
+      {showAiAssistant ? (
+        <section className="ai-assistant ai-assistant-floating" aria-label="MAB AI assistant">
+          <header>
+            <span><Sparkles aria-hidden="true" size={17} /></span>
+            <div><strong>MAB AI Assistant</strong><small>Powered by Gemini · responses may need review</small></div>
+            <button className="icon-button" type="button" onClick={() => setShowAiAssistant(false)} aria-label="Close AI assistant"><X size={15} /></button>
+          </header>
+          <div className="ai-message-list" aria-live="polite">
+            {aiMessages.map((message, index) => (
+              <p className={message.role} key={`${message.role}-${index}`}>{message.text}</p>
+            ))}
+            {aiLoading ? <p className="assistant ai-thinking">Thinking…</p> : null}
+          </div>
+          <form onSubmit={sendAiMessage}>
+            <input maxLength={2000} value={aiDraft} onChange={(event) => setAiDraft(event.target.value)} placeholder="Ask the MAB assistant…" />
+            <button className="primary-button" disabled={!aiDraft.trim() || aiLoading} type="submit">Ask</button>
+          </form>
+        </section>
+      ) : null}
       <aside className="sidebar" aria-label="Main navigation">
         <div className="brand">
           <img src={mabLogo} alt="MAB logo" />
@@ -3740,6 +3744,16 @@ export function App() {
                 <span>New Task</span>
               </button>
             ) : null}
+            <button
+              className={`ghost-button topbar-ai-button ${showAiAssistant ? "active" : ""}`}
+              onClick={() => setShowAiAssistant((open) => !open)}
+              type="button"
+              aria-label="AI assistant"
+              aria-expanded={showAiAssistant}
+            >
+              <Sparkles aria-hidden="true" size={18} />
+              <span>AI Chat</span>
+            </button>
             <button
               aria-label={`Switch to ${darkMode ? "light" : "dark"} mode`}
               aria-pressed={darkMode}
@@ -3931,7 +3945,10 @@ export function App() {
                 <form className="person-form" onSubmit={handleCreatePerson}>
                   <input name="name" placeholder="Full name" />
                   <input name="username" placeholder="username@mabunited.com" type="email" />
-                  <input name="password" placeholder="Temporary password" type="password" />
+                  <div className="password-field">
+                    <input name="password" placeholder="Temporary password" type={showPassword ? "text" : "password"} />
+                    <button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+                  </div>
                   {renderCreateUserFields()}
                     <button type="submit" className="primary-button">
                     <Plus aria-hidden="true" size={18} />
@@ -4140,12 +4157,15 @@ export function App() {
                           type="email"
                           value={editDraft.username}
                         />
-                        <input
-                          onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })}
-                          type="password"
-                          placeholder={`New password (min ${PASSWORD_MIN} chars) — leave blank to keep`}
-                          value={editDraft.password}
-                        />
+                        <div className="password-field">
+                          <input
+                            onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })}
+                            type={showPassword ? "text" : "password"}
+                            placeholder={`New password (min ${PASSWORD_MIN} chars) — leave blank to keep`}
+                            value={editDraft.password}
+                          />
+                          <button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
+                        </div>
                         {passwordWarning(editDraft.password) ? (
                           <small className="form-error">⚠️ {passwordWarning(editDraft.password)}</small>
                         ) : null}
@@ -4553,7 +4573,7 @@ export function App() {
                     <h3>Create user</h3>
                     <label>Full name<input name="name" placeholder="e.g. Ali Ahmed" required /></label>
                     <label>Email address<input name="username" placeholder="name@mabunited.com" type="email" required /></label>
-                    <label>Temporary password<input name="password" placeholder="At least 10 characters, including a number" type="password" minLength={10} required /></label>
+                    <label>Temporary password<div className="password-field"><input name="password" placeholder="At least 10 characters, including a number" type={showPassword ? "text" : "password"} minLength={10} required /><button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
                     {renderCreateUserFields()}
                     <button className="primary-button" type="submit"><Plus aria-hidden="true" size={17} />Create User</button>
                     {peopleMessage ? <p className="success-message">{peopleMessage}</p> : null}
@@ -4590,7 +4610,7 @@ export function App() {
                         <div className="directory-edit-heading"><div><p>Edit user</p><h3>{user.name}</h3></div><Edit3 aria-hidden="true" size={18} /></div>
                         <label>Full name<input onChange={(event) => setEditDraft({ ...editDraft, name: event.target.value })} value={editDraft.name} /></label>
                         <label>Email / username<input onChange={(event) => setEditDraft({ ...editDraft, username: event.target.value })} type="email" value={editDraft.username} /></label>
-                        <label>New password <small>Leave blank to keep the current password</small><input onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })} placeholder={`Unchanged (min ${PASSWORD_MIN} chars)`} type="password" value={editDraft.password} /></label>
+                        <label>New password <small>Leave blank to keep the current password</small><div className="password-field"><input onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })} placeholder={`Unchanged (min ${PASSWORD_MIN} chars)`} type={showPassword ? "text" : "password"} value={editDraft.password} /><button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
                         {passwordWarning(editDraft.password) ? <p className="form-error">⚠️ {passwordWarning(editDraft.password)}</p> : null}
                         <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
                         <div className="directory-edit-actions">
