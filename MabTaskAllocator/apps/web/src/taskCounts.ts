@@ -24,16 +24,31 @@ export function archiveProjects(tasks: ManagedTask[]) {
   }
   return [...groups.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
-export type ArchiveFilters = { taskId: string; projectId: string; priority: string; assigneeId: string; from: string; to: string };
+export type ArchiveFilters = {
+  search: string;
+  projectId: string;
+  department: string;
+  taskType: string;
+  assigneeId: string;
+  delivery: string;
+  reopened: string;
+  from: string;
+  to: string;
+};
 export function filterArchive(tasks: ManagedTask[], filters: ArchiveFilters) {
-  const query = filters.taskId.toLocaleLowerCase().replace(/[^a-z0-9]/g, "");
+  const query = filters.search.toLocaleLowerCase().trim();
   return tasks.filter((task) => {
     if (task.status !== "done") return false;
     if (filters.projectId && (task.projectId ?? "__none__") !== filters.projectId) return false;
-    if (query && !task.taskCode.toLocaleLowerCase().replace(/[^a-z0-9]/g, "").includes(query)) return false;
-    if (filters.priority && task.priority !== filters.priority) return false;
+    if (query && !task.taskCode.toLocaleLowerCase().includes(query) && !task.title.toLocaleLowerCase().includes(query)) return false;
+    if (filters.department && task.department.trim().toLowerCase() !== filters.department.trim().toLowerCase()) return false;
+    if (filters.taskType && task.taskType !== filters.taskType) return false;
     if (filters.assigneeId && !task.assigneeIds.includes(filters.assigneeId)) return false;
     const date = completedDate(task);
+    if (filters.delivery === "on_time" && !(task.dueDate && date && date <= task.dueDate)) return false;
+    if (filters.delivery === "late" && !(task.dueDate && date && date > task.dueDate)) return false;
+    if (filters.delivery === "no_deadline" && task.dueDate) return false;
+    if (filters.reopened === "yes" && !task.reopenCount) return false;
     if ((filters.from || filters.to) && !date) return false;
     return (!filters.from || date >= filters.from) && (!filters.to || date <= filters.to);
   });

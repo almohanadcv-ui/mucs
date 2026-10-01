@@ -13,6 +13,7 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
+  ChevronRight,
   ClipboardList,
   CopyPlus,
   CornerUpLeft,
@@ -263,6 +264,50 @@ function clampProgress(progress: number) {
 
 function complexityPoints(task: Pick<ManagedTask, "complexity">) {
   return Math.min(5, Math.max(1, Math.round(Number(task.complexity) || 3)));
+}
+
+function exportTasksToCSV(tasks: ManagedTask[], filename: string) {
+  if (!tasks.length) return;
+  const isArchive = filename.startsWith("mab-finished");
+
+  function cell(val: string | number | null | undefined): string {
+    const s = String(val ?? "");
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  const headers = [
+    "Task ID", "Title", "Department", "Project", "Task Type",
+    "Priority", "Status", "Assigned To", "Due Date", "Started", "Progress %",
+    "Complexity", ...(isArchive ? ["Completed", "On Time", "Cycle Time (days)"] : []),
+    "Reopens", "Review Comment", "Created"
+  ];
+
+  const rows = tasks.map((task) => {
+    const started = task.startedAt ? new Date(task.startedAt).toISOString().slice(0, 10) : "";
+    const completed = task.completedAtIso ? new Date(task.completedAtIso).toISOString().slice(0, 10) : "";
+    const onTime = task.completedAtIso && task.dueDate
+      ? (task.completedAtIso.slice(0, 10) <= task.dueDate ? "Yes" : "No") : "";
+    const cycleTime = task.completedAtIso && task.startedAt
+      ? ((new Date(task.completedAtIso).getTime() - new Date(task.startedAt).getTime()) / 86_400_000).toFixed(1) : "";
+    return [
+      task.taskCode, task.title, task.department, task.projectName ?? "",
+      task.taskType, priorityLabels[task.priority], statusLabels[task.status],
+      task.candidateNames.join("; ") || "Unassigned",
+      task.dueDate || "", started, task.progress,
+      complexityPoints(task),
+      ...(isArchive ? [completed, onTime, cycleTime] : []),
+      task.reopenCount, task.reviewComment ?? "",
+      task.createdAt ? new Date(task.createdAt).toISOString().slice(0, 10) : ""
+    ].map(cell).join(",");
+  });
+
+  const csv = [headers.join(","), ...rows].join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
 }
 
 function getPriorityRank(priority: TaskPriority) {
@@ -783,13 +828,17 @@ export function App() {
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
   const [reportUserId, setReportUserId] = useState("");
   const [archiveFilters, setArchiveFilters] = useState({
-    taskId: "",
+    search: "",
     projectId: "",
-    from: "",
-    to: "",
+    department: "",
+    taskType: "",
     assigneeId: "",
-    priority: "" as "" | TaskPriority
+    delivery: "",
+    reopened: "",
+    from: "",
+    to: ""
   });
+  const [archivePeriod, setArchivePeriod] = useState("");
 
   const themeOwnerId = currentUser?.id ?? "login";
   const darkMode = themePreference.darkMode;
@@ -1257,6 +1306,7 @@ export function App() {
   const activeSectionOverdueCount = filteredActiveTaskSectionTasks.filter(isTaskOverdue).length;
   const activeSectionDueSoonCount = filteredActiveTaskSectionTasks.filter(isTaskDueSoon).length;
   const activeTaskFilterCount = Number(Boolean(activeWorkerId)) + Object.values(activeTaskFilters).filter(Boolean).length;
+  const archiveFilterCount = Object.entries(archiveFilters).filter(([k, v]) => v && k !== "from" && k !== "to").length + Number(Boolean(archivePeriod)) + Number(Boolean(archiveFilters.from || archiveFilters.to) && !archivePeriod);
   const dashboardTasks = currentUser?.role === "user" ? assignedActiveTasks : activeTasks;
   const canFilterDashboardTasks = Boolean(currentUser && ["team_leader", "technical_manager", "admin", "superadmin"].includes(currentUser.role));
   const dashboardProjectOptions = useMemo(() => {
@@ -1296,6 +1346,29 @@ export function App() {
   const filteredArchiveTasks = useMemo(() => filterArchive(finishedTasks, archiveFilters), [finishedTasks, archiveFilters]);
   const finishedProjects = useMemo(() => archiveProjects(finishedTasks), [finishedTasks]);
   const finishedSummary = archiveSummary(filteredArchiveTasks);
+  const finishedDepartments = useMemo(() => [...new Set(finishedTasks.map((t) => t.department).filter(Boolean))].sort(), [finishedTasks]);
+
+  function applyArchivePeriod(period: string) {
+    setArchivePeriod(period);
+    if (!period || period === "custom") { setArchiveFilters((f) => ({ ...f, from: "", to: "" })); return; }
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = now.getMonth();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    if (period === "this_month") {
+      setArchiveFilters((f) => ({ ...f, from: `${y}-${pad(m + 1)}-01`, to: "" }));
+    } else if (period === "last_month") {
+      const ly = m === 0 ? y - 1 : y;
+      const lm = m === 0 ? 12 : m;
+      const lastDay = new Date(y, m, 0).getDate();
+      setArchiveFilters((f) => ({ ...f, from: `${ly}-${pad(lm)}-01`, to: `${ly}-${pad(lm)}-${pad(lastDay)}` }));
+    } else if (period === "last_3_months") {
+      const d = new Date(now); d.setMonth(d.getMonth() - 3);
+      setArchiveFilters((f) => ({ ...f, from: d.toISOString().slice(0, 10), to: "" }));
+    } else if (period === "this_year") {
+      setArchiveFilters((f) => ({ ...f, from: `${y}-01-01`, to: "" }));
+    }
+  }
 
   const teamCandidates = useMemo(() => {
     const normalUsers = visibleUsers.filter((user) => user.role === "user");
@@ -1620,7 +1693,7 @@ export function App() {
       notificationEpoch.current++;
       setToast(null);
       setUnreadNotificationCount(0);
-      setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" });
+      setArchiveFilters({ search: "", projectId: "", department: "", taskType: "", assigneeId: "", delivery: "", reopened: "", from: "", to: "" });
       setNotifications([]);
       knownNotificationIdsRef.current = new Set();
       notificationHydratedRef.current = false;
@@ -1645,7 +1718,7 @@ export function App() {
       notificationEpoch.current++;
       setToast(null);
       setUnreadNotificationCount(0);
-      setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" });
+      setArchiveFilters({ search: "", projectId: "", department: "", taskType: "", assigneeId: "", delivery: "", reopened: "", from: "", to: "" });
       setNotifications([]);
       knownNotificationIdsRef.current = new Set();
       notificationHydratedRef.current = false;
@@ -1729,7 +1802,7 @@ export function App() {
       setShowChatPanel(false);
       const task = tasks.find((item) => item.id === notification.taskId);
       if (task?.status === "done") {
-        setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" });
+        setArchiveFilters({ search: "", projectId: "", department: "", taskType: "", assigneeId: "", delivery: "", reopened: "", from: "", to: "" });
         setActiveView("finished");
       }
       else {
@@ -3898,423 +3971,344 @@ export function App() {
         {["intelligence", "attendance", "achievements"].includes(activeView) ? <BetaNotice feature={viewTitles[activeView]} /> : null}
         {allocationMessage ? <p className="success-message" role="status">{allocationMessage}</p> : null}
         {activeView === "dashboard" ? <>
-        <section className="brand-strip" id="dashboard">
-          <div>
-            <img src={mabLogo} alt="MAB logo" />
+        {/* ── HERO ── */}
+        <section className="dash-hero" id="dashboard">
+          <div className="dash-hero-left">
+            <img src={mabLogo} alt="MAB logo" className="dash-hero-logo" />
             <div>
-              <p>MAB command center</p>
-              <strong>
-                {currentUser.role === "superadmin"
-                  ? "Manage every department, user, and task from one superadmin control page."
-                  : currentUser.role === "technical_manager" ? "Oversee Electrical and Mechanical teams, projects, approvals, and Work Intelligence." : currentUser.role === "admin"
-                    ? "Create users and team leaders, manage your team, and approve department tasks."
-                    : currentUser.role === "team_leader" ? "Request task allocations, review completed work, and reopen tasks in your department." : "Track the tasks assigned within your technical office department."}
-              </strong>
+              <p className="dash-eyebrow">MAB Command Center</p>
+              <h1 className="dash-greeting">
+                {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}, {currentUser.name.split(" ")[0]}
+              </h1>
+              <p className="dash-role-desc">
+                {currentUser.role === "superadmin" ? "Full organization — all departments, users, and tasks." :
+                 currentUser.role === "technical_manager" ? "Technical department — electrical, mechanical, and BIM teams." :
+                 currentUser.role === "admin" ? `${currentUser.department} — managing your team, approvals, and task flow.` :
+                 currentUser.role === "team_leader" ? `${currentUser.department} — leading your team's workload and delivery.` :
+                 `${currentUser.department} — your assigned work and progress.`}
+              </p>
             </div>
           </div>
-          <div className="search-pill">
-            <Sparkles aria-hidden="true" size={18} />
-            <span>{currentUser.name}</span>
+          <div className="dash-hero-chips">
+            <span className="dash-chip">
+              <Calendar aria-hidden="true" size={13} />
+              {new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+            </span>
+            {reviewTasks > 0 ? (
+              <button className="dash-chip dash-chip-warn" type="button" onClick={canAllocateTasks ? () => openTaskQueue("review") : undefined}>
+                <CheckCircle2 aria-hidden="true" size={13} />
+                {reviewTasks} need{reviewTasks === 1 ? "s" : ""} review
+              </button>
+            ) : null}
+            {overdueTasks > 0 ? (
+              <button className="dash-chip dash-chip-danger" type="button" onClick={() => openTaskQueue("overdue")}>
+                <AlertTriangle aria-hidden="true" size={13} />
+                {overdueTasks} overdue
+              </button>
+            ) : null}
           </div>
         </section>
 
-        <section className="stats-grid" aria-label="Task allocation metrics">
-          <StatCard label={currentUser.role === "user" ? "My Active Tasks" : "Active Tasks"} value={String(openTasks)} icon={ClipboardList} tone="blue" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} />
-          <StatCard label="Needs Review" value={String(reviewTasks)} icon={CheckCircle2} tone="green" onClick={canAllocateTasks ? () => openTaskQueue("review") : undefined} />
-          <StatCard label="Overdue" value={String(overdueTasks)} icon={AlertTriangle} tone="red" onClick={() => openTaskQueue("overdue")} />
-          <StatCard label="Average Progress" value={`${averageProgress}%`} icon={Gauge} tone="amber" />
+        {/* ── KPI ROW ── */}
+        <section className="dash-kpi-row" aria-label="Key metrics">
+          <button className="dash-kpi dash-kpi-blue" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
+            <span className="dash-kpi-icon"><ClipboardList size={22} /></span>
+            <div className="dash-kpi-body">
+              <span>{currentUser.role === "user" ? "My Active Tasks" : "Active Tasks"}</span>
+              <strong>{openTasks}</strong>
+              <small>{urgentTasks > 0 ? `${urgentTasks} urgent` : openTasks === 0 ? "all clear" : "in progress"}</small>
+            </div>
+          </button>
+          <button className="dash-kpi dash-kpi-green" onClick={canAllocateTasks ? () => openTaskQueue("review") : undefined} type="button">
+            <span className="dash-kpi-icon"><CheckCircle2 size={22} /></span>
+            <div className="dash-kpi-body">
+              <span>Needs Review</span>
+              <strong>{reviewTasks}</strong>
+              <small>{reviewTasks > 0 ? "action required" : "queue clear"}</small>
+            </div>
+          </button>
+          <button className={`dash-kpi ${overdueTasks > 0 ? "dash-kpi-red" : "dash-kpi-muted"}`} onClick={() => openTaskQueue("overdue")} type="button">
+            <span className="dash-kpi-icon"><AlertTriangle size={22} /></span>
+            <div className="dash-kpi-body">
+              <span>Overdue</span>
+              <strong>{overdueTasks}</strong>
+              <small>{overdueTasks > 0 ? "needs attention" : "on schedule"}</small>
+            </div>
+          </button>
+          <div className="dash-kpi dash-kpi-amber">
+            <span className="dash-kpi-icon"><Archive size={22} /></span>
+            <div className="dash-kpi-body">
+              <span>Done This Month</span>
+              <strong>{finishedSummary.thisMonth}</strong>
+              <small>{finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}% on time` : "no deadlines set"}</small>
+            </div>
+          </div>
         </section>
 
-        <section className="dashboard-main-grid" aria-label="Dashboard overview">
-          <section className="panel dashboard-work-queue">
-            <div className="panel-header">
-              <div><p>Live workload</p><h2>Priority Work Queue</h2></div>
-              <button className="ghost-button" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">View all</button>
+        {/* ── MAIN 2-COLUMN LAYOUT ── */}
+        <div className="dash-layout">
+          {/* LEFT: PRIORITY QUEUE */}
+          <section className="panel dash-queue-panel">
+            <div className="dash-panel-header">
+              <div>
+                <p className="dash-panel-label">Live workload</p>
+                <h2>Priority Queue</h2>
+              </div>
+              <button className="ghost-button" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
+                View all <ChevronRight aria-hidden="true" size={14} />
+              </button>
             </div>
             {canFilterDashboardTasks ? (
-              <div className="dashboard-task-filters" aria-label="Dashboard active task filters">
-                <label>
-                  <span>Project</span>
+              <div className="dash-queue-filters">
+                <label><span>Project</span>
                   <select value={dashboardProjectFilter} onChange={(event) => setDashboardProjectFilter(event.target.value)}>
                     <option value="">All projects</option>
-                    {dashboardProjectOptions.map((project) => (
-                      <option key={project.id} value={project.id}>{project.name}</option>
-                    ))}
+                    {dashboardProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
                   </select>
                 </label>
-                <label>
-                  <span>Department</span>
+                <label><span>Department</span>
                   <select value={dashboardDepartmentFilter} onChange={(event) => setDashboardDepartmentFilter(event.target.value)}>
                     <option value="">All departments</option>
-                    {dashboardDepartmentOptions.map((department) => (
-                      <option key={department} value={department}>{department}</option>
-                    ))}
+                    {dashboardDepartmentOptions.map((dept) => <option key={dept} value={dept}>{dept}</option>)}
                   </select>
                 </label>
               </div>
             ) : null}
-            <div className="dashboard-task-list">
-              {filteredDashboardTasks.map((task) => (
-                <button className="dashboard-task-row" key={`dashboard-${task.id}`} onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
-                  <span className={`dashboard-priority priority-${task.priority}`} />
-                  <span><strong>{task.title}</strong><small>{task.taskCode} · {task.projectName || task.department}</small></span>
-                  <span className="dashboard-assignee">{task.candidateName || "Unassigned"}</span>
-                  <span className="dashboard-due">{task.dueDate || "Not started"}</span>
-                  <strong className="dashboard-progress">{task.progress}%</strong>
+            <div className="dash-queue-body">
+              {filteredDashboardTasks.slice(0, 15).map((task) => (
+                <button
+                  className="dash-task-row"
+                  key={`dash-${task.id}`}
+                  onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")}
+                  type="button"
+                >
+                  <span className={`dash-dot dash-dot-${task.priority}`} title={priorityLabels[task.priority]} />
+                  <span className="dash-task-text">
+                    <strong>{task.title}</strong>
+                    <small>{task.taskCode} · {task.projectName || task.department}</small>
+                  </span>
+                  <span className="dash-task-who">{task.candidateName || "Unassigned"}</span>
+                  <span className={`dash-task-due${task.dueDate && task.dueDate < currentRiyadhDate() ? " dash-task-late" : ""}`}>
+                    {task.dueDate || "—"}
+                  </span>
+                  <span className="dash-task-pct">{task.progress}%</span>
                 </button>
               ))}
-              {!filteredDashboardTasks.length ? <p className="empty-state">{dashboardTasks.length ? "No active tasks match these filters." : "Everything is clear. No active tasks."}</p> : null}
+              {!filteredDashboardTasks.length ? (
+                <p className="empty-state">{dashboardTasks.length ? "No tasks match these filters." : "All clear — no active tasks right now."}</p>
+              ) : null}
             </div>
           </section>
 
-          <aside className="dashboard-side-column">
-            <section className="panel dashboard-quick-actions">
-              <div className="panel-header"><div><p>Shortcuts</p><h2>Quick Actions</h2></div></div>
-              <div className="quick-action-grid">
-                {canAllocateTasks ? <button onClick={() => setShowTaskComposer(true)} type="button"><Plus aria-hidden="true" size={18} /><span><strong>New task</strong><small>Assign work now</small></span></button> : null}
-                <button onClick={() => openTaskQueue("free")} type="button"><Hand aria-hidden="true" size={18} /><span><strong>Free tasks</strong><small>{freeActiveTasks.length} available</small></span></button>
-                <button onClick={() => setActiveView("projects")} type="button"><FolderKanban aria-hidden="true" size={18} /><span><strong>Projects</strong><small>{projects.length} available</small></span></button>
-                <button onClick={() => setActiveView("people")} type="button"><Users aria-hidden="true" size={18} /><span><strong>People</strong><small>{visibleUsers.length} visible</small></span></button>
-                <button onClick={() => void openDepartmentChat()} type="button"><MessageSquare aria-hidden="true" size={18} /><span><strong>Messages</strong><small>{chatChannels.length} channels</small></span></button>
+          {/* RIGHT: SIDE COLUMN */}
+          <div className="dash-side">
+            {/* TEAM PULSE */}
+            {canAllocateTasks && productivityCandidates.length > 0 ? (
+              <section className="panel dash-pulse-panel">
+                <div className="dash-panel-header">
+                  <div>
+                    <p className="dash-panel-label">Workload snapshot</p>
+                    <h2>Team Pulse</h2>
+                  </div>
+                  <span className="result-count">{productivityCandidates.length} members</span>
+                </div>
+                {(() => {
+                  const members = productivityCandidates.slice(0, 7);
+                  const counts = members.map((m) => visibleTasks.filter((t) => t.assigneeIds.includes(m.id) && t.status !== "done").length);
+                  const maxCount = Math.max(1, ...counts);
+                  return (
+                    <div className="dash-pulse-list">
+                      {members.map((member, idx) => {
+                        const active = counts[idx];
+                        const overdue = visibleTasks.filter((t) => t.assigneeIds.includes(member.id) && t.status !== "done" && t.dueDate && t.dueDate < currentRiyadhDate()).length;
+                        return (
+                          <div className="pulse-row" key={member.id}>
+                            <span className="pulse-avatar">{member.name.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]).join("")}</span>
+                            <div className="pulse-middle">
+                              <div className="pulse-namerow">
+                                <span className="pulse-name">{member.name}</span>
+                                {overdue > 0 ? <span className="pulse-late">{overdue} late</span> : null}
+                              </div>
+                              <div className="pulse-track">
+                                <span className="pulse-fill" style={{ width: `${Math.round((active / maxCount) * 100)}%` }} />
+                              </div>
+                            </div>
+                            <strong className="pulse-count">{active}</strong>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </section>
+            ) : null}
+
+            {/* QUICK ACTIONS */}
+            <section className="panel dash-quick-panel">
+              <div className="dash-panel-header">
+                <div>
+                  <p className="dash-panel-label">Shortcuts</p>
+                  <h2>Quick Actions</h2>
+                </div>
+              </div>
+              <div className="dash-quick-grid">
+                {canAllocateTasks ? (
+                  <button className="dash-qbtn" onClick={() => setShowTaskComposer(true)} type="button">
+                    <span className="dq-icon dq-blue"><Plus size={16} /></span>
+                    <span><strong>New Task</strong><small>Assign work</small></span>
+                  </button>
+                ) : null}
+                <button className="dash-qbtn" onClick={() => openTaskQueue("free")} type="button">
+                  <span className="dq-icon dq-amber"><Hand size={16} /></span>
+                  <span><strong>Free Tasks</strong><small>{freeActiveTasks.length} waiting</small></span>
+                </button>
+                {canAllocateTasks && reviewTasks > 0 ? (
+                  <button className="dash-qbtn dash-qbtn-urgent" onClick={() => openTaskQueue("review")} type="button">
+                    <span className="dq-icon dq-green"><CheckCircle2 size={16} /></span>
+                    <span><strong>Review Queue</strong><small>{reviewTasks} pending</small></span>
+                  </button>
+                ) : null}
+                <button className="dash-qbtn" onClick={() => setActiveView("projects")} type="button">
+                  <span className="dq-icon dq-indigo"><FolderKanban size={16} /></span>
+                  <span><strong>Projects</strong><small>{projects.length} active</small></span>
+                </button>
+                <button className="dash-qbtn" onClick={() => setActiveView("people")} type="button">
+                  <span className="dq-icon dq-teal"><Users size={16} /></span>
+                  <span><strong>People</strong><small>{visibleUsers.length} visible</small></span>
+                </button>
+                <button className="dash-qbtn" onClick={() => void openDepartmentChat()} type="button">
+                  <span className="dq-icon dq-purple"><MessageSquare size={16} /></span>
+                  <span><strong>Messages</strong><small>{chatChannels.length} channels</small></span>
+                </button>
+                <button className="dash-qbtn" onClick={() => setActiveView("finished")} type="button">
+                  <span className="dq-icon dq-muted"><Archive size={16} /></span>
+                  <span><strong>Archive</strong><small>{finishedTasks.length} done</small></span>
+                </button>
               </div>
             </section>
-            <section className="panel dashboard-health">
-              <div className="panel-header"><div><p>At a glance</p><h2>Operations</h2></div></div>
-              <div className="health-row"><span>Total visible tasks</span><strong>{visibleTasks.length}</strong></div>
-              <div className="health-row"><span>Projects</span><strong>{projects.length}</strong></div>
-              <div className="health-row"><span>Team members</span><strong>{productivityCandidates.length}</strong></div>
-              <div className="health-row"><span>Urgent tasks</span><strong>{urgentTasks}</strong></div>
-              <div className="health-row"><span>Completed tasks</span><strong>{finishedTasks.length}</strong></div>
+
+            {/* OPS SNAPSHOT */}
+            <section className="panel dash-ops-panel">
+              <div className="dash-panel-header">
+                <div>
+                  <p className="dash-panel-label">At a glance</p>
+                  <h2>Operations</h2>
+                </div>
+              </div>
+              <div className="dash-ops-list">
+                <div className="dash-ops-row"><span>Total tasks</span><strong>{visibleTasks.length}</strong></div>
+                <div className="dash-ops-row"><span>Avg. progress</span><strong>{averageProgress}%</strong></div>
+                <div className="dash-ops-row"><span>Unassigned</span><strong>{freeActiveTasks.length}</strong></div>
+                <div className="dash-ops-row"><span>Complexity load</span><strong>{dashboardComplexity} pts</strong></div>
+                {canManagePeople ? <>
+                  <div className="dash-ops-row"><span>Active projects</span><strong>{projects.length}</strong></div>
+                  <div className="dash-ops-row"><span>On-time rate</span><strong>{finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}%` : "—"}</strong></div>
+                  <div className="dash-ops-row"><span>Team members</span><strong>{productivityCandidates.length}</strong></div>
+                </> : null}
+              </div>
             </section>
-          </aside>
-        </section>
+          </div>
+        </div>
+
+        {/* ── ANALYTICS ROW ── */}
+        <div className="dash-analytics-row">
+          {/* TASK TYPE DISTRIBUTION */}
+          <section className="panel dash-chart-panel">
+            <div className="dash-panel-header">
+              <div>
+                <p className="dash-panel-label">Work breakdown</p>
+                <h2>Task Types</h2>
+              </div>
+              <span className="result-count">{dashboardTasks.length} total</span>
+            </div>
+            {dashboardTasks.length > 0 ? (
+              <div className="dash-bar-list">
+                {(["Technical", "QS", "Shop Drawings", "BIM", "Variation"] as TaskType[]).map((type) => {
+                  const count = dashboardTasks.filter((t) => t.taskType === type).length;
+                  const pct = Math.round((count / dashboardTasks.length) * 100);
+                  return count > 0 ? (
+                    <div className="dash-bar-row" key={type}>
+                      <span className="dash-bar-label">{type}</span>
+                      <div className="dash-bar-track">
+                        <span className="dash-bar-fill dash-bar-blue" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="dash-bar-value">{count} <small>({pct}%)</small></span>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            ) : <p className="empty-state">No active tasks.</p>}
+          </section>
+
+          {/* PRIORITY BREAKDOWN */}
+          <section className="panel dash-chart-panel">
+            <div className="dash-panel-header">
+              <div>
+                <p className="dash-panel-label">Risk overview</p>
+                <h2>Priority Breakdown</h2>
+              </div>
+            </div>
+            {dashboardTasks.length > 0 ? (
+              <div className="dash-bar-list">
+                {(["urgent", "high", "medium", "low"] as TaskPriority[]).map((priority) => {
+                  const count = dashboardTasks.filter((t) => t.priority === priority).length;
+                  const pct = Math.round((count / dashboardTasks.length) * 100);
+                  const colors: Record<string, string> = { urgent: "dash-bar-red", high: "dash-bar-orange", medium: "dash-bar-amber", low: "dash-bar-green" };
+                  return (
+                    <div className="dash-bar-row" key={priority}>
+                      <span className="dash-bar-label">{priorityLabels[priority]}</span>
+                      <div className="dash-bar-track">
+                        <span className={`dash-bar-fill ${colors[priority]}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="dash-bar-value">{count} <small>({pct}%)</small></span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="empty-state">No active tasks.</p>}
+          </section>
+
+          {/* DELIVERY PERFORMANCE */}
+          <section className="panel dash-chart-panel">
+            <div className="dash-panel-header">
+              <div>
+                <p className="dash-panel-label">Completion quality</p>
+                <h2>Delivery Performance</h2>
+              </div>
+            </div>
+            <div className="dash-delivery-stats">
+              <div className={`dash-delivery-orb${finishedSummary.onTimePercent === null ? " dash-delivery-orb-empty" : ""}`} aria-label={`On-time delivery: ${finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}%` : "no data"}`}>
+                <strong>{finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}%` : "—"}</strong>
+                <span>on time</span>
+              </div>
+              <div className="dash-delivery-rows">
+                <div className="dash-ops-row"><span>Total finished</span><strong>{finishedTasks.length}</strong></div>
+                <div className="dash-ops-row"><span>Done this month</span><strong>{finishedSummary.thisMonth}</strong></div>
+                <div className="dash-ops-row"><span>Currently overdue</span><strong className={overdueTasks > 0 ? "dash-val-red" : ""}>{overdueTasks}</strong></div>
+                <div className="dash-ops-row"><span>In review now</span><strong>{reviewTasks}</strong></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
         </> : null}
 
-        {activeView === "dashboard" && (canManagePeople || canAllocateTasks) ? (
-          <section className="admin-grid dashboard-legacy-admin" id="people">
-            {currentUser.role === "superadmin" ? (
-              <section className="panel command-panel department-panel">
-                <div className="panel-header">
-                  <div>
-                    <p>Organization structure</p>
-                    <h2>Create Department</h2>
-                  </div>
-                  <Building2 aria-hidden="true" />
-                </div>
-                <form className="person-form" onSubmit={handleCreateDepartment}>
-                  <label>
-                    Department name
-                    <input
-                      aria-label="Department name"
-                      onChange={(event) => setDepartmentDraft(event.target.value)}
-                      value={departmentDraft}
-                    />
-                  </label>
-                  <button type="submit" className="primary-button">
-                    <Plus aria-hidden="true" size={18} />
-                    Create Department
-                  </button>
-                </form>
-                <div className="department-list" aria-label="Available departments">
-                  {managedDepartments.map((department) => <span key={department}>{department}</span>)}
-                </div>
-                {departmentMessage ? <p className="success-message">{departmentMessage}</p> : null}
-              </section>
-            ) : null}
-
-            {canCreatePeople ? (
-              <section className="panel command-panel">
-                <div className="panel-header">
-                  <div>
-                    <p>{currentUser.role === "superadmin" ? "Superadmin people control" : "Department people control"}</p>
-                    <h2>Create User</h2>
-                  </div>
-                  <UserPlus aria-hidden="true" />
-                </div>
-                <form className="person-form" onSubmit={handleCreatePerson}>
-                  <input name="name" placeholder="Full name" />
-                  <input name="username" placeholder="username@mabunited.com" type="email" />
-                  <div className="password-field">
-                    <input name="password" placeholder="Temporary password" type={showPassword ? "text" : "password"} />
-                    <button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-                  </div>
-                  {renderCreateUserFields()}
-                    <button type="submit" className="primary-button">
-                    <Plus aria-hidden="true" size={18} />
-                    Create User
-                  </button>
-                </form>
-                {peopleMessage ? <p className="success-message">{peopleMessage}</p> : null}
-              </section>
-            ) : null}
-
-            {canAllocateTasks ? (
-              <section className="panel command-panel">
-                <div className="panel-header">
-                  <div>
-                    <p>Department allocation</p>
-                    <h2>Assign Task</h2>
-                  </div>
-                  <ClipboardList aria-hidden="true" />
-                </div>
-                <form className="person-form" onSubmit={handleAllocateTask}>
-                  <input
-                    onChange={(event) => setTaskDraft((draft) => ({ ...draft, title: event.target.value }))}
-                    placeholder="Task title"
-                    value={taskDraft.title}
-                  />
-                  <select
-                    onChange={(event) => {
-                      const project = projects.find((item) => item.id === event.target.value);
-                      setTaskDraft((draft) => ({
-                        ...draft,
-                        projectId: project?.id ?? "",
-                        department: projectTaskDepartment(project, draft.department),
-                        assigneeIds: []
-                      }));
-                    }}
-                    value={taskDraft.projectId}
-                  >
-                    <option value="">No project</option>
-                    {projects.map((project) => <option key={project.id} value={project.id}>{project.name} - {project.department}</option>)}
-                  </select>
-                  {canChooseDepartment && (!taskDraft.projectId || sameDepartment(selectedDraftProject?.department, technicalDepartment)) ? (
-                    <select
-                      onChange={(event) =>
-                        setTaskDraft((draft) => ({
-                          ...draft,
-                          department: event.target.value as DepartmentName,
-                          assigneeIds: []
-                        }))
-                      }
-                      value={taskDraft.department}
-                    >
-                      {taskDepartmentOptions.map((department) => (
-                        <option key={department} value={department}>{department}</option>
-                      ))}
-                    </select>
-                  ) : null}
-                  <div className="multi-select-field">
-                    Assign one or more people
-                    <CandidatePicker
-                      candidates={taskDraftAssignableUsers}
-                      emptyMessage={selectedDraftProject
-                        ? "This project has no available members. Add people to the project first."
-                        : `No normal users are available in ${taskDraft.department}.`}
-                      onChange={(assigneeIds) => setTaskDraft((draft) => ({ ...draft, assigneeIds }))}
-                      selectedIds={taskDraft.assigneeIds}
-                    /></div>
-                  <select onChange={(event) => setTaskDraft((draft) => ({ ...draft, taskType: event.target.value as TaskType }))} value={taskDraft.taskType}>
-                    {taskTypes.map((type) => <option key={type} value={type}>{type}</option>)}
-                  </select>
-                  <select
-                    onChange={(event) =>
-                      setTaskDraft((draft) => ({ ...draft, priority: event.target.value as TaskPriority }))
-                    }
-                    value={taskDraft.priority}
-                  >
-                    <option value="low">Low priority</option>
-                    <option value="medium">Medium priority</option>
-                    <option value="high">High priority</option>
-                    <option value="urgent">Urgent priority</option>
-                  </select>
-                  <input
-                    onChange={(event) => setTaskDraft((draft) => ({ ...draft, dueDate: event.target.value }))}
-                    type="date"
-                    value={taskDraft.dueDate}
-                  />
-                  <WorkStepsEditor steps={draftSteps} owners={taskDraftSelectedUsers.map((user) => ({ id: user.id, name: user.name }))} onChange={setDraftSteps} />
-              <label className="file-upload task-create-files">
-                    <Paperclip aria-hidden="true" size={16} />
-                    Attach task documents
-                    <input
-                      multiple
-                      onChange={(event) => setTaskFiles(Array.from(event.target.files ?? []))}
-                      type="file"
-                    />
-                  </label>
-                  {taskFiles.length ? (
-                    <p className="selected-files">
-                      {taskFiles.map((file, index) => <span className="selected-file-item" key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" className="icon-button" aria-label={`Remove ${file.name}`} onClick={() => setTaskFiles(files => files.filter((_, itemIndex) => itemIndex !== index))}><X size={13}/></button></span>)}
-                    </p>
-                  ) : null}
-                  <button type="submit" className="primary-button">
-                    <Plus aria-hidden="true" size={18} />
-                    {currentUser.role === "team_leader" ? "Request allocation" : "Allocate Task"}
-                  </button>
-                </form>
-                {allocationMessage ? <p className="success-message">{allocationMessage}</p> : null}
-              </section>
-            ) : null}
+        {activeView === "dashboard" && currentUser.role === "user" ? (
+          <section className="panel dash-my-tasks-panel" id="my-tasks">
+            <div className="dash-panel-header">
+              <div>
+                <p className="dash-panel-label">Allocated to {currentUser.name}</p>
+                <h2>My Tasks</h2>
+              </div>
+              <strong className="result-count">{myTasks.length} task{myTasks.length === 1 ? "" : "s"}</strong>
+            </div>
+            <div className="task-list">
+              {myTasks.length ? myTasks.map((task) => renderTaskCard(task, "mine")) : <p className="empty-state">No tasks allocated to you yet.</p>}
+            </div>
           </section>
         ) : null}
 
-        {activeView === "dashboard" ? <section className="content-grid dashboard-legacy-content">
-          {currentUser.role === "user" ? (
-            <section className="panel" id="my-tasks">
-              <div className="panel-header">
-                <div>
-                  <p>Allocated to {currentUser.name}</p>
-                  <h2>My Tasks</h2>
-                </div>
-              </div>
-
-              <div className="task-list">
-                {myTasks.length ? (
-                  myTasks.map((task) => renderTaskCard(task, "mine"))
-                ) : (
-                  <p className="empty-state">No tasks allocated to you yet.</p>
-                )}
-              </div>
-            </section>
-          ) : null}
-
-          <section className="panel" id="tasks">
-            <div className="panel-header">
-              <div>
-                <p>{currentUser.role === "superadmin" ? "All departments" : currentUser.department}</p>
-                <h2>Department Tasks</h2>
-              </div>
-            </div>
-
-            <div className="task-list">
-              {activeTasks.length ? activeTasks.map((task) => renderTaskCard(task)) : (
-                <p className="empty-state">No active tasks in this department.</p>
-              )}
-            </div>
-          </section>
-
-          <section className="panel" id="team">
-            <div className="panel-header">
-              <div>
-                <p>{currentUser.role === "superadmin" ? "All users" : "Department users"}</p>
-                <h2>People Directory</h2>
-              </div>
-            </div>
-
-            {canManagePeople ? (
-              <div className="report-controls">
-                <div>
-                  <FileSpreadsheet aria-hidden="true" size={20} />
-                  <span>
-                    <strong>Productivity report</strong>
-                    <small>Download an Excel report for a selected normal user.</small>
-                  </span>
-                </div>
-                <select onChange={(event) => setReportUserId(event.target.value)} value={reportUserId}>
-                  {assignableUsers.length ? assignableUsers.map((user) => (
-                    <option key={user.id} value={user.id}>{user.name} - {user.department}</option>
-                  )) : <option value="">No normal users available</option>}
-                </select>
-                <button
-                  className="primary-button"
-                  disabled={!reportUserId}
-                  onClick={() => downloadProductivityReport()}
-                  type="button"
-                >
-                  <Download aria-hidden="true" size={17} />
-                  Download Excel
-                </button>
-              </div>
-            ) : null}
-
-            <div className="member-list">
-              {visibleUsers.map((user) => {
-                const isEditing = editingUserId === user.id && editDraft;
-                const canEditRow = isOwnerUser(user)
-                  ? currentIsOwner // only the owner may edit the owner
-                  : currentIsOwner || // the owner may edit anyone
-                    currentUser.role === "superadmin" ||
-                    (["admin", "technical_manager"].includes(currentUser.role) && ["user", "team_leader"].includes(user.role) && inDepartmentScope(user.department)) ||
-                    // A team leader may edit anyone on their own team (normal users).
-                    (currentUser.role === "team_leader" && user.role === "user" && inDepartmentScope(user.department));
-                const canDeleteRow = isOwnerUser(user)
-                  ? false // the owner can never be deleted
-                  : user.id !== currentUser.id &&
-                    (currentIsOwner || (canEditRow && user.role !== "superadmin"));
-
-                return (
-                  <article className="member-row managed-user-row" key={user.id}>
-                    {isEditing ? (
-                      <div className="edit-user-grid">
-                        <input
-                          onChange={(event) => setEditDraft({ ...editDraft, name: event.target.value })}
-                          value={editDraft.name}
-                        />
-                        <input
-                          onChange={(event) => setEditDraft({ ...editDraft, username: event.target.value })}
-                          type="email"
-                          value={editDraft.username}
-                        />
-                        <div className="password-field">
-                          <input
-                            onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })}
-                            type={showPassword ? "text" : "password"}
-                            placeholder={`New password (min ${PASSWORD_MIN} chars) — leave blank to keep`}
-                            value={editDraft.password}
-                          />
-                          <button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
-                        </div>
-                        {passwordWarning(editDraft.password) ? (
-                          <small className="form-error">⚠️ {passwordWarning(editDraft.password)}</small>
-                        ) : null}
-                        <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
-                      </div>
-                    ) : (
-                      <>
-                        <div className="member-heading">
-                          <div>
-                            <strong>{user.name}</strong>
-                            <p>{user.username}</p>
-                          </div>
-                          <span>{positionLabel(user)}</span>
-                        </div>
-                        <div className="user-line">
-                          <span>{departmentPath(user.department)}</span>
-                          <span>{user.role === "user" ? "Receives tasks" : "Can manage"}</span>
-                        </div>
-                      </>
-                    )}
-
-                    {canEditRow ? (
-                      <div className="row-actions">
-                        {isEditing ? (
-                          <>
-                            <button type="button" className="icon-button" onClick={saveEditUser} aria-label="Save user">
-                              <Save aria-hidden="true" size={16} />
-                            </button>
-                            <button
-                              type="button"
-                              className="icon-button"
-                              onClick={() => {
-                                setEditingUserId(null);
-                                setEditDraft(null);
-                              }}
-                              aria-label="Cancel edit"
-                            >
-                              <X aria-hidden="true" size={16} />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button type="button" className="icon-button" onClick={() => startEditUser(user)} aria-label="Edit user">
-                              <Edit3 aria-hidden="true" size={16} />
-                            </button>
-                            {canDeleteRow ? (
-                              <button type="button" className="icon-button danger" onClick={() => deleteUser(user.id)} aria-label="Delete user">
-                                <Trash2 aria-hidden="true" size={16} />
-                              </button>
-                            ) : null}
-                          </>
-                        )}
-                      </div>
-                    ) : null}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        </section> : activeView === "todos" ? (
+        {activeView === "todos" ? (
           <section className="panel page-panel todo-page" id="todos-page">
             <div className="panel-header">
               <div><p>Personal checklist for {currentUser.name}</p><h2>My TODO List</h2></div>
@@ -4583,7 +4577,21 @@ export function App() {
                   {activeSectionDueSoonCount ? <span className="queue-flag queue-flag-urgent">{activeSectionDueSoonCount} due soon</span> : null}
                 </span>
               </div>
-              {canAllocateTasks ? <button className="primary-button" onClick={() => setShowTaskComposer(true)} type="button"><Plus aria-hidden="true" size={16} />New Task</button> : null}
+              <div className="queue-heading-actions">
+                {canAllocateTasks && filteredActiveTaskSectionTasks.length ? (
+                  <button
+                    className="ghost-button export-csv-btn"
+                    type="button"
+                    title={`Download ${filteredActiveTaskSectionTasks.length} task${filteredActiveTaskSectionTasks.length === 1 ? "" : "s"} as CSV`}
+                    onClick={() => exportTasksToCSV(filteredActiveTaskSectionTasks, `mab-active-tasks-${new Date().toISOString().slice(0, 10)}.csv`)}
+                  >
+                    <Download aria-hidden="true" size={15} />
+                    Export CSV
+                    <span className="export-count">{filteredActiveTaskSectionTasks.length}</span>
+                  </button>
+                ) : null}
+                {canAllocateTasks ? <button className="primary-button" onClick={() => setShowTaskComposer(true)} type="button"><Plus aria-hidden="true" size={16} />New Task</button> : null}
+              </div>
             </div>
             <div className="task-list">
               {filteredActiveTaskSectionTasks.length
@@ -5129,37 +5137,113 @@ export function App() {
               </div>
             </header>
 
-            <div className="archive-search-area">
-              <label className="archive-search">
-                <Search aria-hidden="true" size={19} />
-                <input
-                  aria-label="Search by task ID"
-                  onChange={(event) => setArchiveFilters((filters) => ({ ...filters, taskId: event.target.value }))}
-                  placeholder="Search by task ID — partial IDs work, e.g. 104"
-                  type="search"
-                  value={archiveFilters.taskId}
-                />
-              </label>
-              <label className="archive-project-filter">Project<select value={archiveFilters.projectId} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, projectId: event.target.value }))}><option value="">All projects ({finishedTasks.length})</option>{finishedProjects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.count})</option>)}</select></label>
-              <strong className="archive-result-count">{filteredArchiveTasks.length} result{filteredArchiveTasks.length === 1 ? "" : "s"}</strong>
-            </div>
+            <details className="archive-filter-panel archive-filter-panel--finished">
+              <summary>Filters {archiveFilterCount > 0 ? <span>{archiveFilterCount} active</span> : null}</summary>
+              <div className="archive-filter-bar">
+                <div className="archive-search-row">
+                  <label className="archive-search">
+                    <Search aria-hidden="true" size={17} />
+                    <input
+                      aria-label="Search tasks"
+                      onChange={(event) => setArchiveFilters((filters) => ({ ...filters, search: event.target.value }))}
+                      placeholder="Search by task ID or title…"
+                      type="search"
+                      value={archiveFilters.search}
+                    />
+                  </label>
+                  <label className="archive-filter-select"><span>Project</span>
+                    <select value={archiveFilters.projectId} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, projectId: event.target.value }))}>
+                      <option value="">All projects</option>
+                      {finishedProjects.map((project) => <option key={project.id} value={project.id}>{project.name} ({project.count})</option>)}
+                    </select>
+                  </label>
+                  {finishedDepartments.length > 1 ? (
+                    <label className="archive-filter-select"><span>Department</span>
+                      <select value={archiveFilters.department} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, department: event.target.value }))}>
+                        <option value="">All departments</option>
+                        {finishedDepartments.map((dept) => <option key={dept} value={dept}>{dept}</option>)}
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
 
-            <details className="archive-filter-panel">
-              <summary>More filters <span>Priority, person, and completion date</span></summary>
-              <div className="archive-filter-grid">
-                <label>Priority<select value={archiveFilters.priority} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, priority: event.target.value as "" | TaskPriority }))}>
-                  <option value="">All priorities</option>
-                  {Object.entries(priorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                </select></label>
-                <label>Assigned person<select value={archiveFilters.assigneeId} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, assigneeId: event.target.value }))}>
-                  <option value="">All people</option>
-                  {productivityCandidates.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
-                </select></label>
-                <label>Completed from<input type="date" value={archiveFilters.from} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, from: event.target.value }))} /></label>
-                <label>Completed to<input type="date" value={archiveFilters.to} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, to: event.target.value }))} /></label>
-                <button className="ghost-button" type="button" onClick={() => setArchiveFilters({ taskId: "", projectId: "", from: "", to: "", assigneeId: "", priority: "" })}>Clear filters</button>
+                <div className="archive-filter-grid">
+                  <label className="archive-filter-select"><span>Task type</span>
+                    <select value={archiveFilters.taskType} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, taskType: event.target.value }))}>
+                      <option value="">All types</option>
+                      {(["Technical", "QS", "Shop Drawings", "BIM", "Variation"] as TaskType[]).map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </label>
+                  <label className="archive-filter-select"><span>Assigned person</span>
+                    <select value={archiveFilters.assigneeId} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, assigneeId: event.target.value }))}>
+                      <option value="">All people</option>
+                      {productivityCandidates.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="archive-filter-select"><span>Delivery</span>
+                    <select value={archiveFilters.delivery} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, delivery: event.target.value }))}>
+                      <option value="">Any delivery</option>
+                      <option value="on_time">Completed on time</option>
+                      <option value="late">Completed late</option>
+                      <option value="no_deadline">No deadline set</option>
+                    </select>
+                  </label>
+                  <label className="archive-filter-select"><span>Rework</span>
+                    <select value={archiveFilters.reopened} onChange={(event) => setArchiveFilters((filters) => ({ ...filters, reopened: event.target.value }))}>
+                      <option value="">All tasks</option>
+                      <option value="yes">Reopened at least once</option>
+                    </select>
+                  </label>
+                  <label className="archive-filter-select"><span>Completion period</span>
+                    <select value={archivePeriod} onChange={(event) => applyArchivePeriod(event.target.value)}>
+                      <option value="">All time</option>
+                      <option value="this_month">This month</option>
+                      <option value="last_month">Last month</option>
+                      <option value="last_3_months">Last 3 months</option>
+                      <option value="this_year">This year</option>
+                      <option value="custom">Custom range…</option>
+                    </select>
+                  </label>
+                  {archivePeriod === "custom" ? (
+                    <div className="archive-custom-range">
+                      <label><span>From</span><input type="date" value={archiveFilters.from} onChange={(event) => setArchiveFilters((f) => ({ ...f, from: event.target.value }))} /></label>
+                      <label><span>To</span><input type="date" value={archiveFilters.to} onChange={(event) => setArchiveFilters((f) => ({ ...f, to: event.target.value }))} /></label>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="archive-filter-footer">
+                  <strong className="archive-result-count">{filteredArchiveTasks.length} result{filteredArchiveTasks.length === 1 ? "" : "s"}</strong>
+                  {archiveFilterCount > 0 ? (
+                    <button className="ghost-button worker-filter-reset" type="button" onClick={() => { setArchiveFilters({ search: "", projectId: "", department: "", taskType: "", assigneeId: "", delivery: "", reopened: "", from: "", to: "" }); setArchivePeriod(""); }}>
+                      Clear {archiveFilterCount} filter{archiveFilterCount === 1 ? "" : "s"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </details>
+
+            <div className="active-queue-heading">
+              <div>
+                <strong>Finished tasks</strong>
+                <span>{filteredArchiveTasks.length} task{filteredArchiveTasks.length === 1 ? "" : "s"}</span>
+              </div>
+              {canAllocateTasks ? (
+                <div className="queue-heading-actions">
+                  <button
+                    className="ghost-button export-csv-btn"
+                    disabled={!filteredArchiveTasks.length}
+                    type="button"
+                    title={filteredArchiveTasks.length ? `Download ${filteredArchiveTasks.length} finished task${filteredArchiveTasks.length === 1 ? "" : "s"} as CSV` : "No tasks to export"}
+                    onClick={() => exportTasksToCSV(filteredArchiveTasks, `mab-finished-tasks-${new Date().toISOString().slice(0, 10)}.csv`)}
+                  >
+                    <Download aria-hidden="true" size={15} />
+                    Export CSV
+                    {filteredArchiveTasks.length ? <span className="export-count">{filteredArchiveTasks.length}</span> : null}
+                  </button>
+                </div>
+              ) : null}
+            </div>
 
             <div className="archive-task-list">
               {filteredArchiveTasks.length ? filteredArchiveTasks.map((task) => (
