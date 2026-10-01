@@ -36,7 +36,7 @@ export type TaskEvent = {
 };
 
 export type ManagedTask = {
-  checklist?: Array<{ id: string; title: string; completed: boolean }>;
+  checklist?: Array<{ id: string; title: string; completed: boolean; assigneeId?: string; assigneeName?: string }>;
   id: string;
   taskCode: string;
   title: string;
@@ -417,7 +417,7 @@ export const api = {
   reopenTask: (taskId: string, comment: string, requiresApproval?: boolean) =>
     request(`/api/tasks/${taskId}/reopen`, { method: "POST", body: JSON.stringify({ comment, requiresApproval }) }),
   trackTaskView: (taskId: string) => request(`/api/tasks/${taskId}/view`, { method: "POST", body: "{}" }),
-  updateChecklist: (taskId: string, body: {action: string; id?: string; title?: string; completed?: boolean}) => request(`/api/tasks/${taskId}/checklist`, {method: "PUT", body: JSON.stringify(body)}),
+  updateChecklist: (taskId: string, body: {action: string; id?: string; title?: string; completed?: boolean; assigneeId?: string}) => request(`/api/tasks/${taskId}/checklist`, {method: "PUT", body: JSON.stringify(body)}),
   addMessage: (taskId: string, body: string) =>
     request(`/api/tasks/${taskId}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
   updateTaskMessage: (taskId: string, messageId: string, body: string) =>

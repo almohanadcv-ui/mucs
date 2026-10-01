@@ -74,6 +74,13 @@ test("department team leader permissions and approval lifecycle", { timeout: 600
     await call("admin", "/users/other-admin", { name: "Forbidden", role: "user" }, 403, "PUT");
     await call("admin", `/users/${otherLeader.id}`, { name: "Forbidden", role: "team_leader" }, 403, "PUT");
     await call("admin", `/users/${leader.id}`, { name: "Updated Leader", role: "team_leader" }, 200, "PUT");
+    await call("leader", "/users/worker", { name: "Worker Renamed", username: "worker-renamed@test.local", password: "NewPassword123", role: "user", department: "Test A" }, 200, "PUT");
+    const renamedWorker = (await database.query("SELECT name, username FROM users WHERE id = 'worker'")).rows[0];
+    assert.equal(renamedWorker.name, "Worker Renamed");
+    assert.equal(renamedWorker.username, "worker-renamed@test.local");
+    await call("leader", "/users/worker", { name: "worker", username: "worker-renamed@test.local", role: "user", department: "Test A" }, 200, "PUT");
+    await call("leader", "/users/worker", { role: "team_leader", department: "Test A" }, 403, "PUT");
+    await call("leader", "/users/other-worker", { name: "Forbidden", role: "user", department: "Test B" }, 403, "PUT");
     const draft = { title: "Leader task", department: "Test A", priority: "medium", assigneeIds: ["worker"], taskType: "Technical", dueDate: "2026-12-31" };
     await call("leader", "/tasks", { ...draft, assigneeIds: ["other-worker"] }, 403);
     let task = (await call("leader", "/tasks", draft, 201)).task;

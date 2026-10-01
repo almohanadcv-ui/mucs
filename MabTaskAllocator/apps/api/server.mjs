@@ -348,7 +348,10 @@ async function serializeTask(row) {
     startedAt: isoDateTime(row.started_at),
     dueDate: row.due_date ?? "",
     progress: row.progress,
-    checklist: row.checklist ?? [],
+    checklist: (row.checklist ?? []).map((item) => ({
+      ...item,
+      assigneeName: item.assigneeId ? assignees.find((assignee) => assignee.id === item.assigneeId)?.name : undefined
+    })),
     reviewComment: row.review_comment ?? undefined,
     completedAt: formatDate(row.completed_at),
     completedAtIso: isoDateTime(row.completed_at),
@@ -1852,7 +1855,6 @@ const server = createServer(async (request, response) => {
 
     const userMatch = path.match(/^\/api\/users\/([^/]+)$/);
     if (userMatch && request.method === "PUT") {
-      requireManager(actor);
       const updatedUser = await db.transaction(async () => {
         await db.exec("LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE");
         const existing = await db.prepare("SELECT * FROM users WHERE id = ?").get(userMatch[1]);
@@ -2107,7 +2109,9 @@ const server = createServer(async (request, response) => {
       if (!task.title) throw new Error("Task title is required.");
       const initialSteps = body.checklist ?? [];
       if (!Array.isArray(initialSteps) || initialSteps.length > 100 || initialSteps.some(item => !String(item?.title ?? "").trim() || String(item.title).trim().length > 200)) fail(400, "Provide up to 100 work steps, each with 1?200 characters.");
-      const checklist = initialSteps.map(item => ({ id: randomUUID(), title: String(item.title).trim(), completed: false }));
+      const assigneeIdSet = new Set(task.assigneeIds);
+      if (initialSteps.some(item => item?.assigneeId && !assigneeIdSet.has(String(item.assigneeId)))) fail(400, "Work step owners must be assigned to this task.");
+      const checklist = initialSteps.map(item => ({ id: randomUUID(), title: String(item.title).trim(), assigneeId: item.assigneeId ? String(item.assigneeId) : undefined, completed: false }));
       const createdTask = await db.transaction(async () => {
         await db.prepare(`
           INSERT INTO tasks (id, task_code, title, department, priority, status, assignee_id, project_id, task_type, due_date, complexity, started_at, progress, created_by_id)
@@ -2173,6 +2177,9 @@ const server = createServer(async (request, response) => {
         project?.id ?? null, normalizeTaskType(body.taskType), dueDate, complexity,
         assignees.length ? 1 : 0, progress, existing.id);
       await setTaskAssignees(existing.id, assignees.map((assignee) => assignee.id));
+      const allowedStepOwners = new Set(assignees.map((assignee) => assignee.id));
+      const cleanedChecklist = (existing.checklist ?? []).map((item) => item.assigneeId && !allowedStepOwners.has(item.assigneeId) ? { ...item, assigneeId: undefined } : item);
+      await db.prepare("UPDATE tasks SET checklist = ?::jsonb WHERE id = ?").run(JSON.stringify(cleanedChecklist), existing.id);
       if (assignees.length) await db.prepare("DELETE FROM task_claim_requests WHERE task_id = ?").run(existing.id);
       const nextIds = assignees.map((assignee) => assignee.id);
       const changes = [];
@@ -2219,12 +2226,19 @@ const server = createServer(async (request, response) => {
         const assigned = (await taskAssigneeIds(task.id)).includes(actor.id);
         if (!manages && !assigned) fail(403, "Only assigned people or task leaders can update the checklist.");
         if (["done", "under_review"].includes(task.status) || task.action_request || task.allocation_request?.state === "pending") fail(409, "Reopen the task or resolve its pending review before changing the checklist.");
+        const assigneeIds = await taskAssigneeIds(task.id);
+        const normalizeStepAssignee = () => {
+          const assigneeId = String(body.assigneeId ?? "").trim();
+          if (!assigneeId) return undefined;
+          if (!assigneeIds.includes(assigneeId)) fail(400, "Choose one of this task's assigned users, or leave responsibility open.");
+          return assigneeId;
+        };
         let items = task.checklist ?? [];
         if (body.action === "add") {
           if (!manages) fail(403, "Only task leaders or managers can define work steps.");
           const title = String(body.title ?? "").trim();
           if (!title || title.length > 200 || items.length >= 100) fail(400, "Use a step of 1?200 characters; up to 100 steps per task.");
-          items = [...items, {id: randomUUID(), title, completed: false}];
+          items = [...items, {id: randomUUID(), title, assigneeId: normalizeStepAssignee(), completed: false}];
         } else {
           const item = items.find(item => item.id === body.id);
           if (!item) fail(409, "This checklist step has changed. Refresh the task.");
@@ -2232,11 +2246,13 @@ const server = createServer(async (request, response) => {
             if (!manages) fail(403, "Only task leaders or managers can edit work steps.");
             const title = String(body.title ?? "").trim();
             if (!title || title.length > 200) fail(400, "Use a step of 1?200 characters.");
-            items = items.map(item => item.id === body.id ? {...item, title, completed: false} : item);
+            items = items.map(item => item.id === body.id ? {...item, title, assigneeId: normalizeStepAssignee(), completed: false} : item);
           } else if (body.action === "delete") {
             if (!manages) fail(403, "Only task leaders or managers can remove work steps.");
             items = items.filter(item => item.id !== body.id);
           } else if (body.action === "toggle" && typeof body.completed === "boolean") {
+            if (item.assigneeId && actor.id !== item.assigneeId) fail(403, "Only the responsible user can close this work step.");
+            if (!item.assigneeId && !manages && !assigned) fail(403, "Only assigned people or task leaders can close open work steps.");
             items = items.map(item => item.id === body.id ? {...item, completed: body.completed} : item);
           } else fail(400, "Invalid checklist action.");
         }
@@ -2247,6 +2263,7 @@ const server = createServer(async (request, response) => {
         await db.prepare("UPDATE tasks SET checklist = ?::jsonb, status = CASE WHEN status = 'assigned' THEN 'in_progress' ELSE status END, progress = COALESCE(?, progress), leader_approved_at = NULL, leader_approved_by_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(JSON.stringify(items), stepProgress, task.id);
         await db.prepare("DELETE FROM task_worker_approvals WHERE task_id = ?").run(task.id);
         await recordTaskEvent(task.id, actor, "checklist_updated", items.filter(item => item.completed).length + " of " + items.length + " work steps completed");
+        if (body.action === "add" && body.assigneeId) await notify(body.assigneeId, "assignment", `New work step on ${task.task_code}`, `${actor.name} assigned you: ${String(body.title ?? "").trim()}`, task.id);
       });
       return send(response, 200, { task: await serializeTask(await getTask(checklistMatch[1])) });
     }

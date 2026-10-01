@@ -1,6 +1,6 @@
 import { BetaNotice } from "./components/BetaNotice";
 import { TaskDocuments } from "./components/TaskDocuments";
-import { WorkStepsEditor } from "./components/WorkStepsEditor";
+import { WorkStepsEditor, type WorkStepDraft } from "./components/WorkStepsEditor";
 import { TaskChecklist } from "./components/TaskChecklist";
 import { LeaderOverview } from "./components/LeaderOverview";
 import { peopleForViewer } from "./peopleVisibility";
@@ -14,6 +14,7 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardList,
+  CopyPlus,
   CornerUpLeft,
   Download,
   Edit3,
@@ -107,7 +108,7 @@ type UserSettings = {
 };
 
 const defaultSettings: UserSettings = {
-  desktopNotifications: false,
+  desktopNotifications: true,
   notificationSound: true,
   notificationVolume: 55,
   notificationPreview: true,
@@ -331,6 +332,14 @@ function currentRiyadhDate() {
   return `${value.year}-${value.month}-${value.day}`;
 }
 
+function riyadhDateOffset(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+
 function identityColor(id?: string | null, currentUserId?: string) {
   const safeId = id || "unknown-user";
   if (safeId === currentUserId) return "#1178b8";
@@ -368,6 +377,12 @@ function isTaskOverdue(task: Pick<ManagedTask, "dueDate" | "status">) {
   return Boolean(task.dueDate && task.status !== "done" && task.dueDate < currentRiyadhDate());
 }
 
+function isTaskDueSoon(task: Pick<ManagedTask, "dueDate" | "status">) {
+  const today = currentRiyadhDate();
+  const soon = riyadhDateOffset(3);
+  return Boolean(task.dueDate && task.status !== "done" && task.dueDate >= today && task.dueDate <= soon);
+}
+
 interface CandidatePickerProps {
   candidates: AppUser[];
   emptyMessage: string;
@@ -382,6 +397,7 @@ function CandidatePicker({ candidates, emptyMessage, onChange, selectedIds }: Ca
     candidate.name.toLocaleLowerCase().includes(normalizedQuery) ||
     candidate.username.toLocaleLowerCase().includes(normalizedQuery) ||
     candidate.department.toLocaleLowerCase().includes(normalizedQuery));
+  const selectedCandidates = candidates.filter((candidate) => selectedIds.includes(candidate.id));
 
   if (!candidates.length) return <p className="candidate-empty">{emptyMessage}</p>;
 
@@ -397,7 +413,11 @@ function CandidatePicker({ candidates, emptyMessage, onChange, selectedIds }: Ca
           value={query}
         />
       </label>
-      <div className="candidate-selection-summary"><span>{selectedIds.length} selected</span>{selectedIds.length ? <button type="button" className="candidate-clear" onClick={() => onChange([])}>Clear selection</button> : null}</div>
+      <div className="candidate-selection-summary">
+        <span>{selectedIds.length} selected</span>
+        {selectedCandidates.length ? <div className="candidate-selected-stack">{selectedCandidates.slice(0, 4).map((candidate) => <b key={candidate.id}>{initials(candidate.name)}</b>)}{selectedCandidates.length > 4 ? <b>+{selectedCandidates.length - 4}</b> : null}</div> : null}
+        {selectedIds.length ? <button type="button" className="candidate-clear" onClick={() => onChange([])}>Clear selection</button> : null}
+      </div>
       <div className="candidate-picker" role="group" aria-label="Available candidates">
       {filteredCandidates.map((candidate) => {
         const selected = selectedIds.includes(candidate.id);
@@ -713,6 +733,15 @@ export function App() {
   const [activeTaskSection, setActiveTaskSection] = useState<"assigned" | "free" | "overdue">("assigned");
   const [managerTaskSection, setManagerTaskSection] = useState<"all" | "review" | "free" | "overdue">("all");
   const [activeWorkerId, setActiveWorkerId] = useState("");
+  const [activeTaskFilters, setActiveTaskFilters] = useState({
+    projectId: "",
+    department: "",
+    priority: "",
+    status: "",
+    deadline: ""
+  });
+  const [dashboardProjectFilter, setDashboardProjectFilter] = useState("");
+  const [dashboardDepartmentFilter, setDashboardDepartmentFilter] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
   const [appLoading, setAppLoading] = useState(hasSession());
   const [loginError, setLoginError] = useState("");
@@ -889,7 +918,7 @@ export function App() {
   const [todoDraft, setTodoDraft] = useState({ title: "", taskId: "" });
   const [todoFilter, setTodoFilter] = useState<"all" | "open" | "completed">("all");
   const [todoMessage, setTodoMessage] = useState("");
-  const [draftSteps, setDraftSteps] = useState<string[]>([]);
+  const [draftSteps, setDraftSteps] = useState<WorkStepDraft[]>([]);
   const [taskDraft, setTaskDraft] = useState({
     title: "Prepare client visit checklist",
     assigneeIds: [] as string[],
@@ -1192,13 +1221,55 @@ export function App() {
     : managerTaskSection === "overdue" ? activeTasks.filter(isTaskOverdue) : managerTaskSection === "review"
       ? visibleTasks.filter(needsReview)
       : managerTaskSection === "free" ? freeActiveTasks : activeTasks;
-  const filteredActiveTaskSectionTasks = useMemo(() => activeWorkerId
-    ? activeTaskSectionTasks.filter((task) => task.assigneeIds.includes(activeWorkerId))
-    : activeTaskSectionTasks, [activeTaskSectionTasks, activeWorkerId]);
+  const activeFilterProjectOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    activeTaskSectionTasks.forEach((task) => {
+      if (task.projectId && task.projectName) options.set(task.projectId, task.projectName);
+    });
+    return Array.from(options, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [activeTaskSectionTasks]);
+  const activeFilterDepartmentOptions = useMemo(() => {
+    const options = new Set<DepartmentName>();
+    activeTaskSectionTasks.forEach((task) => options.add(task.department));
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [activeTaskSectionTasks]);
+  const filteredActiveTaskSectionTasks = useMemo(() => activeTaskSectionTasks.filter((task) => {
+    const matchesWorker = !activeWorkerId || task.assigneeIds.includes(activeWorkerId);
+    const matchesProject = !activeTaskFilters.projectId || task.projectId === activeTaskFilters.projectId;
+    const matchesDepartment = !activeTaskFilters.department || sameDepartment(task.department, activeTaskFilters.department);
+    const matchesPriority = !activeTaskFilters.priority || task.priority === activeTaskFilters.priority;
+    const matchesStatus = !activeTaskFilters.status || task.status === activeTaskFilters.status;
+    const matchesDeadline = !activeTaskFilters.deadline
+      || (activeTaskFilters.deadline === "due_soon" && isTaskDueSoon(task))
+      || (activeTaskFilters.deadline === "overdue" && isTaskOverdue(task))
+      || (activeTaskFilters.deadline === "no_deadline" && !task.dueDate)
+      || (activeTaskFilters.deadline === "future" && Boolean(task.dueDate && !isTaskOverdue(task) && !isTaskDueSoon(task)));
+    return matchesWorker && matchesProject && matchesDepartment && matchesPriority && matchesStatus && matchesDeadline;
+  }), [activeTaskFilters, activeTaskSectionTasks, activeWorkerId]);
   const selectedActiveWorker = assignableUsers.find((worker) => worker.id === activeWorkerId);
   const activeSectionUrgentCount = filteredActiveTaskSectionTasks.filter((task) => task.priority === "urgent").length;
   const activeSectionOverdueCount = filteredActiveTaskSectionTasks.filter(isTaskOverdue).length;
+  const activeSectionDueSoonCount = filteredActiveTaskSectionTasks.filter(isTaskDueSoon).length;
+  const activeTaskFilterCount = Number(Boolean(activeWorkerId)) + Object.values(activeTaskFilters).filter(Boolean).length;
   const dashboardTasks = currentUser?.role === "user" ? assignedActiveTasks : activeTasks;
+  const canFilterDashboardTasks = Boolean(currentUser && ["team_leader", "technical_manager", "admin", "superadmin"].includes(currentUser.role));
+  const dashboardProjectOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    dashboardTasks.forEach((task) => {
+      if (task.projectId && task.projectName) options.set(task.projectId, task.projectName);
+    });
+    return Array.from(options, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [dashboardTasks]);
+  const dashboardDepartmentOptions = useMemo(() => {
+    const options = new Set<DepartmentName>();
+    dashboardTasks.forEach((task) => options.add(task.department));
+    return Array.from(options).sort((a, b) => a.localeCompare(b));
+  }, [dashboardTasks]);
+  const filteredDashboardTasks = useMemo(() => dashboardTasks.filter((task) => {
+    const matchesProject = !dashboardProjectFilter || task.projectId === dashboardProjectFilter;
+    const matchesDepartment = !dashboardDepartmentFilter || sameDepartment(task.department, dashboardDepartmentFilter);
+    return matchesProject && matchesDepartment;
+  }), [dashboardDepartmentFilter, dashboardProjectFilter, dashboardTasks]);
 
   const todoLinkableTasks = useMemo(() => activeTasks.filter((task) =>
     currentUser?.role !== "user" || task.assigneeIds.includes(currentUser.id)
@@ -1247,6 +1318,7 @@ export function App() {
       ? selectedDraftProject.members.some((member) => member.id === user.id) && sameDepartment(user.department, projectTaskDepartment(selectedDraftProject, taskDraft.department))
       : sameDepartment(user.department, taskDraft.department)
   );
+  const taskDraftSelectedUsers = taskDraftAssignableUsers.filter((user) => taskDraft.assigneeIds.includes(user.id));
   const projectDraftCandidates = assignableUsers.filter((user) => projectContainsDepartment(
     currentUser?.role === "admin" ? currentUser.department : projectDraft.department, user.department
   ));
@@ -1263,11 +1335,13 @@ export function App() {
 
   useEffect(() => {
     if (!currentUser || !canAllocateTasks) return;
+    const allowedIds = new Set(taskDraftAssignableUsers.map((user) => user.id));
     setTaskDraft((draft) => ({
       ...draft,
-      assigneeIds: draft.assigneeIds.filter((id) => taskDraftAssignableUsers.some((user) => user.id === id)),
+      assigneeIds: draft.assigneeIds.filter((id) => allowedIds.has(id)),
       department: projectTaskDepartment(selectedDraftProject, !canChooseDepartment ? currentUser.department : draft.department)
     }));
+    setDraftSteps((steps) => steps.map((step) => step.assigneeId && !allowedIds.has(step.assigneeId) ? { ...step, assigneeId: undefined } : step));
   }, [canAllocateTasks, currentUser?.id, selectedDraftProject?.id, taskDraftAssignableUsers.map((user) => user.id).join(",")]);
 
   const openTasks = dashboardTasks.length;
@@ -1867,8 +1941,8 @@ export function App() {
       return;
     }
 
-    const updatedUser = currentUser.role === "admin"
-      ? { ...editDraft, department: currentUser.department }
+    const updatedUser = ["admin", "team_leader"].includes(currentUser.role)
+      ? { ...editDraft, role: currentUser.role === "team_leader" ? "user" as const : editDraft.role, department: currentUser.department }
       : editDraft;
     try {
       await api.updateUser(updatedUser);
@@ -2003,7 +2077,7 @@ export function App() {
         complexity: taskDraft.complexity,
         dueDate: taskDraft.dueDate,
         progress: assignees.length ? clampProgress(taskDraft.progress) : 0,
-        checklist: draftSteps.filter(title => title.trim()).map((title, index) => ({ id: String(index), title: title.trim(), completed: false })),
+        checklist: draftSteps.filter((step) => step.title.trim()).map((step, index) => ({ id: String(index), title: step.title.trim(), assigneeId: step.assigneeId, completed: false })),
         reviewComment: undefined,
         completedAt: undefined
       }, taskFiles, requiresApproval);
@@ -2102,6 +2176,40 @@ export function App() {
   function cancelAssignTask() {
     setAssigningTaskId(null);
     setAssignDraft({ assigneeIds: [], dueDate: "" });
+  }
+
+  function duplicateTask(task: ManagedTask) {
+    if (!canLeadTask(task)) return;
+    const project = projects.find((item) => item.id === task.projectId);
+    const department = projectTaskDepartment(project, task.department);
+    const eligibleUsers = assignableUsers.filter((user) => project
+      ? project.members.some((member) => member.id === user.id) && sameDepartment(user.department, department)
+      : sameDepartment(user.department, department));
+    const eligibleIds = new Set(eligibleUsers.map((user) => user.id));
+    const assigneeIds = task.assigneeIds.filter((id) => eligibleIds.has(id));
+
+    setEditingTaskId(null);
+    setTaskEditDraft(null);
+    setAssigningTaskId(null);
+    setAssignDraft({ assigneeIds: [], dueDate: "" });
+    setTaskFiles([]);
+    setTaskDraft({
+      title: `${task.title} (Copy)`,
+      assigneeIds,
+      department,
+      priority: task.priority,
+      taskType: task.taskType,
+      complexity: complexityPoints(task),
+      projectId: project?.id ?? "",
+      dueDate: assigneeIds.length ? task.dueDate ?? "" : "",
+      progress: 0
+    });
+    setDraftSteps((task.checklist ?? []).map((step) => ({
+      title: step.title,
+      assigneeId: step.assigneeId && assigneeIds.includes(step.assigneeId) ? step.assigneeId : undefined
+    })));
+    setAllocationMessage("");
+    setShowTaskComposer(true);
   }
 
   async function saveAssignTask(task: ManagedTask) {
@@ -2579,7 +2687,7 @@ export function App() {
 
         <TaskDocuments task={task} canManage={canLeadTask(task)} canSubmit={canCollaborate} onSaved={() => refreshData(true)} notify={showSuccess} confirm={(message, action) => requestConfirmation(message, action)} />
 
-        <TaskChecklist task={task} canManage={canLeadTask(task)} canUpdate={canLeadTask(task) || Boolean(currentUser && task.assigneeIds.includes(currentUser.id))} onSaved={() => refreshData(true)} confirm={(message, action) => requestConfirmation(message, action, { title: "Confirm work step", confirmLabel: "Yes, confirm", danger: false })} />
+        <TaskChecklist task={task} canManage={canLeadTask(task)} canUpdate={canLeadTask(task) || Boolean(currentUser && task.assigneeIds.includes(currentUser.id))} currentUserId={currentUser?.id} onSaved={() => refreshData(true)} confirm={(message, action) => requestConfirmation(message, action, { title: "Confirm work step", confirmLabel: "Yes, confirm", danger: false })} />
         <div className="chatter-feed">
           {chatterItems.length ? chatterItems.map((item) => {
             const mine = item.actorId === currentUser?.id;
@@ -2653,6 +2761,7 @@ export function App() {
     const allocationPending = task.allocationRequest?.state === "pending";
     const actionPending = Boolean(task.actionRequest);
     const canEditTask = canDeleteTask && task.status !== "done" && !allocationPending && !actionPending && !task.allocationRequest?.isNew;
+    const canDuplicateTask = canLeadTask(task);
     const claimRequests = task.claimRequests ?? (task.claimRequest ? [task.claimRequest] : []);
     const userHasClaimRequest = Boolean(currentUser && claimRequests.some((request) => request.userId === currentUser.id));
     const selectedClaimIds = claimSelection[task.id] ?? [];
@@ -2664,7 +2773,6 @@ export function App() {
       task.status === "new";
     const hasPendingClaim = Boolean(claimRequests.length && !task.assigneeIds.length);
     const canReviewClaim = Boolean(hasPendingClaim && !allocationPending && !actionPending && currentUser && canLeadTask(task));
-    const canRequestAllocation = currentUser?.role === "team_leader" && canLeadTask(task) && !allocationPending && !actionPending && !["done", "under_review"].includes(task.status);
     const canDirectAssign = Boolean(canEditTask && !task.assigneeIds.length && !claimRequests.length);
     const canSubmitForReview =
       currentUser?.role === "user" &&
@@ -2715,6 +2823,20 @@ export function App() {
             <span><small>Task owner · responsible for completion</small><strong>{task.candidateNames.join(", ") || task.candidateName || "Unassigned"}</strong><em>{task.assigneeIds.length > 1 ? "Shared responsibility" : task.assigneeIds.length ? "Primary responsibility" : "Needs assignment"}</em></span>
           </span>
           <span className="archive-completed"><small>Progress</small><strong>{task.progress}%</strong></span>
+          {canDuplicateTask ? (
+            <button
+              type="button"
+              className="task-summary-action"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                duplicateTask(task);
+              }}
+            >
+              <CopyPlus aria-hidden="true" size={15} />
+              <span>Duplicate</span>
+            </button>
+          ) : null}
         </summary>
         <div className="task-row">
           {isEditingTask ? (
@@ -2777,13 +2899,12 @@ export function App() {
                     </select>
                   </label>
                 ) : null}
-                <label className="task-field-label edit-task-grid-full">Assignees
-                  <select
-                    multiple
-                    onChange={(event) => {
-                      const assigneeIds = Array.from(event.target.selectedOptions).map((option) => option.value);
-                      const assignees = users.filter((user) => assigneeIds.includes(user.id));
-
+                <div className="task-field-label edit-task-grid-full multi-select-field edit-assignee-picker">Assignees
+                  <CandidatePicker
+                    candidates={taskAssignableUsers}
+                    emptyMessage="No eligible users are available for this task."
+                    onChange={(assigneeIds) => {
+                      const assignees = taskAssignableUsers.filter((user) => assigneeIds.includes(user.id));
                       setTaskEditDraft({
                         ...taskEditDraft,
                         assigneeId: assigneeIds[0],
@@ -2792,14 +2913,9 @@ export function App() {
                         candidateNames: assignees.map((assignee) => assignee.name)
                       });
                     }}
-                    size={Math.min(5, Math.max(2, taskAssignableUsers.length))}
-                    value={taskEditDraft.assigneeIds}
-                  >
-                    {taskAssignableUsers.map((user) => (
-                      <option key={user.id} value={user.id}>{user.name}</option>
-                    ))}
-                  </select>
-                </label>
+                    selectedIds={taskEditDraft.assigneeIds}
+                  />
+                </div>
                 <label className="task-field-label">Task type
                   <select onChange={(event) => setTaskEditDraft({ ...taskEditDraft, taskType: event.target.value as TaskType })} value={taskEditDraft.taskType}>
                     {taskTypes.map((type) => <option key={type} value={type}>{type}</option>)}
@@ -2978,7 +3094,7 @@ export function App() {
             </div>
           )}
 
-          {(canEditTask || canDeleteTask || canClaimTask || canRequestAllocation) && !isEditingTask && !isAssigningTask ? (
+          {(canEditTask || canDeleteTask || canClaimTask) && !isEditingTask && !isAssigningTask ? (
             <div className="row-actions task-actions">
               {canClaimTask ? (
                 <button type="button" className="task-action-button" onClick={() => confirmTaskClaim(task)}>
@@ -2986,7 +3102,6 @@ export function App() {
                   Request free task
                 </button>
               ) : null}
-              {canRequestAllocation ? <button type="button" className="task-action-button" onClick={() => startAssignTask(task)}>Allocate task</button> : null}
               {canEditTask ? (
                 <>
                   {canDirectAssign ? <button type="button" className="task-action-button secondary" onClick={() => startAssignTask(task)}><UserPlus aria-hidden="true" size={16} />Assign User</button> : null}
@@ -3713,8 +3828,30 @@ export function App() {
               <div><p>Live workload</p><h2>Priority Work Queue</h2></div>
               <button className="ghost-button" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">View all</button>
             </div>
+            {canFilterDashboardTasks ? (
+              <div className="dashboard-task-filters" aria-label="Dashboard active task filters">
+                <label>
+                  <span>Project</span>
+                  <select value={dashboardProjectFilter} onChange={(event) => setDashboardProjectFilter(event.target.value)}>
+                    <option value="">All projects</option>
+                    {dashboardProjectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Department</span>
+                  <select value={dashboardDepartmentFilter} onChange={(event) => setDashboardDepartmentFilter(event.target.value)}>
+                    <option value="">All departments</option>
+                    {dashboardDepartmentOptions.map((department) => (
+                      <option key={department} value={department}>{department}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
             <div className="dashboard-task-list">
-              {dashboardTasks.slice(0, 6).map((task) => (
+              {filteredDashboardTasks.map((task) => (
                 <button className="dashboard-task-row" key={`dashboard-${task.id}`} onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
                   <span className={`dashboard-priority priority-${task.priority}`} />
                   <span><strong>{task.title}</strong><small>{task.taskCode} · {task.projectName || task.department}</small></span>
@@ -3723,7 +3860,7 @@ export function App() {
                   <strong className="dashboard-progress">{task.progress}%</strong>
                 </button>
               ))}
-              {!dashboardTasks.length ? <p className="empty-state">Everything is clear. No active tasks.</p> : null}
+              {!filteredDashboardTasks.length ? <p className="empty-state">{dashboardTasks.length ? "No active tasks match these filters." : "Everything is clear. No active tasks."}</p> : null}
             </div>
           </section>
 
@@ -3880,7 +4017,7 @@ export function App() {
                     type="date"
                     value={taskDraft.dueDate}
                   />
-                  <WorkStepsEditor steps={draftSteps} onChange={setDraftSteps} />
+                  <WorkStepsEditor steps={draftSteps} owners={taskDraftSelectedUsers.map((user) => ({ id: user.id, name: user.name }))} onChange={setDraftSteps} />
               <label className="file-upload task-create-files">
                     <Paperclip aria-hidden="true" size={16} />
                     Attach task documents
@@ -4273,7 +4410,9 @@ export function App() {
                 </button>
               </nav>
             )}
-            {currentUser.role !== "user" ? <div className="worker-task-filter">
+            {currentUser.role !== "user" ? <details className="archive-filter-panel active-task-filter-panel">
+              <summary>More filters <span>Worker, project, deadline, status, and priority</span></summary>
+              <div className="worker-task-filter">
               <div className="worker-filter-intro"><span className="worker-filter-icon"><Users aria-hidden="true" size={17} /></span><div><strong>Worker workload</strong><small>See what each person is working on right now.</small></div></div>
               <label className="worker-filter-select" htmlFor="active-worker-filter"><span>Show active work for</span>
                 <select id="active-worker-filter" value={activeWorkerId} onChange={(event) => setActiveWorkerId(event.target.value)}>
@@ -4282,7 +4421,49 @@ export function App() {
                 </select>
               </label>
               {selectedActiveWorker ? <div className="worker-filter-summary"><span className="worker-filter-avatar">{selectedActiveWorker.name.split(" ").filter(Boolean).slice(0, 2).map((part) => part[0]).join("")}</span><div><strong>{selectedActiveWorker.name}</strong><small>{selectedActiveWorker.department}</small></div><b>{filteredActiveTaskSectionTasks.length} active</b><button className="ghost-button worker-filter-reset" onClick={() => setActiveWorkerId("")} type="button">Show all</button></div> : <span className="worker-filter-help">Choose a worker to see their current work and updates.</span>}
-            </div> : null}
+              </div>
+              <div className="active-task-advanced-filters" aria-label="Advanced active task filters">
+              <div className="active-task-filter-grid">
+                <label className="worker-filter-select" htmlFor="active-project-filter"><span>Project</span>
+                  <select id="active-project-filter" value={activeTaskFilters.projectId} onChange={(event) => setActiveTaskFilters((filters) => ({ ...filters, projectId: event.target.value }))}>
+                    <option value="">All projects</option>
+                    {activeFilterProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                  </select>
+                </label>
+                <label className="worker-filter-select" htmlFor="active-department-filter"><span>Department</span>
+                  <select id="active-department-filter" value={activeTaskFilters.department} onChange={(event) => setActiveTaskFilters((filters) => ({ ...filters, department: event.target.value }))}>
+                    <option value="">All departments</option>
+                    {activeFilterDepartmentOptions.map((department) => <option key={department} value={department}>{department}</option>)}
+                  </select>
+                </label>
+                <label className="worker-filter-select" htmlFor="active-deadline-filter"><span>Deadline</span>
+                  <select id="active-deadline-filter" value={activeTaskFilters.deadline} onChange={(event) => setActiveTaskFilters((filters) => ({ ...filters, deadline: event.target.value }))}>
+                    <option value="">Any deadline</option>
+                    <option value="due_soon">Due in 3 days</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="future">Later deadline</option>
+                    <option value="no_deadline">No deadline</option>
+                  </select>
+                </label>
+                <label className="worker-filter-select" htmlFor="active-priority-filter"><span>Priority</span>
+                  <select id="active-priority-filter" value={activeTaskFilters.priority} onChange={(event) => setActiveTaskFilters((filters) => ({ ...filters, priority: event.target.value }))}>
+                    <option value="">All priorities</option>
+                    {(["urgent", "high", "medium", "low"] as TaskPriority[]).map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
+                  </select>
+                </label>
+                <label className="worker-filter-select" htmlFor="active-status-filter"><span>Status</span>
+                  <select id="active-status-filter" value={activeTaskFilters.status} onChange={(event) => setActiveTaskFilters((filters) => ({ ...filters, status: event.target.value }))}>
+                    <option value="">All statuses</option>
+                    {(["new", "assigned", "in_progress", "blocked", "under_review"] as TaskStatus[]).map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+                  </select>
+                </label>
+                <div className="active-filter-summary">
+                  <span><strong>{activeTaskFilterCount || "No"} filters active</strong><small>{filteredActiveTaskSectionTasks.length} tasks shown</small></span>
+                  {activeTaskFilterCount ? <button className="ghost-button worker-filter-reset" onClick={() => { setActiveWorkerId(""); setActiveTaskFilters({ projectId: "", department: "", priority: "", status: "", deadline: "" }); }} type="button">Clear filters</button> : null}
+                </div>
+              </div>
+              </div>
+            </details> : null}
             <div className="active-queue-heading">
               <div>
                 <strong>{(currentUser.role === "user" ? activeTaskSection : managerTaskSection) === "overdue" ? "Overdue tasks" : currentUser.role === "user" ? activeTaskSection === "free" ? "Available tasks" : "Your workload" : managerTaskSection === "review" ? "Review queue" : managerTaskSection === "free" ? "Unassigned work" : "Current work"}</strong>
@@ -4290,6 +4471,7 @@ export function App() {
                   Sorted by priority and due date
                   {activeSectionUrgentCount ? <span className="queue-flag queue-flag-urgent">{activeSectionUrgentCount} urgent</span> : null}
                   {activeSectionOverdueCount ? <span className="queue-flag queue-flag-overdue">{activeSectionOverdueCount} overdue</span> : null}
+                  {activeSectionDueSoonCount ? <span className="queue-flag queue-flag-urgent">{activeSectionDueSoonCount} due soon</span> : null}
                 </span>
               </div>
               {canAllocateTasks ? <button className="primary-button" onClick={() => setShowTaskComposer(true)} type="button"><Plus aria-hidden="true" size={16} />New Task</button> : null}
@@ -4921,7 +5103,7 @@ export function App() {
         <div className="task-composer-backdrop" role="presentation" onMouseDown={() => setShowTaskComposer(false)}>
           <section className="task-composer-dialog" role="dialog" aria-modal="true" aria-labelledby="new-task-title" onMouseDown={(event) => event.stopPropagation()}>
             <div className="task-composer-header">
-              <div><p>Available from every workspace</p><h2 id="new-task-title">Create New Task</h2></div>
+              <div><p>{taskDraft.title.endsWith("(Copy)") ? "Duplicated task draft" : "Available from every workspace"}</p><h2 id="new-task-title">Create New Task</h2></div>
               <button className="icon-button" onClick={() => setShowTaskComposer(false)} type="button" aria-label="Close new task form"><X aria-hidden="true" size={17} /></button>
             </div>
             <form className="person-form task-composer-form" onSubmit={handleAllocateTask}>
@@ -4958,7 +5140,7 @@ export function App() {
                 <label>Complexity <small>Manager-selected workload score; unrelated to duration</small><select onChange={(event) => setTaskDraft((draft) => ({ ...draft, complexity: Number(event.target.value) }))} value={taskDraft.complexity}>{[1, 2, 3, 4, 5].map((value) => <option key={value} value={value}>{value} / 5 · {complexityLabels[value]}</option>)}</select></label>
                 <label>Planned due date <small>{taskDraft.assigneeIds.length ? "Optional and set independently by the manager" : "Available after a user is assigned"}</small><input disabled={!taskDraft.assigneeIds.length} onChange={(event) => setTaskDraft((draft) => ({ ...draft, dueDate: event.target.value }))} type="date" value={taskDraft.assigneeIds.length ? taskDraft.dueDate : ""} /></label>
               </div>
-              <WorkStepsEditor steps={draftSteps} onChange={setDraftSteps} />
+              <WorkStepsEditor steps={draftSteps} owners={taskDraftSelectedUsers.map((user) => ({ id: user.id, name: user.name }))} onChange={setDraftSteps} />
               <label className="file-upload task-create-files"><Paperclip aria-hidden="true" size={16} />Attach task documents<input multiple onChange={(event) => setTaskFiles(Array.from(event.target.files ?? []))} type="file" /></label>
               {taskFiles.length ? <p className="selected-files">{taskFiles.map((file, index) => <span className="selected-file-item" key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" className="icon-button" aria-label={`Remove ${file.name}`} onClick={() => setTaskFiles(files => files.filter((_, itemIndex) => itemIndex !== index))}><X size={13}/></button></span>)}</p> : null}
               {allocationMessage ? <p className="success-message">{allocationMessage}</p> : null}
