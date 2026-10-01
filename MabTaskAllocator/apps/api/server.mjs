@@ -2183,7 +2183,7 @@ const server = createServer(async (request, response) => {
       if (assignees.length) await db.prepare("DELETE FROM task_claim_requests WHERE task_id = ?").run(existing.id);
       const nextIds = assignees.map((assignee) => assignee.id);
       const changes = [];
-      if (String(body.title).trim() !== existing.title) changes.push(`Title: “${existing.title}” → “${String(body.title).trim()}”`);
+      if (String(body.title).trim() !== existing.title) changes.push(`Title: "${existing.title}" → "${String(body.title).trim()}"`);
       if (body.priority !== existing.priority) changes.push(`Priority: ${existing.priority} → ${body.priority}`);
       if (status !== existing.status) changes.push(`Status: ${existing.status} → ${status}`);
       if ((existing.due_date ?? "") !== (dueDate ?? "")) changes.push(`Deadline: ${existing.due_date || "none"} → ${dueDate || "none"}`);
@@ -2574,7 +2574,16 @@ const server = createServer(async (request, response) => {
 
     if (request.method === "POST" && path === "/api/ai/chat") {
       const message = String(body.message ?? "").trim().slice(0, 2000);
-      if (!message) throw new Error("Write a message for the AI assistant.");
+      const incomingFiles = Array.isArray(body.files) ? body.files.slice(0, 3) : [];
+      if (!message && !incomingFiles.length) throw new Error("Write a message or attach a file for the AI assistant.");
+      const maxFileBytes = 4 * 1024 * 1024;
+      const validFiles = incomingFiles.map((file) => {
+        const name = String(file?.name ?? "attachment").slice(0, 180);
+        const mimeType = String(file?.mimeType ?? "application/octet-stream").slice(0, 120);
+        const data = String(file?.data ?? "");
+        if (Buffer.from(data, "base64").length > maxFileBytes) fail(400, `${name} exceeds the 4 MB limit.`);
+        return { name, mimeType, data };
+      });
       const apiKey = String(process.env.GEMINI_API_KEY ?? "").trim();
       if (!apiKey) {
         const rows = await db.prepare(`
@@ -2591,7 +2600,9 @@ const server = createServer(async (request, response) => {
         const urgent = active.filter((task) => ["urgent", "high"].includes(task.priority));
         const normalized = message.toLocaleLowerCase();
         let reply;
-        if (/summar|overview|status|dashboard|how many/.test(normalized)) {
+        if (validFiles.length) {
+          reply = `I received ${validFiles.length} attached file${validFiles.length === 1 ? "" : "s"} (${validFiles.map((f) => f.name).join(", ")}). File analysis requires a configured Gemini API key — ask your administrator to set GEMINI_API_KEY to enable this feature.`;
+        } else if (/summar|overview|status|dashboard|how many/.test(normalized)) {
           reply = `Here is your live workload summary: ${active.length} active task${active.length === 1 ? "" : "s"}, ${urgent.length} high or urgent, ${overdue.length} overdue, ${review.length} awaiting review, and ${unassigned.length} unassigned. ${overdue.length ? "I recommend checking overdue work first, then items waiting for review." : "There are no overdue tasks in your visible workload."}`;
         } else if (/overdue|late|priority|urgent|focus|today|plan/.test(normalized)) {
           const focus = [...overdue, ...urgent.filter((task) => !overdue.includes(task))].slice(0, 5);
@@ -2601,7 +2612,7 @@ const server = createServer(async (request, response) => {
         } else if (/write|draft|message|update|email/.test(normalized)) {
           reply = "Here is a professional update you can adapt:\n\nHello team,\n\nWork is progressing on the assigned item. The current status is [status/progress]. The next action is [next step], planned for [date/time]. The main blocker or decision needed is [blocker/decision].\n\nPlease let me know if priorities have changed.\n\nBest regards,";
         } else if (/help|what can you do|commands/.test(normalized)) {
-          reply = "I can work offline with your live MAB task data. Try asking: “summarize my workload”, “what should I focus on today?”, “show overdue priorities”, or “draft a professional task update”. Add GEMINI_API_KEY later for open-ended generative answers.";
+          reply = "I can work offline with your live MAB task data. Try asking: 'summarize my workload', 'what should I focus on today?', 'show overdue priorities', or 'draft a professional task update'. Add GEMINI_API_KEY later for open-ended generative answers.";
         } else {
           reply = `I'm running in secure offline mode and can analyze the task data available to you. Right now I can see ${active.length} active task${active.length === 1 ? "" : "s"}. Ask me for a workload summary, today's priorities, overdue work, or a drafted status message.`;
         }
@@ -2617,7 +2628,10 @@ const server = createServer(async (request, response) => {
           role: item.role === "assistant" ? "model" : "user",
           parts: [{ text: String(item.text).slice(0, 2000) }]
         }));
-      contents.push({ role: "user", parts: [{ text: message }] });
+      const userParts = [];
+      if (message) userParts.push({ text: message });
+      for (const file of validFiles) userParts.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
+      contents.push({ role: "user", parts: userParts });
       const model = String(process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite");
       const aiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`, {
         method: "POST",

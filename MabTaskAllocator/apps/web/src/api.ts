@@ -488,10 +488,10 @@ export const api = {
   },
   markChatRead: (channelId: string) =>
     request("/api/chat/read", { method: "POST", body: JSON.stringify({ channelId }) }),
-  askAiAssistant: (message: string, history: Array<{ role: "user" | "assistant"; text: string }>) =>
+  askAiAssistant: (message: string, history: Array<{ role: "user" | "assistant"; text: string }>, files?: Array<{ name: string; data: string; mimeType: string }>) =>
     request<{ reply: string; configured: boolean }>("/api/ai/chat", {
       method: "POST",
-      body: JSON.stringify({ message, history })
+      body: JSON.stringify({ message, history, files })
     }),
   markNotificationsRead: () => request<{ unreadCount: number }>("/api/notifications/read", { method: "POST" }),
   markNotificationRead: (notificationId: string) => request<{ unreadCount: number }>(`/api/notifications/${notificationId}/read`, { method: "POST", body: "{}" })

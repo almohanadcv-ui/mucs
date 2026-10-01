@@ -723,9 +723,12 @@ export function App() {
   const [chatGroupNameDraft, setChatGroupNameDraft] = useState("");
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [showAiResetConfirm, setShowAiResetConfirm] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [aiDraft, setAiDraft] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiFiles, setAiFiles] = useState<Array<{ name: string; data: string; mimeType: string; size: number }>>([]);
+  const aiFileInputRef = useRef<HTMLInputElement>(null);
   const [aiMessages, setAiMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
     { role: "assistant", text: "Hello! I’m the MAB AI assistant. Ask me to help organize work, draft a task update, summarize an issue, or plan your day." }
   ]);
@@ -1752,19 +1755,43 @@ export function App() {
   async function sendAiMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const message = aiDraft.trim();
-    if (!message || aiLoading) return;
+    if ((!message && !aiFiles.length) || aiLoading) return;
     const history = aiMessages.slice(-10);
+    const filesToSend = aiFiles.map(({ name, data, mimeType }) => ({ name, data, mimeType }));
+    const userText = message || `[${aiFiles.map((f) => f.name).join(", ")}]`;
     setAiDraft("");
-    setAiMessages((items) => [...items, { role: "user", text: message }]);
+    setAiFiles([]);
+    setAiMessages((items) => [...items, { role: "user", text: userText }]);
     setAiLoading(true);
     try {
-      const result = await api.askAiAssistant(message, history);
+      const result = await api.askAiAssistant(message, history, filesToSend.length ? filesToSend : undefined);
       setAiMessages((items) => [...items, { role: "assistant", text: result.reply }]);
     } catch (error) {
       setAiMessages((items) => [...items, { role: "assistant", text: error instanceof Error ? error.message : "The AI assistant is unavailable right now." }]);
     } finally {
       setAiLoading(false);
     }
+  }
+
+  function handleAiFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    const maxSize = 4 * 1024 * 1024;
+    const maxCount = 3;
+    const current = aiFiles.length;
+    const allowed = selected.slice(0, maxCount - current);
+    const tooBig = selected.find((f) => f.size > maxSize);
+    if (tooBig) { alert(`${tooBig.name} exceeds the 4 MB limit.`); return; }
+    if (current >= maxCount) { alert(`You can attach up to ${maxCount} files.`); return; }
+    allowed.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1] ?? "";
+        setAiFiles((prev) => prev.length < maxCount ? [...prev, { name: file.name, data: base64, mimeType: file.type || "application/octet-stream", size: file.size }] : prev);
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   async function handleLogin(username: string, password: string): Promise<boolean> {
@@ -3594,17 +3621,69 @@ export function App() {
           <header>
             <span><Sparkles aria-hidden="true" size={17} /></span>
             <div><strong>MAB AI Assistant</strong><small>Powered by Gemini · responses may need review</small></div>
+            <button className="icon-button" type="button" onClick={() => setShowAiResetConfirm(true)} aria-label="Reset chat" title="Reset conversation"><RotateCcw size={14} /></button>
             <button className="icon-button" type="button" onClick={() => setShowAiAssistant(false)} aria-label="Close AI assistant"><X size={15} /></button>
           </header>
+          {showAiResetConfirm && (
+            <div className="ai-reset-confirm">
+              <p>Reset the conversation? This will clear all messages.</p>
+              <div className="ai-reset-confirm-actions">
+                <button
+                  className="primary-button"
+                  type="button"
+                  onClick={() => {
+                    setAiMessages([{ role: "assistant", text: "Hello! I'm the MAB AI assistant. Ask me to help organize work, draft a task update, summarize an issue, or plan your day." }]);
+                    setAiDraft("");
+                    setAiFiles([]);
+                    setShowAiResetConfirm(false);
+                  }}
+                >
+                  Yes, reset
+                </button>
+                <button className="ghost-button" type="button" onClick={() => setShowAiResetConfirm(false)}>Cancel</button>
+              </div>
+            </div>
+          )}
           <div className="ai-message-list" aria-live="polite">
             {aiMessages.map((message, index) => (
               <p className={message.role} key={`${message.role}-${index}`}>{message.text}</p>
             ))}
             {aiLoading ? <p className="assistant ai-thinking">Thinking…</p> : null}
           </div>
-          <form onSubmit={sendAiMessage}>
-            <input maxLength={2000} value={aiDraft} onChange={(event) => setAiDraft(event.target.value)} placeholder="Ask the MAB assistant…" />
-            <button className="primary-button" disabled={!aiDraft.trim() || aiLoading} type="submit">Ask</button>
+          <form onSubmit={sendAiMessage} className="ai-chat-form">
+            {aiFiles.length > 0 && (
+              <div className="ai-file-chips">
+                {aiFiles.map((file, index) => (
+                  <span key={index} className="ai-file-chip" title={file.name}>
+                    <Paperclip size={11} />
+                    <span>{file.name}</span>
+                    <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setAiFiles((prev) => prev.filter((_, i) => i !== index))}><X size={11} /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="ai-chat-input-row">
+              <input
+                type="file"
+                ref={aiFileInputRef}
+                style={{ display: "none" }}
+                multiple
+                accept="image/*,.pdf,.txt,.csv,.xlsx,.docx"
+                onChange={handleAiFileSelect}
+              />
+              <button
+                type="button"
+                className={`icon-button ai-attach-button${aiFiles.length >= 3 ? " disabled" : ""}`}
+                aria-label="Attach file"
+                title="Attach file (images, PDF, text — up to 3, 4 MB each)"
+                disabled={aiFiles.length >= 3}
+                onClick={() => aiFileInputRef.current?.click()}
+              >
+                <Paperclip size={16} />
+              </button>
+              <input maxLength={2000} value={aiDraft} onChange={(event) => setAiDraft(event.target.value)} placeholder="Ask the MAB assistant…" />
+              <button className="primary-button" disabled={(!aiDraft.trim() && !aiFiles.length) || aiLoading} type="submit">Ask</button>
+            </div>
           </form>
         </section>
       ) : null}

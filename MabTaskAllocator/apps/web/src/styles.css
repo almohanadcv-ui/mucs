@@ -6444,6 +6444,104 @@ select {
   font-style: italic;
 }
 
+.ai-reset-confirm {
+  background: var(--mab-surface);
+  border-bottom: 1px solid var(--mab-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.ai-reset-confirm p {
+  color: var(--mab-text);
+  font-size: 13px;
+  margin: 0;
+}
+
+.ai-reset-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ai-reset-confirm-actions .primary-button {
+  background: #dc2626;
+  border-color: #dc2626;
+  font-size: 13px;
+  padding: 5px 14px;
+}
+
+.ai-reset-confirm-actions .primary-button:hover { background: #b91c1c; border-color: #b91c1c; }
+
+.ai-reset-confirm-actions .ghost-button {
+  font-size: 13px;
+  padding: 5px 14px;
+}
+
+.ai-chat-form {
+  border-top: 1px solid var(--mab-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ai-file-chips {
+  align-items: center;
+  border-bottom: 1px solid var(--mab-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.ai-file-chip {
+  align-items: center;
+  background: var(--mab-blue-soft);
+  border: 1px solid #c2e0f2;
+  border-radius: 20px;
+  color: var(--mab-blue-dark);
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  max-width: 160px;
+  padding: 3px 6px 3px 7px;
+}
+
+.ai-file-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-file-chip button {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--mab-text-muted);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.ai-file-chip button:hover { color: var(--mab-red, #dc2626); }
+
+.ai-chat-input-row {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+}
+
+.ai-attach-button {
+  color: var(--mab-text-muted);
+  flex-shrink: 0;
+}
+
+.ai-attach-button:hover:not(:disabled) { color: var(--mab-blue); }
+.ai-attach-button.disabled,
+.ai-attach-button:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .ai-assistant > form {
   align-items: center;
   border-top: 1px solid var(--mab-border);
