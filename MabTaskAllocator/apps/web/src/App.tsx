@@ -1334,6 +1334,37 @@ export function App() {
   const activeTaskFilterCount = Number(Boolean(activeWorkerId)) + Object.values(activeTaskFilters).filter(Boolean).length;
   const archiveFilterCount = Object.entries(archiveFilters).filter(([k, v]) => v && k !== "from" && k !== "to").length + Number(Boolean(archivePeriod)) + Number(Boolean(archiveFilters.from || archiveFilters.to) && !archivePeriod);
   const dashboardTasks = currentUser?.role === "user" ? assignedActiveTasks : activeTasks;
+  const dashboardFinishedBaseTasks = currentUser?.role === "user"
+    ? visibleTasks.filter((task) => task.status === "done" && task.assigneeIds.includes(currentUser.id))
+    : visibleTasks.filter((task) => task.status === "done");
+  const dashboardScopeName = currentUser?.role === "superadmin"
+    ? "Company-wide dashboard"
+    : currentUser?.role === "user"
+      ? "My work dashboard"
+      : currentUser?.role === "team_leader"
+        ? `${currentUser.department} team dashboard`
+        : `${departmentPath(currentUser?.department ?? "")} department dashboard`;
+  const dashboardScoreLabel = currentUser?.role === "superadmin"
+    ? "Executive portfolio score"
+    : currentUser?.role === "user"
+      ? "My work score"
+      : currentUser?.role === "team_leader"
+        ? "Team delivery score"
+        : "Department delivery score";
+  const dashboardInsightsLabel = currentUser?.role === "user" ? "My Work Insights" : currentUser?.role === "superadmin" ? "Executive Insights" : "Management Insights";
+  const dashboardAttentionLabel = currentUser?.role === "user" ? "need your attention" : currentUser?.role === "superadmin" ? "need executive attention" : "need management attention";
+  const dashboardHeroTitle = currentUser?.role === "user"
+    ? `Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, ${currentUser.name.split(" ")[0]}`
+    : currentUser?.role === "superadmin"
+      ? "Executive Command Dashboard"
+      : currentUser?.role === "team_leader"
+        ? `${currentUser.department} Team Command`
+        : `${departmentPath(currentUser?.department ?? "")} Management Dashboard`;
+  const dashboardHeroCopy = currentUser?.role === "user"
+    ? "Your tasks, deadlines, progress, and delivery score in one focused workspace."
+    : currentUser?.role === "superadmin"
+      ? "Company-wide delivery health, department performance, predictions, and executive risk signals."
+      : "Department project health, team workload, approvals, predictions, and delivery signals.";
   const canFilterDashboardTasks = Boolean(currentUser && ["team_leader", "technical_manager", "admin", "superadmin"].includes(currentUser.role));
   const dashboardProjectOptions = useMemo(() => {
     const options = new Map<string, string>();
@@ -1449,14 +1480,161 @@ export function App() {
     setDraftSteps((steps) => steps.map((step) => step.assigneeId && !allowedIds.has(step.assigneeId) ? { ...step, assigneeId: undefined } : step));
   }, [canAllocateTasks, currentUser?.id, selectedDraftProject?.id, taskDraftAssignableUsers.map((user) => user.id).join(",")]);
 
-  const openTasks = dashboardTasks.length;
-  const urgentTasks = dashboardTasks.filter((task) => task.priority === "urgent").length;
+  const scopedFinishedTasks = dashboardFinishedBaseTasks.filter((task) => {
+    const matchesProject = !dashboardProjectFilter || task.projectId === dashboardProjectFilter;
+    const matchesDepartment = !dashboardDepartmentFilter || sameDepartment(task.department, dashboardDepartmentFilter);
+    return matchesProject && matchesDepartment;
+  });
+  const openTasks = filteredDashboardTasks.length;
+  const urgentTasks = filteredDashboardTasks.filter((task) => task.priority === "urgent").length;
   const reviewTasks = visibleTasks.filter(needsReview).length;
-  const overdueTasks = dashboardTasks.filter((task) => task.dueDate && task.dueDate < currentRiyadhDate()).length;
-  const dashboardComplexity = dashboardTasks.reduce((sum, task) => sum + complexityPoints(task), 0);
+  const overdueTasks = filteredDashboardTasks.filter((task) => task.dueDate && task.dueDate < currentRiyadhDate()).length;
+  const dashboardComplexity = filteredDashboardTasks.reduce((sum, task) => sum + complexityPoints(task), 0);
   const averageProgress = dashboardComplexity
-    ? Math.round(dashboardTasks.reduce((sum, task) => sum + task.progress * complexityPoints(task), 0) / dashboardComplexity)
+    ? Math.round(filteredDashboardTasks.reduce((sum, task) => sum + task.progress * complexityPoints(task), 0) / dashboardComplexity)
     : 0;
+  const dashboardReviewTasks = filteredDashboardTasks.filter(needsReview);
+  const dueSoonTasks = filteredDashboardTasks.filter(isTaskDueSoon);
+  const unassignedDashboardTasks = filteredDashboardTasks.filter(isFreeTask);
+  const blockedDashboardTasks = filteredDashboardTasks.filter((task) => task.status === "blocked");
+  const dashboardAtRiskTasks = filteredDashboardTasks.filter((task) => isTaskOverdue(task) || isTaskDueSoon(task) || task.priority === "urgent" || task.status === "blocked");
+  const dashboardFinishedTasks = scopedFinishedTasks;
+  const portfolioTaskTotal = filteredDashboardTasks.length + dashboardFinishedTasks.length;
+  const portfolioCompletionRate = portfolioTaskTotal ? Math.round((dashboardFinishedTasks.length / portfolioTaskTotal) * 100) : 0;
+  const currentMonthKey = currentRiyadhDate().slice(0, 7);
+  const scopedFinishedThisMonth = dashboardFinishedTasks.filter((task) => (task.completedAtIso ?? "").slice(0, 7) === currentMonthKey).length;
+  const scopedTasksWithDeadlines = dashboardFinishedTasks.filter((task) => task.dueDate && task.completedAtIso);
+  const scopedOnTimePercent = scopedTasksWithDeadlines.length
+    ? Math.round((scopedTasksWithDeadlines.filter((task) => task.completedAtIso!.slice(0, 10) <= task.dueDate).length / scopedTasksWithDeadlines.length) * 100)
+    : null;
+  const deliveryRiskRate = filteredDashboardTasks.length ? Math.round((dashboardAtRiskTasks.length / filteredDashboardTasks.length) * 100) : 0;
+  const executiveHealthScore = Math.max(0, Math.min(100, Math.round((portfolioCompletionRate * 0.45) + (averageProgress * 0.35) + ((100 - deliveryRiskRate) * 0.2))));
+  const predictedOnTimeRate = Math.max(0, Math.min(100, Math.round((scopedOnTimePercent ?? 70) * 0.45 + (100 - deliveryRiskRate) * 0.35 + averageProgress * 0.2)));
+  const predictedFinishRate = Math.max(0, Math.min(100, Math.round(portfolioCompletionRate * 0.35 + averageProgress * 0.45 + (100 - deliveryRiskRate) * 0.2)));
+  const predictionTone = predictedOnTimeRate >= 80 ? "green" : predictedOnTimeRate >= 60 ? "amber" : "red";
+  const sphereMetrics = [
+    { label: "Health", value: executiveHealthScore, tone: executiveHealthScore >= 80 ? "green" : executiveHealthScore >= 60 ? "blue" : "amber" },
+    { label: "On-time", value: predictedOnTimeRate, tone: predictionTone },
+    { label: "Low risk", value: 100 - deliveryRiskRate, tone: deliveryRiskRate <= 15 ? "green" : deliveryRiskRate <= 35 ? "amber" : "red" }
+  ];
+  const upcomingDashboardTasks = [...filteredDashboardTasks]
+    .filter((task) => task.dueDate)
+    .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))
+    .slice(0, 4);
+  const dueTrendBuckets = Array.from({ length: 7 }, (_, index) => {
+    const date = riyadhDateOffset(index);
+    const count = filteredDashboardTasks.filter((task) => task.dueDate === date).length;
+    return { label: index === 0 ? "Today" : date.slice(5), count };
+  });
+  const completionTrendBuckets = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - index));
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const label = date.toLocaleDateString("en-US", { month: "short" });
+    const count = dashboardFinishedTasks.filter((task) => (task.completedAtIso ?? "").slice(0, 7) === key).length;
+    return { label, count };
+  });
+  const maxDueTrend = Math.max(1, ...dueTrendBuckets.map((bucket) => bucket.count));
+  const maxCompletionTrend = Math.max(1, ...completionTrendBuckets.map((bucket) => bucket.count));
+  const statusReports = (["new", "assigned", "in_progress", "blocked", "under_review", "done"] as TaskStatus[]).map((status) => {
+    const source = status === "done" ? dashboardFinishedTasks : filteredDashboardTasks;
+    const count = source.filter((task) => task.status === status).length;
+    return { status, count, label: statusLabels[status] };
+  }).filter((item) => item.count > 0);
+  const maxStatusCount = Math.max(1, ...statusReports.map((item) => item.count));
+  const dashboardActionCards = [
+    {
+      label: "Waiting for approval",
+      value: dashboardReviewTasks.length,
+      note: currentUser?.role === "technical_manager" ? "department manager review queue" : "manager decision needed",
+      icon: CheckCircle2,
+      tone: "green",
+      action: () => openTaskQueue("review")
+    },
+    {
+      label: "Due in 3 days",
+      value: dueSoonTasks.length,
+      note: dueSoonTasks.length ? "protect delivery dates" : "no near deadlines",
+      icon: Calendar,
+      tone: "amber",
+      action: () => openTaskQueue("all")
+    },
+    {
+      label: "Unassigned work",
+      value: unassignedDashboardTasks.length,
+      note: unassignedDashboardTasks.length ? "needs owner allocation" : "ownership clear",
+      icon: Hand,
+      tone: "purple",
+      action: () => openTaskQueue("free")
+    },
+    {
+      label: "Blocked tasks",
+      value: blockedDashboardTasks.length,
+      note: blockedDashboardTasks.length ? "remove blockers" : "no blockers reported",
+      icon: AlertTriangle,
+      tone: "red",
+      action: () => openTaskQueue("all")
+    }
+  ];
+  const departmentReports = dashboardDepartmentOptions.map((department) => {
+    const departmentTasks = filteredDashboardTasks.filter((task) => sameDepartment(task.department, department));
+    const done = scopedFinishedTasks.filter((task) => sameDepartment(task.department, department)).length;
+    const overdue = departmentTasks.filter(isTaskOverdue).length;
+    const review = departmentTasks.filter(needsReview).length;
+    const progress = departmentTasks.length ? Math.round(departmentTasks.reduce((sum, task) => sum + task.progress, 0) / departmentTasks.length) : 0;
+    return { department, active: departmentTasks.length, done, overdue, review, progress };
+  }).filter((report) => report.active || report.done).sort((a, b) => b.overdue - a.overdue || b.review - a.review || b.active - a.active).slice(0, 5);
+  const projectPortfolioReports = dashboardProjectOptions.map((project) => {
+    const projectTasks = filteredDashboardTasks.filter((task) => task.projectId === project.id);
+    const overdue = projectTasks.filter(isTaskOverdue).length;
+    const done = scopedFinishedTasks.filter((task) => task.projectId === project.id).length;
+    const dueSoon = projectTasks.filter(isTaskDueSoon).length;
+    const blocked = projectTasks.filter((task) => task.status === "blocked").length;
+    const progress = projectTasks.length ? Math.round(projectTasks.reduce((sum, task) => sum + task.progress, 0) / projectTasks.length) : 0;
+    const health = overdue || blocked ? "Delayed" : dueSoon || progress < 50 ? "At Risk" : "On Track";
+    return { ...project, active: projectTasks.length, done, overdue, dueSoon, blocked, progress, health };
+  }).filter((report) => report.active || report.done);
+  const projectHealthCounts = {
+    onTrack: projectPortfolioReports.filter((project) => project.health === "On Track").length,
+    atRisk: projectPortfolioReports.filter((project) => project.health === "At Risk").length,
+    delayed: projectPortfolioReports.filter((project) => project.health === "Delayed").length
+  };
+  const projectReports = [...projectPortfolioReports].sort((a, b) => b.overdue - a.overdue || b.active - a.active).slice(0, 5);
+  const maxDepartmentActive = Math.max(1, ...departmentReports.map((report) => report.active));
+  const maxProjectActive = Math.max(1, ...projectReports.map((report) => report.active));
+  const dashboardFilterCount = Number(Boolean(dashboardProjectFilter)) + Number(Boolean(dashboardDepartmentFilter));
+  const leadingRiskProject = projectReports.find((project) => project.health !== "On Track") ?? projectReports[0];
+  const leadingRiskDepartment = departmentReports.find((department) => department.overdue || department.review) ?? departmentReports[0];
+  const executiveInsights = [
+    {
+      title: deliveryRiskRate >= 30 ? "Delivery risk is elevated" : "Delivery risk is controlled",
+      detail: deliveryRiskRate >= 30
+        ? `${dashboardAtRiskTasks.length} scoped tasks are urgent, blocked, overdue, or near deadline.`
+        : `${100 - deliveryRiskRate}% of scoped active work has no immediate risk signal.`,
+      tone: deliveryRiskRate >= 30 ? "red" : "green"
+    },
+    {
+      title: leadingRiskProject ? `Project focus: ${leadingRiskProject.name}` : "Project focus is clear",
+      detail: leadingRiskProject
+        ? `${leadingRiskProject.health} - ${leadingRiskProject.active} active, ${leadingRiskProject.done} finished, ${leadingRiskProject.progress}% average progress.`
+        : "No project workload is visible in this scope.",
+      tone: leadingRiskProject?.health === "Delayed" ? "red" : leadingRiskProject?.health === "At Risk" ? "amber" : "blue"
+    },
+    {
+      title: leadingRiskDepartment ? `Department signal: ${leadingRiskDepartment.department}` : "Department signal is clear",
+      detail: leadingRiskDepartment
+        ? `${leadingRiskDepartment.overdue} late, ${leadingRiskDepartment.review} waiting review, ${leadingRiskDepartment.progress}% average progress.`
+        : "No department workload is visible in this scope.",
+      tone: leadingRiskDepartment?.overdue ? "red" : leadingRiskDepartment?.review ? "amber" : "blue"
+    },
+    {
+      title: unassignedDashboardTasks.length ? "Allocation gap found" : "Ownership looks healthy",
+      detail: unassignedDashboardTasks.length
+        ? `${unassignedDashboardTasks.length} scoped tasks are waiting for an owner.`
+        : "Every scoped active task has clear ownership.",
+      tone: unassignedDashboardTasks.length ? "purple" : "green"
+    }
+  ];
   const unreadNotifications = unreadNotificationCount;
   const selectedChatChannel = chatChannels.find((channel) => channel.id === selectedChannelId);
   const selectedChatMessages = chatMessages.filter((message) => message.channelId === selectedChannelId);
@@ -3164,7 +3342,7 @@ export function App() {
               </div>
             </div>
           ) : (
-            <div className="task-card-body">
+            <div className="task-card-body task-open-workspace">
               <div className="task-card-heading">
                 <span className="task-code">#{task.taskCode}</span>
                 <span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span>
@@ -3998,6 +4176,61 @@ export function App() {
         {allocationMessage ? <p className="success-message" role="status">{allocationMessage}</p> : null}
         {activeView === "dashboard" ? <>
         {/* ── KPI ROW ── */}
+        <section className="dash-pro-cockpit" aria-label="Dashboard command cockpit">
+          <div className="dash-pro-hero-card">
+            <div className="dash-hero-avatar" aria-hidden="true">
+              <span>{initials(currentUser.name)}</span>
+            </div>
+            <div className="dash-hero-copy">
+              <p className="dash-panel-label">{dashboardScopeName}</p>
+              <h2>{dashboardHeroTitle}</h2>
+              <span>{dashboardHeroCopy}</span>
+              <div className="dash-hero-actions">
+                <button className="primary-button" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
+                  <ClipboardList aria-hidden="true" size={17} />
+                  {currentUser.role === "user" ? "Open My Work" : "Review Workload"}
+                </button>
+                <button className="ghost-button" onClick={() => setActiveView(currentUser.role === "user" ? "todos" : "productivity")} type="button">
+                  <FileSpreadsheet aria-hidden="true" size={16} />
+                  {currentUser.role === "user" ? "My TODOs" : "Reports"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="dash-ai-stack">
+            <button className="dash-ai-card" onClick={() => setActiveView("intelligence")} type="button">
+              <span><Sparkles aria-hidden="true" size={18} /></span>
+              <strong>AI Risk Lens</strong>
+              <small>{dashboardAtRiskTasks.length ? `${dashboardAtRiskTasks.length} risk signals found` : "No critical risk signal"}</small>
+            </button>
+            <button className="dash-ai-card" onClick={() => void openDepartmentChat()} type="button">
+              <span><MessageSquare aria-hidden="true" size={18} /></span>
+              <strong>Decision Notes</strong>
+              <small>{unreadChatMessages ? `${unreadChatMessages} unread messages` : "Open team discussion"}</small>
+            </button>
+          </div>
+
+          <aside className="dash-today-card">
+            <div className="dash-panel-header">
+              <div>
+                <p className="dash-panel-label">Schedule focus</p>
+                <h2>Upcoming Work</h2>
+              </div>
+              <span className="result-count">{upcomingDashboardTasks.length}</span>
+            </div>
+            <div className="dash-schedule-list">
+              {upcomingDashboardTasks.length ? upcomingDashboardTasks.map((task) => (
+                <button className="dash-schedule-item" key={`schedule-${task.id}`} onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
+                  <span>{task.dueDate?.slice(5) || "--"}</span>
+                  <strong>{task.title}</strong>
+                  <small>{task.projectName || task.department}</small>
+                </button>
+              )) : <p className="empty-state">No scheduled deadlines in this scope.</p>}
+            </div>
+          </aside>
+        </section>
+
         <section className="dash-kpi-row" aria-label="Key metrics">
           <button className="dash-kpi dash-kpi-blue" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
             <span className="dash-kpi-icon"><ClipboardList size={22} /></span>
@@ -4027,14 +4260,210 @@ export function App() {
             <span className="dash-kpi-icon"><Archive size={22} /></span>
             <div className="dash-kpi-body">
               <span>Done This Month</span>
-              <strong>{finishedSummary.thisMonth}</strong>
-              <small>{finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}% on time` : "no deadlines set"}</small>
+              <strong>{scopedFinishedThisMonth}</strong>
+              <small>{scopedOnTimePercent !== null ? `${scopedOnTimePercent}% on time` : "no deadlines set"}</small>
             </div>
           </div>
         </section>
 
         {/* ── ONLINE NOW (executives only) ── */}
-        {currentUser.role === "superadmin" && (
+        {canFilterDashboardTasks ? (
+          <section className="dash-filter-panel" aria-label="Executive reporting filters">
+            <div>
+              <p className="dash-panel-label">Executive reporting filters</p>
+              <h2>{dashboardFilterCount ? "Charts are filtered" : dashboardScopeName}</h2>
+              <span>{filteredDashboardTasks.length} active and {scopedFinishedTasks.length} finished tasks in scope</span>
+            </div>
+            <div className="dash-filter-controls">
+              <label><span>Project</span>
+                <select value={dashboardProjectFilter} onChange={(event) => setDashboardProjectFilter(event.target.value)}>
+                  <option value="">All projects</option>
+                  {dashboardProjectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </label>
+              <label><span>Department</span>
+                <select value={dashboardDepartmentFilter} onChange={(event) => setDashboardDepartmentFilter(event.target.value)}>
+                  <option value="">All departments</option>
+                  {dashboardDepartmentOptions.map((dept) => <option key={dept} value={dept}>{dept}</option>)}
+                </select>
+              </label>
+              {dashboardFilterCount ? (
+                <button className="ghost-button" onClick={() => { setDashboardProjectFilter(""); setDashboardDepartmentFilter(""); }} type="button">Clear filters</button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="dash-focus-panel" aria-label="Today's focus">
+          <div className="dash-focus-heading">
+            <div>
+              <p className="dash-panel-label">Today's focus</p>
+              <h2>{dashboardAtRiskTasks.length ? "Work that needs management attention" : "Operations are under control"}</h2>
+            </div>
+            <span>{dashboardAtRiskTasks.length} risk signal{dashboardAtRiskTasks.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="dash-focus-grid">
+            {dashboardActionCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <button className={`dash-focus-card dash-focus-${card.tone}`} key={card.label} onClick={card.action} type="button">
+                  <span><Icon aria-hidden="true" size={18} /></span>
+                  <strong>{card.value}</strong>
+                  <small>{card.label}</small>
+                  <em>{card.note}</em>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="dash-executive-panel" aria-label="Executive portfolio">
+          <div className="dash-exec-score">
+            <span>{dashboardScoreLabel}</span>
+            <strong>{executiveHealthScore}</strong>
+            <small>{deliveryRiskRate}% delivery risk · {portfolioCompletionRate}% finished</small>
+          </div>
+          <div className="dash-exec-metrics">
+            <article>
+              <span>{currentUser.role === "user" ? "My Projects" : "Project Status"}</span>
+              <strong>{projectPortfolioReports.length}</strong>
+              <small>{projectHealthCounts.onTrack} on track · {projectHealthCounts.atRisk} at risk · {projectHealthCounts.delayed} delayed</small>
+            </article>
+            <article>
+              <span>Finished Rate</span>
+              <strong>{portfolioCompletionRate}%</strong>
+              <small>{dashboardFinishedTasks.length} done from {portfolioTaskTotal || 0} total visible tasks</small>
+            </article>
+            <article>
+              <span>Finished This Month</span>
+              <strong>{scopedFinishedThisMonth}</strong>
+              <small>{scopedOnTimePercent !== null ? `${scopedOnTimePercent}% delivered on time` : "deadlines not fully set"}</small>
+            </article>
+            <article>
+              <span>Active Risk</span>
+              <strong>{deliveryRiskRate}%</strong>
+              <small>{dashboardAtRiskTasks.length} tasks {dashboardAttentionLabel}</small>
+            </article>
+            <article className={`dash-prediction-card dash-prediction-${predictionTone}`}>
+              <span>Predicted On-Time</span>
+              <strong>{predictedOnTimeRate}%</strong>
+              <small>Forecast from deadlines, progress, and current risk</small>
+            </article>
+            <article className="dash-prediction-card">
+              <span>Predicted Finish</span>
+              <strong>{predictedFinishRate}%</strong>
+              <small>Expected delivery strength for this scope</small>
+            </article>
+          </div>
+          <div className="dash-status-strip">
+            {statusReports.length ? statusReports.map((item) => (
+              <div className={`dash-status-pill dash-status-${item.status}`} key={item.status}>
+                <span>{item.label}</span>
+                <strong>{item.count}</strong>
+                <i style={{ width: `${Math.max(5, Math.round((item.count / maxStatusCount) * 100))}%` }} />
+              </div>
+            )) : <p className="empty-state">No task statuses available yet.</p>}
+          </div>
+        </section>
+
+        <section className="dash-visual-analytics dash-stats-board" aria-label="Executive histogram and trend board">
+          <div className="dash-stats-main">
+            <div className="dash-panel-header dash-stats-titlebar">
+              <div>
+                <p className="dash-panel-label">Histogram view</p>
+                <h2>Delivery Flow</h2>
+                <span>{dashboardFilterCount ? "Filtered project and department report" : "Live report for all visible work"}</span>
+              </div>
+              <span className="result-count">{dueTrendBuckets.reduce((sum, bucket) => sum + bucket.count, 0)} due next 7 days</span>
+            </div>
+            <div className="dash-flow-legend" aria-hidden="true">
+              <span><i className="dash-legend-blue" /> Due work</span>
+              <span><i className="dash-legend-green" /> Finished trend</span>
+              <span><i className="dash-legend-amber" /> Predicted on-time {predictedOnTimeRate}%</span>
+            </div>
+            <div className="dash-histogram dash-histogram-large">
+              {dueTrendBuckets.map((bucket) => (
+                <div className="dash-histogram-bar" key={bucket.label}>
+                  <span style={{ height: `${Math.max(8, Math.round((bucket.count / maxDueTrend) * 100))}%` }} />
+                  <strong>{bucket.count}</strong>
+                  <small>{bucket.label}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <aside className="dash-stats-side">
+            <div className="dash-sphere-panel">
+              <div className="dash-panel-header">
+                <div>
+                  <p className="dash-panel-label">Prediction spheres</p>
+                  <h2>Executive Rates</h2>
+                </div>
+              </div>
+              <div className="dash-sphere-grid">
+                {sphereMetrics.map((metric) => (
+                  <div className={`dash-sphere dash-sphere-${metric.tone}`} key={metric.label} style={{ ["--sphere-value" as string]: `${metric.value}%` }}>
+                    <strong>{metric.value}%</strong>
+                    <span>{metric.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="dash-histogram-panel dash-mini-trend">
+              <div className="dash-panel-header">
+                <div>
+                  <p className="dash-panel-label">Completion trend</p>
+                  <h2>Finished Tasks</h2>
+                </div>
+                <span className="result-count">6 months</span>
+              </div>
+              <div className="dash-histogram dash-histogram-complete">
+                {completionTrendBuckets.map((bucket) => (
+                  <div className="dash-histogram-bar" key={bucket.label}>
+                    <span style={{ height: `${Math.max(8, Math.round((bucket.count / maxCompletionTrend) * 100))}%` }} />
+                    <strong>{bucket.count}</strong>
+                    <small>{bucket.label}</small>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section className="dash-insights-panel" aria-label="Executive insights">
+          <div className="dash-panel-header">
+            <div>
+              <p className="dash-panel-label">Decision support</p>
+              <h2>{dashboardInsightsLabel}</h2>
+            </div>
+            <span className="result-count">{dashboardFilterCount ? "Filtered scope" : "All visible work"}</span>
+          </div>
+          <div className="dash-insight-grid">
+            {executiveInsights.map((insight) => (
+              <article className={`dash-insight-card dash-insight-${insight.tone}`} key={insight.title}>
+                <strong>{insight.title}</strong>
+                <p>{insight.detail}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        {currentUser.role === "technical_manager" && (
+          <section className="dash-manager-review">
+            <div>
+              <p className="dash-panel-label">Department manager control</p>
+              <h2>Technical manager review desk</h2>
+              <span>Tasks submitted through your department stay visible here so approvals do not disappear inside the active queue.</span>
+            </div>
+            <button className="primary-button" onClick={() => openTaskQueue("review")} type="button">
+              <CheckCircle2 aria-hidden="true" size={17} />
+              Review {dashboardReviewTasks.length} task{dashboardReviewTasks.length === 1 ? "" : "s"}
+            </button>
+          </section>
+        )}
+
+        {(currentUser.role === "superadmin" || currentUser.role === "technical_manager") && (
           <section className="dash-online-panel">
             <div className="dash-online-header">
               <Users aria-hidden="true" size={15} />
@@ -4064,7 +4493,7 @@ export function App() {
             <div className="dash-panel-header">
               <div>
                 <p className="dash-panel-label">Live workload</p>
-                <h2>Priority Queue</h2>
+                <h2>Tasks Requiring Attention</h2>
               </div>
               <button className="ghost-button" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
                 View all <ChevronRight aria-hidden="true" size={14} />
@@ -4107,7 +4536,7 @@ export function App() {
                 </button>
               ))}
               {!filteredDashboardTasks.length ? (
-                <p className="empty-state">{dashboardTasks.length ? "No tasks match these filters." : "All clear — no active tasks right now."}</p>
+                <p className="empty-state">{dashboardTasks.length ? "No tasks match these filters." : "All clear - no active tasks right now."}</p>
               ) : null}
             </div>
           </section>
@@ -4120,7 +4549,7 @@ export function App() {
                 <div className="dash-panel-header">
                   <div>
                     <p className="dash-panel-label">Workload snapshot</p>
-                    <h2>Team Pulse</h2>
+                    <h2>Team Workload</h2>
                   </div>
                   <span className="result-count">{productivityCandidates.length} members</span>
                 </div>
@@ -4203,18 +4632,18 @@ export function App() {
             <section className="panel dash-ops-panel">
               <div className="dash-panel-header">
                 <div>
-                  <p className="dash-panel-label">At a glance</p>
-                  <h2>Operations</h2>
+                  <p className="dash-panel-label">Operational summary</p>
+                  <h2>Management Report</h2>
                 </div>
               </div>
               <div className="dash-ops-list">
-                <div className="dash-ops-row"><span>Total tasks</span><strong>{visibleTasks.length}</strong></div>
+                <div className="dash-ops-row"><span>Scoped tasks</span><strong>{portfolioTaskTotal}</strong></div>
                 <div className="dash-ops-row"><span>Avg. progress</span><strong>{averageProgress}%</strong></div>
                 <div className="dash-ops-row"><span>Unassigned</span><strong>{freeActiveTasks.length}</strong></div>
                 <div className="dash-ops-row"><span>Complexity load</span><strong>{dashboardComplexity} pts</strong></div>
                 {canManagePeople ? <>
                   <div className="dash-ops-row"><span>Active projects</span><strong>{projects.length}</strong></div>
-                  <div className="dash-ops-row"><span>On-time rate</span><strong>{finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}%` : "—"}</strong></div>
+                  <div className="dash-ops-row"><span>On-time rate</span><strong>{scopedOnTimePercent !== null ? `${scopedOnTimePercent}%` : "-"}</strong></div>
                   <div className="dash-ops-row"><span>Team members</span><strong>{productivityCandidates.length}</strong></div>
                 </> : null}
               </div>
@@ -4223,6 +4652,62 @@ export function App() {
         </div>
 
         {/* ── ANALYTICS ROW ── */}
+        {canAllocateTasks ? (
+          <div className="dash-report-row">
+            <section className="panel dash-report-panel">
+              <div className="dash-panel-header">
+                <div>
+                  <p className="dash-panel-label">Department performance</p>
+                  <h2>Delivery Health by Department</h2>
+                </div>
+                <button className="ghost-button" onClick={() => setActiveView("productivity")} type="button">
+                  Reports <ChevronRight aria-hidden="true" size={14} />
+                </button>
+              </div>
+              <div className="dash-report-list">
+                {departmentReports.length ? departmentReports.map((report) => (
+                  <article className="dash-report-item" key={report.department}>
+                    <div>
+                      <strong>{report.department}</strong>
+                      <small>{report.active} active - {report.done} finished - {report.review} review</small>
+                    </div>
+                    <div className="dash-report-track" aria-label={`${report.progress}% average progress`}>
+                      <span style={{ width: `${Math.max(4, Math.round((report.active / maxDepartmentActive) * 100))}%` }} />
+                    </div>
+                    <b className={report.overdue ? "dash-val-red" : ""}>{report.overdue} late</b>
+                  </article>
+                )) : <p className="empty-state">No department workload yet.</p>}
+              </div>
+            </section>
+
+            <section className="panel dash-report-panel">
+              <div className="dash-panel-header">
+                <div>
+                  <p className="dash-panel-label">Project delivery</p>
+                  <h2>Active Project Snapshot</h2>
+                </div>
+                <button className="ghost-button" onClick={() => setActiveView("projects")} type="button">
+                  Projects <ChevronRight aria-hidden="true" size={14} />
+                </button>
+              </div>
+              <div className="dash-report-list">
+                {projectReports.length ? projectReports.map((report) => (
+                  <article className="dash-report-item" key={report.id}>
+                    <div>
+                      <strong>{report.name}</strong>
+                      <small>{report.active} active - {report.done} finished - {report.progress}% avg. progress</small>
+                    </div>
+                    <div className="dash-report-track" aria-label={`${report.active} active tasks`}>
+                      <span style={{ width: `${Math.max(4, Math.round((report.active / maxProjectActive) * 100))}%` }} />
+                    </div>
+                    <b className={`dash-project-health dash-project-${report.health.toLowerCase().replace(" ", "-")}`}>{report.health}</b>
+                  </article>
+                )) : <p className="empty-state">No active project workload yet.</p>}
+              </div>
+            </section>
+          </div>
+        ) : null}
+
         <div className="dash-analytics-row">
           {/* TASK TYPE DISTRIBUTION */}
           <section className="panel dash-chart-panel">
@@ -4231,13 +4716,13 @@ export function App() {
                 <p className="dash-panel-label">Work breakdown</p>
                 <h2>Task Types</h2>
               </div>
-              <span className="result-count">{dashboardTasks.length} total</span>
+              <span className="result-count">{filteredDashboardTasks.length} total</span>
             </div>
-            {dashboardTasks.length > 0 ? (
+            {filteredDashboardTasks.length > 0 ? (
               <div className="dash-bar-list">
                 {(["Technical", "QS", "Shop Drawings", "BIM", "Variation"] as TaskType[]).map((type) => {
-                  const count = dashboardTasks.filter((t) => t.taskType === type).length;
-                  const pct = Math.round((count / dashboardTasks.length) * 100);
+                  const count = filteredDashboardTasks.filter((t) => t.taskType === type).length;
+                  const pct = Math.round((count / filteredDashboardTasks.length) * 100);
                   return count > 0 ? (
                     <div className="dash-bar-row" key={type}>
                       <span className="dash-bar-label">{type}</span>
@@ -4260,11 +4745,11 @@ export function App() {
                 <h2>Priority Breakdown</h2>
               </div>
             </div>
-            {dashboardTasks.length > 0 ? (
+            {filteredDashboardTasks.length > 0 ? (
               <div className="dash-bar-list">
                 {(["urgent", "high", "medium", "low"] as TaskPriority[]).map((priority) => {
-                  const count = dashboardTasks.filter((t) => t.priority === priority).length;
-                  const pct = Math.round((count / dashboardTasks.length) * 100);
+                  const count = filteredDashboardTasks.filter((t) => t.priority === priority).length;
+                  const pct = Math.round((count / filteredDashboardTasks.length) * 100);
                   const colors: Record<string, string> = { urgent: "dash-bar-red", high: "dash-bar-orange", medium: "dash-bar-amber", low: "dash-bar-green" };
                   return (
                     <div className="dash-bar-row" key={priority}>
@@ -4289,13 +4774,13 @@ export function App() {
               </div>
             </div>
             <div className="dash-delivery-stats">
-              <div className={`dash-delivery-orb${finishedSummary.onTimePercent === null ? " dash-delivery-orb-empty" : ""}`} aria-label={`On-time delivery: ${finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}%` : "no data"}`}>
-                <strong>{finishedSummary.onTimePercent !== null ? `${finishedSummary.onTimePercent}%` : "—"}</strong>
+              <div className={`dash-delivery-orb${scopedOnTimePercent === null ? " dash-delivery-orb-empty" : ""}`} aria-label={`On-time delivery: ${scopedOnTimePercent !== null ? `${scopedOnTimePercent}%` : "no data"}`}>
+                <strong>{scopedOnTimePercent !== null ? `${scopedOnTimePercent}%` : "-"}</strong>
                 <span>on time</span>
               </div>
               <div className="dash-delivery-rows">
-                <div className="dash-ops-row"><span>Total finished</span><strong>{finishedTasks.length}</strong></div>
-                <div className="dash-ops-row"><span>Done this month</span><strong>{finishedSummary.thisMonth}</strong></div>
+                <div className="dash-ops-row"><span>Total finished</span><strong>{dashboardFinishedTasks.length}</strong></div>
+                <div className="dash-ops-row"><span>Done this month</span><strong>{scopedFinishedThisMonth}</strong></div>
                 <div className="dash-ops-row"><span>Currently overdue</span><strong className={overdueTasks > 0 ? "dash-val-red" : ""}>{overdueTasks}</strong></div>
                 <div className="dash-ops-row"><span>In review now</span><strong>{reviewTasks}</strong></div>
               </div>
