@@ -237,7 +237,7 @@ const viewTitles = {
 type AppView = keyof typeof viewTitles;
 const pageIcons = {chat:MessageSquare,dashboard:Gauge,tasks:ClipboardList,finished:Archive,people:Users,projects:FolderKanban,team:Users,todos:ListTodo,intelligence:Sparkles,achievements:Trophy,attendance:Calendar,productivity:FileSpreadsheet,audit:ShieldCheck,settings:Settings};
 const pageDescriptions = {chat:"Conversations with your teams",dashboard:"Your workspace at a glance",tasks:"Assign, track and review your team's work",finished:"Completed work, delivery records and documents",people:"People, positions and department responsibilities",projects:"Project teams, leaders and shared work",team:"Team capacity and leadership performance",todos:"Your personal priorities and checklist",intelligence:"Risks, overdue work and matters needing attention",achievements:"Recognize delivery, quality and team contribution",attendance:"Attendance records and working days",productivity:"Workload, delivery and performance reports",audit:"A record of management actions",settings:"Manage your workspace preferences"};
-function WorkspacePageHeader({view,department}:{view:AppView;department:string}) { const Icon=pageIcons[view]; return <header className="workspace-page-header"><span className="workspace-page-icon"><Icon size={25}/></span><div><p>{department}</p><h2>{viewTitles[view]}</h2><small>{pageDescriptions[view]}</small></div></header>; }
+function WorkspacePageHeader({view,department,greeting}:{view:AppView;department:string;greeting?:string}) { const Icon=pageIcons[view]; return <header className="workspace-page-header"><span className="workspace-page-icon"><Icon size={25}/></span><div><p>{department}</p><h2>{viewTitles[view]}</h2>{greeting ? <p className="workspace-page-greeting">{greeting}</p> : <small>{pageDescriptions[view]}</small>}</div></header>; }
 
 const appViews = Object.keys(viewTitles) as AppView[];
 
@@ -1212,6 +1212,29 @@ export function App() {
     return () => window.clearInterval(interval);
   }, [currentUser?.id]);
 
+  // Presence heartbeat — all users ping every 30 s so executives can see who is online.
+  useEffect(() => {
+    if (!currentUser) return;
+    void api.presencePing().catch(() => undefined);
+    const interval = window.setInterval(() => {
+      void api.presencePing().catch(() => undefined);
+    }, 30_000);
+    return () => window.clearInterval(interval);
+  }, [currentUser?.id]);
+
+  const [onlineUsers, setOnlineUsers] = useState<Array<{ id: string; name: string; role: string; department: string }>>([]);
+
+  // Executives: fetch online users every 30 s.
+  useEffect(() => {
+    if (currentUser?.role !== "superadmin") return;
+    function fetch() {
+      void api.fetchOnlineUsers().then((r) => setOnlineUsers(r.users)).catch(() => undefined);
+    }
+    fetch();
+    const interval = window.setInterval(fetch, 30_000);
+    return () => window.clearInterval(interval);
+  }, [currentUser?.id, currentUser?.role]);
+
   useEffect(() => {
     if (chatChannels.some((channel) => channel.id === selectedChannelId)) return;
     setSelectedChannelId(chatChannels[0]?.id ?? "");
@@ -1228,7 +1251,10 @@ export function App() {
   const assignableUsers = useMemo(() => {
     if (!currentUser) return [];
     if (currentUser.role === "superadmin") return users.filter((user) => user.role === "user");
-    if (["admin", "technical_manager", "team_leader"].includes(currentUser.role)) {
+    if (currentUser.role === "technical_manager") {
+      return users.filter((user) => (user.role === "user" || user.role === "team_leader") && inDepartmentScope(user.department));
+    }
+    if (["admin", "team_leader"].includes(currentUser.role)) {
       return users.filter((user) => user.role === "user" && inDepartmentScope(user.department));
     }
     return [];
@@ -3184,7 +3210,7 @@ export function App() {
                   )}
                 </div>
               </div>
-              <dl className="task-responsibility"><div><dt>Assigned to</dt><dd>{task.candidateNames.join(", ") || "Unassigned"}</dd></div><div><dt>Deadline</dt><dd>{task.dueDate || "Not set"}{overdue ? " (overdue)" : ""}</dd></div><div><dt>Pending with</dt><dd>{pendingWith}</dd></div><div><dt>Next action</dt><dd>{workflowStatusText}</dd></div></dl>
+              <dl className="task-responsibility"><div><dt>Assigned to</dt><dd>{task.candidateNames.join(", ") || "Unassigned"}</dd></div><div><dt>Deadline</dt><dd>{task.dueDate || "Not set"}{overdue ? " — overdue" : ""}</dd></div><div><dt>Action needed from</dt><dd>{pendingWith}</dd></div><div><dt>Status</dt><dd>{workflowStatusText}</dd></div></dl>
               <div className={`task-workflow-summary workflow-status-${task.status}`}>
                 <div className="workflow-summary-head">
                   <span><RotateCcw aria-hidden="true" size={15} />Workflow</span>
@@ -3967,48 +3993,10 @@ export function App() {
           </div>
         </header>
 
-        <WorkspacePageHeader view={activeView} department={departmentPath(currentUser.department)} />
+        <WorkspacePageHeader view={activeView} department={departmentPath(currentUser.department)} greeting={activeView === "dashboard" ? `${new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}, ${currentUser.name.split(" ")[0]}` : undefined} />
         {["intelligence", "attendance", "achievements"].includes(activeView) ? <BetaNotice feature={viewTitles[activeView]} /> : null}
         {allocationMessage ? <p className="success-message" role="status">{allocationMessage}</p> : null}
         {activeView === "dashboard" ? <>
-        {/* ── HERO ── */}
-        <section className="dash-hero" id="dashboard">
-          <div className="dash-hero-left">
-            <img src={mabLogo} alt="MAB logo" className="dash-hero-logo" />
-            <div>
-              <p className="dash-eyebrow">MAB Command Center</p>
-              <h1 className="dash-greeting">
-                {new Date().getHours() < 12 ? "Good morning" : new Date().getHours() < 17 ? "Good afternoon" : "Good evening"}, {currentUser.name.split(" ")[0]}
-              </h1>
-              <p className="dash-role-desc">
-                {currentUser.role === "superadmin" ? "Full organization — all departments, users, and tasks." :
-                 currentUser.role === "technical_manager" ? "Technical department — electrical, mechanical, and BIM teams." :
-                 currentUser.role === "admin" ? `${currentUser.department} — managing your team, approvals, and task flow.` :
-                 currentUser.role === "team_leader" ? `${currentUser.department} — leading your team's workload and delivery.` :
-                 `${currentUser.department} — your assigned work and progress.`}
-              </p>
-            </div>
-          </div>
-          <div className="dash-hero-chips">
-            <span className="dash-chip">
-              <Calendar aria-hidden="true" size={13} />
-              {new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-            </span>
-            {reviewTasks > 0 ? (
-              <button className="dash-chip dash-chip-warn" type="button" onClick={canAllocateTasks ? () => openTaskQueue("review") : undefined}>
-                <CheckCircle2 aria-hidden="true" size={13} />
-                {reviewTasks} need{reviewTasks === 1 ? "s" : ""} review
-              </button>
-            ) : null}
-            {overdueTasks > 0 ? (
-              <button className="dash-chip dash-chip-danger" type="button" onClick={() => openTaskQueue("overdue")}>
-                <AlertTriangle aria-hidden="true" size={13} />
-                {overdueTasks} overdue
-              </button>
-            ) : null}
-          </div>
-        </section>
-
         {/* ── KPI ROW ── */}
         <section className="dash-kpi-row" aria-label="Key metrics">
           <button className="dash-kpi dash-kpi-blue" onClick={() => openTaskQueue(currentUser.role === "user" ? "assigned" : "all")} type="button">
@@ -4044,6 +4032,30 @@ export function App() {
             </div>
           </div>
         </section>
+
+        {/* ── ONLINE NOW (executives only) ── */}
+        {currentUser.role === "superadmin" && (
+          <section className="dash-online-panel">
+            <div className="dash-online-header">
+              <Users aria-hidden="true" size={15} />
+              <span>Online Now</span>
+              <span className="dash-online-count">{onlineUsers.length}</span>
+            </div>
+            {onlineUsers.length === 0 ? (
+              <p className="dash-online-empty">No one else is online right now.</p>
+            ) : (
+              <div className="dash-online-list">
+                {onlineUsers.map((u) => (
+                  <div key={u.id} className="dash-online-user">
+                    <span className="dash-online-dot" />
+                    <span className="dash-online-name">{u.name}</span>
+                    <span className="dash-online-role">{u.department}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* ── MAIN 2-COLUMN LAYOUT ── */}
         <div className="dash-layout">

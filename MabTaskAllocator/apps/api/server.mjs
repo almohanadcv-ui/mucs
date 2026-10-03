@@ -150,6 +150,23 @@ function validatePassword(password) {
   }
 }
 
+// In-memory presence store: userId → { id, name, role, department, seenAt }
+// Entries older than 2 minutes are considered offline.
+const presenceMap = new Map();
+const PRESENCE_TTL_MS = 2 * 60 * 1000;
+
+function prunePresence() {
+  const cutoff = Date.now() - PRESENCE_TTL_MS;
+  for (const [id, entry] of presenceMap) {
+    if (entry.seenAt < cutoff) presenceMap.delete(id);
+  }
+}
+
+function onlineUsers() {
+  prunePresence();
+  return [...presenceMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 const superadminExists = await db.prepare("SELECT id FROM users WHERE role = 'superadmin' LIMIT 1").get();
 if (!superadminExists) {
   const initialPassword = process.env.INITIAL_SUPERADMIN_PASSWORD || (isProduction ? "" : "jadjadjad1");
@@ -550,14 +567,15 @@ async function requireProjectDepartment(name) {
   return requireDepartment(name);
 }
 
-async function validTaskAssignees(ids, department, projectId = null) {
+async function validTaskAssignees(ids, department, projectId = null, allowTeamLeaders = false) {
   const uniqueIds = [...new Set(Array.isArray(ids) ? ids.map(String) : [])];
   if (!uniqueIds.length) return [];
+  const roleFilter = allowTeamLeaders ? "role IN ('user', 'team_leader')" : "role = 'user'";
   const users = await db.prepare(`
     SELECT * FROM users WHERE id IN (${uniqueIds.map(() => "?").join(",")})
-      AND role = 'user' AND lower(trim(department)) = lower(trim(?))
+      AND ${roleFilter} AND lower(trim(department)) = lower(trim(?))
   `).all(...uniqueIds, department);
-  if (users.length !== uniqueIds.length) throw new Error("Every assignee must be a normal user in the task department.");
+  if (users.length !== uniqueIds.length) throw new Error(allowTeamLeaders ? "Every assignee must be a user or team leader in the task department." : "Every assignee must be a normal user in the task department.");
   if (projectId) {
     const memberCount = (await db.prepare(`
       SELECT count(*) AS count FROM project_members
@@ -1367,27 +1385,44 @@ async function buildProductivityReport(user, month = "") {
   return Buffer.from(await workbook.xlsx.writeBuffer());
 }
 
-async function buildProjectTaskTemplate(project) {
-  const members = await db.prepare(`
-    SELECT users.name, users.username FROM project_members
+async function buildProjectTaskTemplate(project, actor) {
+  // Fetch project members, scoped to what the actor is allowed to see.
+  const allMembers = await db.prepare(`
+    SELECT users.id, users.name, users.username, users.role, users.department
+    FROM project_members
     JOIN users ON users.id = project_members.user_id
-    WHERE project_members.project_id = ? ORDER BY users.name
+    WHERE project_members.project_id = ?
+    ORDER BY users.name
   `).all(project.id);
-  const usernames = members.map((member) => member.username);
-  const firstUser = usernames[0] ?? "user@mabunited.com";
-  const secondUser = usernames[1] ?? firstUser;
+
+  // Filter by actor scope: superadmin sees everyone, others see their department only.
+  const members = actor.role === "superadmin"
+    ? allMembers
+    : allMembers.filter((m) => canAccessDepartment(actor, m.department));
+
+  const names = members.map((m) => m.name);
+  const firstUser = names[0] ?? "Team Member";
   const due = (days) => {
     const date = new Date();
     date.setUTCDate(date.getUTCDate() + days);
     return date;
   };
+
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "MAB Task Allocator";
   workbook.created = new Date();
+
+  // Hidden reference sheet for member names — avoids the 255-char inline limit.
+  const membersSheet = workbook.addWorksheet("Members");
+  membersSheet.state = "veryHidden";
+  names.forEach((name, i) => { membersSheet.getCell(`A${i + 1}`).value = name; });
+  const memberRange = names.length > 0 ? `Members!$A$1:$A$${names.length}` : null;
+
   const tasks = workbook.addWorksheet("Tasks", { views: [{ state: "frozen", ySplit: 1, showGridLines: false }] });
   const instructions = workbook.addWorksheet("Instructions", { views: [{ showGridLines: false }] });
   const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1178B8" } };
   const paleFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEF8FF" } };
+
   tasks.columns = [
     { header: "Task", key: "task", width: 42 },
     { header: "Priority", key: "priority", width: 14 },
@@ -1395,13 +1430,12 @@ async function buildProjectTaskTemplate(project) {
     { header: "Due Date", key: "dueDate", width: 16 },
     { header: "Progress", key: "progress", width: 14 },
     { header: "Task Type", key: "taskType", width: 20 },
-    { header: "Assignees", key: "assignees", width: 48 }
+    { header: "Assignee", key: "assignees", width: 36 }
   ];
-  tasks.addRows([
-    { task: "Prepare technical submittal package", priority: "high", complexity: 3, dueDate: due(7), progress: 0, taskType: "Technical", assignees: firstUser },
-    { task: "Review quantity takeoff and measurements", priority: "medium", complexity: 2, dueDate: due(12), progress: 25, taskType: "QS", assignees: secondUser },
-    { task: "Coordinate BIM model and shop drawings", priority: "urgent", complexity: 5, dueDate: due(18), progress: 0, taskType: "BIM", assignees: `${firstUser};${secondUser}` }
-  ]);
+
+  // One dummy row using the first member's name.
+  tasks.addRow({ task: "Prepare technical submittal package", priority: "high", complexity: 3, dueDate: due(7), progress: 0, taskType: "Technical", assignees: firstUser });
+
   tasks.getRow(1).height = 28;
   tasks.getRow(1).eachCell((cell) => {
     cell.fill = headerFill;
@@ -1411,12 +1445,17 @@ async function buildProjectTaskTemplate(project) {
   tasks.getColumn("dueDate").numFmt = "yyyy-mm-dd";
   tasks.getColumn("progress").numFmt = "0";
   tasks.autoFilter = { from: "A1", to: "G1" };
+
   for (let row = 2; row <= 250; row += 1) {
     tasks.getCell(`B${row}`).dataValidation = { type: "list", allowBlank: false, formulae: ['"low,medium,high,urgent"'] };
     tasks.getCell(`C${row}`).dataValidation = { type: "whole", operator: "between", allowBlank: false, formulae: [1, 5] };
     tasks.getCell(`E${row}`).dataValidation = { type: "whole", operator: "between", allowBlank: true, formulae: [0, 100] };
     tasks.getCell(`F${row}`).dataValidation = { type: "list", allowBlank: false, formulae: ['"Technical,QS,Shop Drawings,BIM,Variation"'] };
+    if (memberRange) {
+      tasks.getCell(`G${row}`).dataValidation = { type: "list", allowBlank: true, formulae: [memberRange], showErrorMessage: true, error: "Choose a name from the dropdown list.", errorTitle: "Invalid assignee" };
+    }
   }
+
   tasks.eachRow((row, rowNumber) => {
     if (rowNumber > 1 && rowNumber % 2 === 0) row.eachCell((cell) => { cell.fill = paleFill; });
   });
@@ -1429,11 +1468,11 @@ async function buildProjectTaskTemplate(project) {
   instructions.getCell("A3").value = "Department";
   instructions.getCell("B3").value = project.department;
   instructions.getCell("A4").value = "How to use";
-  instructions.getCell("B4").value = "Edit or replace the dummy rows on the Tasks sheet, keep the header names unchanged, then import the completed workbook into this project.";
+  instructions.getCell("B4").value = "Fill in task rows on the Tasks sheet. Use the Assignee dropdown to pick a project member by name. Keep the header row unchanged, then import the file into this project.";
   instructions.getCell("A6").value = "Assignees";
-  instructions.getCell("B6").value = "Use a project member name or username. Separate multiple assignees with a semicolon (;).";
+  instructions.getCell("B6").value = "Select a member name from the Assignee column dropdown. For multiple assignees, duplicate the row or separate names with a semicolon (;).";
   instructions.getCell("A8").value = "Project members";
-  instructions.getCell("B8").value = members.map((member) => `${member.name} (${member.username})`).join("; ") || "Add project members before importing assignments.";
+  instructions.getCell("B8").value = names.join("; ") || "No members in scope. Add project members before exporting the template.";
   instructions.getColumn("A").width = 22;
   instructions.getColumn("B").width = 90;
   instructions.getColumn("B").alignment = { wrapText: true, vertical: "top" };
@@ -1941,7 +1980,7 @@ const server = createServer(async (request, response) => {
       if (!canAccessDepartment(actor, project.department)) {
         return send(response, 403, { message: "You cannot export this project task sheet." });
       }
-      const data = await buildProjectTaskTemplate(project);
+      const data = await buildProjectTaskTemplate(project, actor);
       const slug = project.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "project";
       return sendBinary(response, 200, data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", `${slug}-task-sheet.xlsx`);
     }
@@ -2084,12 +2123,13 @@ const server = createServer(async (request, response) => {
       const project = body.projectId ? await db.prepare("SELECT * FROM projects WHERE id = ?").get(body.projectId) : null;
       if (body.projectId && !project) return send(response, 404, { message: "Project not found." });
       const requestedIds = Array.isArray(body.assigneeIds) ? body.assigneeIds : body.assigneeId ? [body.assigneeId] : [];
-      const firstRequested = requestedIds[0] ? await db.prepare("SELECT * FROM users WHERE id = ? AND role = 'user'").get(requestedIds[0]) : null;
+      const allowTeamLeaderAssignees = actor.role === "technical_manager";
+      const firstRequested = requestedIds[0] ? await db.prepare("SELECT * FROM users WHERE id = ? AND role IN ('user', 'team_leader')").get(requestedIds[0]) : null;
       const department = (project && !sameDepartment(project.department, "Technical Department") ? project.department : undefined) ?? firstRequested?.department ?? (["admin", "team_leader"].includes(actor.role) ? actor.department : body.department);
       await requireDepartment(department);
       if (project && !projectIncludes(project.department, department)) fail(400, "Choose a task discipline within this project.");
       if (!canAccessDepartment(actor, department)) return send(response, 403, { message: "Tasks can be created in your own department only." });
-      const assignees = await validTaskAssignees(requestedIds, department, project?.id ?? null);
+      const assignees = await validTaskAssignees(requestedIds, department, project?.id ?? null, allowTeamLeaderAssignees);
       const complexity = normalizeComplexity(body.complexity);
       const dueDate = assignees.length ? (String(body.dueDate ?? "").slice(0, 10) || null) : null;
       const task = {
@@ -2156,7 +2196,7 @@ const server = createServer(async (request, response) => {
       await requireDepartment(department);
       if (project && !projectIncludes(project.department, department)) fail(400, "Choose a task discipline within this project.");
       if (!canAccessDepartment(actor, department)) return send(response, 403, { message: "Admins can edit tasks in their department only." });
-      const assignees = await validTaskAssignees(requestedIds, department, project?.id ?? null);
+      const assignees = await validTaskAssignees(requestedIds, department, project?.id ?? null, actor.role === "technical_manager");
       const previousIds = await taskAssigneeIds(existing.id);
       const complexity = normalizeComplexity(body.complexity ?? existing.complexity);
       const dueDate = assignees.length
@@ -2800,6 +2840,22 @@ const server = createServer(async (request, response) => {
       }
       await touchSession(request);
       return send(response, 200, { ok: true });
+    }
+
+    if (request.method === "POST" && path === "/api/presence/ping") {
+      presenceMap.set(actor.id, {
+        id: actor.id,
+        name: actor.name,
+        role: actor.role,
+        department: actor.department,
+        seenAt: Date.now()
+      });
+      return send(response, 200, { ok: true });
+    }
+
+    if (request.method === "GET" && path === "/api/presence/online") {
+      if (actor.role !== "superadmin") return send(response, 403, { message: "Executives only." });
+      return send(response, 200, { users: onlineUsers() });
     }
 
     return send(response, 404, { message: "Route not found." });

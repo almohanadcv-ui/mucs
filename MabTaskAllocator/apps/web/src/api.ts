@@ -494,5 +494,7 @@ export const api = {
       body: JSON.stringify({ message, history, files })
     }),
   markNotificationsRead: () => request<{ unreadCount: number }>("/api/notifications/read", { method: "POST" }),
-  markNotificationRead: (notificationId: string) => request<{ unreadCount: number }>(`/api/notifications/${notificationId}/read`, { method: "POST", body: "{}" })
+  markNotificationRead: (notificationId: string) => request<{ unreadCount: number }>(`/api/notifications/${notificationId}/read`, { method: "POST", body: "{}" }),
+  presencePing: () => request<{ ok: boolean }>("/api/presence/ping", { method: "POST", body: "{}" }),
+  fetchOnlineUsers: () => request<{ users: Array<{ id: string; name: string; role: string; department: string }> }>("/api/presence/online")
 };
