@@ -387,6 +387,9 @@ export const api = {
     }),
   deleteDepartment: (id: string) =>
     request<{ deleted: string }>(`/api/departments/${id}`, { method: "DELETE" }),
+  getPreferences: () => request<{ emailNotifications: boolean }>("/api/me/preferences"),
+  updatePreferences: (preferences: { emailNotifications: boolean }) =>
+    request<{ emailNotifications: boolean }>("/api/me/preferences", { method: "PUT", body: JSON.stringify(preferences) }),
   createTodo: (todo: { title: string; taskId?: string }) =>
     request<{ todo: TodoItem }>("/api/todos", { method: "POST", body: JSON.stringify(todo) }),
   updateTodo: (todo: TodoItem) =>

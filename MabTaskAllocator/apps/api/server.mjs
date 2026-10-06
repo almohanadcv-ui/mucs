@@ -715,7 +715,9 @@ async function notify(userId, kind, title, body, taskId, channelId, dedupeKey) {
 
 async function sendNotificationEmail(userId, kind, title, body, taskId) {
   if (!isMailConfigured()) return;
-  const user = await db.prepare("SELECT name, username FROM users WHERE id = ?").get(userId);
+  const user = await db.prepare("SELECT name, username, email_notifications FROM users WHERE id = ?").get(userId);
+  // The user turned notification emails off in Settings — never email them.
+  if (user && user.email_notifications === false) return;
   // The username IS the email address in this app.
   if (!user?.username || !user.username.includes("@")) return;
 
@@ -1810,6 +1812,18 @@ const server = createServer(async (request, response) => {
       await audit(actor, "deleted", "department", dept.name, dept.name, `Deleted department ${dept.name}`);
       await touchSession(request);
       return send(response, 200, { deleted: dept.name });
+    }
+
+    if (request.method === "GET" && path === "/api/me/preferences") {
+      const row = await db.prepare("SELECT email_notifications FROM users WHERE id = ?").get(actor.id);
+      return send(response, 200, { emailNotifications: row?.email_notifications !== false });
+    }
+
+    if (request.method === "PUT" && path === "/api/me/preferences") {
+      if (typeof body.emailNotifications !== "boolean") throw new Error("emailNotifications must be true or false.");
+      await db.prepare("UPDATE users SET email_notifications = ? WHERE id = ?").run(body.emailNotifications, actor.id);
+      await touchSession(request);
+      return send(response, 200, { emailNotifications: body.emailNotifications });
     }
 
     if (request.method === "POST" && path === "/api/todos") {

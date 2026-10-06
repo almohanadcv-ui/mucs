@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS departments (
 
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('superadmin', 'admin', 'technical_manager', 'team_leader', 'user'));
+-- Per-user opt-out for notification emails (in-app notifications are unaffected).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications boolean NOT NULL DEFAULT true;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_name_ci ON departments (lower(name));
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS parent_id text REFERENCES departments(id) ON DELETE RESTRICT;

@@ -847,6 +847,33 @@ export function App() {
     : storedUserSettings(themeOwnerId);
   const desktopNotificationsSupported = browserNotificationsAvailable();
   const desktopNotificationsEnabled = userSettings.desktopNotifications && notificationPermission === "granted";
+  // Stored on the server (the API sends the emails), unlike the browser-only settings above.
+  const [emailNotifications, setEmailNotifications] = useState<boolean | null>(null);
+  const [emailNotificationsError, setEmailNotificationsError] = useState("");
+
+  useEffect(() => {
+    setEmailNotifications(null);
+    setEmailNotificationsError("");
+    if (!currentUser) return;
+    let cancelled = false;
+    api.getPreferences()
+      .then((preferences) => { if (!cancelled) setEmailNotifications(preferences.emailNotifications); })
+      .catch(() => { if (!cancelled) setEmailNotificationsError("Could not load the email setting."); });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  async function updateEmailNotifications(enabled: boolean) {
+    const previous = emailNotifications;
+    setEmailNotifications(enabled);
+    setEmailNotificationsError("");
+    try {
+      const saved = await api.updatePreferences({ emailNotifications: enabled });
+      setEmailNotifications(saved.emailNotifications);
+    } catch (error) {
+      setEmailNotifications(previous);
+      setEmailNotificationsError(error instanceof Error ? error.message : "Could not save the email setting.");
+    }
+  }
 
   useEffect(() => {
     setThemePreference({
@@ -5368,6 +5395,24 @@ export function App() {
                       <small>Play a short tone when a new unread notification arrives.</small>
                     </span>
                     <input checked={userSettings.notificationSound} onChange={(event) => updateUserSettings({ notificationSound: event.target.checked })} type="checkbox" />
+                  </label>
+                  <label className="setting-switch">
+                    <span>
+                      <strong>Email notifications</strong>
+                      <small>
+                        {emailNotificationsError
+                          ? emailNotificationsError
+                          : emailNotifications === false
+                            ? "Off — no notification emails will be sent to you."
+                            : "Send an email when a new task, approval, or reminder arrives for you."}
+                      </small>
+                    </span>
+                    <input
+                      checked={emailNotifications ?? true}
+                      disabled={emailNotifications === null}
+                      onChange={(event) => void updateEmailNotifications(event.target.checked)}
+                      type="checkbox"
+                    />
                   </label>
                   <label className="setting-range">
                     <span><strong>Sound volume</strong><small>{userSettings.notificationVolume}%</small></span>
