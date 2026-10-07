@@ -10331,3 +10331,66 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--mab-blue)
     grid-column: 1 / -1;
   }
 }
+
+/* Work Intelligence: third column for people without active work (red highlight). */
+.intelligence-grid.with-idle {
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr) minmax(260px, 0.7fr);
+}
+
+.idle-people {
+  border-color: #fecaca !important;
+}
+
+.idle-people .panel-header {
+  background: #fef2f2 !important;
+  border-bottom-color: #fecaca !important;
+}
+
+.idle-people .panel-header p {
+  color: #b91c1c;
+}
+
+.idle-count {
+  background: #dc2626;
+  border-radius: 999px;
+  color: #fff;
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  margin-inline-start: 6px;
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+
+.idle-list article {
+  background: #fff7f7;
+  border-left: 3px solid #dc2626;
+}
+
+.idle-list article strong {
+  color: #991b1b;
+}
+
+@media (max-width: 1250px) {
+  .intelligence-grid.with-idle {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .intelligence-grid.with-idle > .idle-people {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 950px) {
+  .intelligence-grid.with-idle {
+    grid-template-columns: 1fr;
+  }
+}
+
+.task-title-hint {
+  color: #b91c1c;
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 4px;
+}

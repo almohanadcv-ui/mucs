@@ -94,6 +94,17 @@ const defaultDepartments: DepartmentName[] = [
 
 const taskTypes: TaskType[] = ["Technical", "QS", "Shop Drawings", "BIM", "Variation"];
 const complexityLabels = ["", "Very low", "Low", "Moderate", "High", "Very high"];
+// Every typed character counts — letters, numbers and spaces — but it can't be only spaces.
+const minTaskTitleLength = 10;
+const taskTitleTooShort = (title: string) => title.length < minTaskTitleLength || !title.trim();
+const taskTitleRuleMessage = `Task title must be at least ${minTaskTitleLength} characters (letters, numbers and spaces all count).`;
+
+function TaskTitleHint({ title }: { title: string }) {
+  if (!title.length || !taskTitleTooShort(title)) return null;
+  return <small className="task-title-hint" role="alert">{title.trim()
+    ? `Task title must be at least ${minTaskTitleLength} characters (${title.length}/${minTaskTitleLength})`
+    : "Task title cannot be only spaces"}</small>;
+}
 const themeKeyPrefix = "mab-task-allocator.theme.";
 const settingsKeyPrefix = "mab-task-allocator.settings.";
 const announcedNotificationPrefix = "mab-task-allocator.notified.";
@@ -2389,8 +2400,8 @@ export function App() {
     const assignees = taskDraftAssignableUsers.filter((user) => taskDraft.assigneeIds.includes(user.id));
     const department = projectTaskDepartment(selectedDraftProject, !canChooseDepartment ? currentUser.department : taskDraft.department);
 
-    if (!title) {
-      setAllocationMessage("Please enter a task title.");
+    if (taskTitleTooShort(taskDraft.title)) {
+      setAllocationMessage(taskTitleRuleMessage);
       return;
     }
 
@@ -2408,7 +2419,7 @@ export function App() {
     if (requiresApproval === null) return;
     try {
       await api.createTask({
-        title,
+        title: taskDraft.title,
         department,
         priority: taskDraft.priority,
         assigneeId: assignees[0]?.id,
@@ -2440,18 +2451,19 @@ export function App() {
   }
 
   function startEditTask(task: ManagedTask) {
-    if (!canManageTask(task)) return;
+    if (!canLeadTask(task)) return;
     setAssigningTaskId(null);
     setEditingTaskId(task.id);
     setTaskEditDraft({ ...task, complexity: complexityPoints(task) });
   }
 
   async function saveEditTask() {
-    if (!currentUser || !taskEditDraft || !canManageTask(taskEditDraft)) return;
+    if (!currentUser || !taskEditDraft || !canLeadTask(taskEditDraft)) return;
 
     const title = taskEditDraft.title.trim();
-    if (!title) {
-      setAllocationMessage("Please enter a task title before saving.");
+    const originalTitle = tasks.find((item) => item.id === taskEditDraft.id)?.title;
+    if (title !== originalTitle && taskTitleTooShort(taskEditDraft.title)) {
+      setAllocationMessage(taskTitleRuleMessage);
       return;
     }
 
@@ -2480,7 +2492,7 @@ export function App() {
 
     const updatedTask: ManagedTask = {
       ...taskEditDraft,
-      title,
+      title: taskEditDraft.title,
       department,
       assigneeId: assignees[0]?.id,
       assigneeIds: assignees.map((assignee) => assignee.id),
@@ -3198,6 +3210,7 @@ export function App() {
                     }
                     value={taskEditDraft.title}
                   />
+                  <TaskTitleHint title={taskEditDraft.title} />
                 </label>
                 <label className="task-field-label">Project
                   <select
@@ -5312,6 +5325,12 @@ export function App() {
             .map((insight) => ({ insight, user: users.find((user) => user.id === insight.userId) }))
             .filter((item) => item.user && (currentUser.role !== "user" || item.user.id === currentUser.id))
             .sort((first, second) => second.insight.burnoutRisk - first.insight.burnoutRisk);
+          // People with no active work get their own column — leaders and managers only.
+          const showIdlePeople = ["superadmin", "technical_manager", "team_leader"].includes(currentUser.role);
+          const idlePeople = showIdlePeople
+            ? visibleWorkforce.filter(({ insight }) => insight.activeTasks === 0).sort((first, second) => (first.user?.name ?? "").localeCompare(second.user?.name ?? ""))
+            : [];
+          const busyWorkforce = showIdlePeople ? visibleWorkforce.filter(({ insight }) => insight.activeTasks > 0) : visibleWorkforce;
           return <section className="panel intelligence-page">
             <header className="intelligence-hero"><div><span><Sparkles aria-hidden="true" size={23} /></span><div><p>Explainable operational analytics</p><h2>Work Intelligence</h2><small>Risk signals support manager decisions; they never modify assignments automatically.</small></div></div><strong>{intelligence.portfolio.healthScore}<small>Portfolio health</small></strong></header>
             <div className="intelligence-summary">
@@ -5320,7 +5339,7 @@ export function App() {
               <span className={intelligence.portfolio.overloadedUsers ? "warning" : ""}><strong>{intelligence.portfolio.overloadedUsers}</strong>Overloaded people</span>
               <span><strong>{intelligence.portfolio.unassignedTasks}</strong>Unassigned</span>
             </div>
-            <div className="intelligence-grid">
+            <div className={`intelligence-grid${showIdlePeople ? " with-idle" : ""}`}>
               <section><div className="panel-header"><div><p>Predictive delivery control</p><h3>Task risk radar</h3></div></div><div className="intelligence-list">
                 {visibleTaskInsights.length ? visibleTaskInsights.map(({ insight, task }) => {
                   const suggested = users.find((user) => user.id === insight.suggestedAssigneeId);
@@ -5328,8 +5347,13 @@ export function App() {
                 }) : <p className="empty-state">No visible task risks.</p>}
               </div></section>
               <section><div className="panel-header"><div><p>Capacity protection</p><h3>Burnout & workload</h3></div></div><div className="intelligence-list workforce-list">
-                {visibleWorkforce.length ? visibleWorkforce.map(({ insight, user }) => <article key={insight.userId}><span className={`risk-score risk-${insight.level}`}>{insight.burnoutRisk}</span><div><strong>{user?.name}</strong><small>{insight.reasons.join(" · ")}</small><span>{insight.activeTasks} active · {insight.complexityLoad} complexity points</span></div></article>) : <p className="empty-state">No workforce risk data.</p>}
+                {busyWorkforce.length ? busyWorkforce.map(({ insight, user }) => <article key={insight.userId}><span className={`risk-score risk-${insight.level}`}>{insight.burnoutRisk}</span><div><strong>{user?.name}</strong><small>{insight.reasons.join(" · ")}</small><span>{insight.activeTasks} active · {insight.complexityLoad} complexity points</span></div></article>) : <p className="empty-state">No workforce risk data.</p>}
               </div></section>
+              {showIdlePeople ? (
+                <section className="idle-people"><div className="panel-header"><div><p>Available capacity</p><h3>Without active work <span className="idle-count">{idlePeople.length}</span></h3></div></div><div className="intelligence-list workforce-list idle-list">
+                  {idlePeople.length ? idlePeople.map(({ insight, user }) => <article key={insight.userId}><span className="risk-score risk-critical">0</span><div><strong>{user?.name}</strong><small>No active tasks — ready to be assigned</small><span>{user?.department}</span></div></article>) : <p className="empty-state">Everyone has active work.</p>}
+                </div></section>
+              ) : null}
             </div>
             <details className="intelligence-method"><summary>How these signals are calculated</summary><p><strong>Delay risk</strong> combines deadline proximity, progress versus comparable completed work, assignee load, blocked state, and reopen cycles. <strong>Smart priority</strong> combines declared urgency, deadline pressure, complexity, blocked/review state, and quality history. <strong>Burnout risk</strong> combines active complexity, concurrent tasks, urgent and overdue work, blockers, and rework. Scores are capped, explainable, and advisory.</p></details>
           </section>;
@@ -5857,7 +5881,8 @@ export function App() {
               <button className="icon-button" onClick={() => setShowTaskComposer(false)} type="button" aria-label="Close new task form"><X aria-hidden="true" size={17} /></button>
             </div>
             <form className="person-form task-composer-form" onSubmit={handleAllocateTask}>
-              <input onChange={(event) => setTaskDraft((draft) => ({ ...draft, title: event.target.value }))} placeholder="Task title" value={taskDraft.title} />
+              <input onChange={(event) => setTaskDraft((draft) => ({ ...draft, title: event.target.value }))} placeholder="Task title (at least 10 characters)" value={taskDraft.title} />
+              <TaskTitleHint title={taskDraft.title} />
               <label>Project
                 <select
                   onChange={(event) => {

@@ -22,6 +22,10 @@ try {
 }
 
 function fail(status, message) { throw Object.assign(new Error(message), { status }); }
+// Every typed character counts (letters, numbers, spaces), but not only spaces.
+// The stored title is still trimmed.
+const MIN_TASK_TITLE_LENGTH = 10;
+const taskTitleTooShort = (raw) => String(raw ?? "").length < MIN_TASK_TITLE_LENGTH || !String(raw ?? "").trim();
 
 const { Pool } = pg;
 const port = Number(process.env.PORT ?? 4000);
@@ -2160,7 +2164,7 @@ const server = createServer(async (request, response) => {
         taskType: normalizeTaskType(body.taskType)
       };
       task.taskCode = await generateTaskCode(project?.name, department);
-      if (!task.title) throw new Error("Task title is required.");
+      if (taskTitleTooShort(body.title)) fail(400, `Task title must be at least ${MIN_TASK_TITLE_LENGTH} characters.`);
       const initialSteps = body.checklist ?? [];
       if (!Array.isArray(initialSteps) || initialSteps.length > 100 || initialSteps.some(item => !String(item?.title ?? "").trim() || String(item.title).trim().length > 200)) fail(400, "Provide up to 100 work steps, each with 1?200 characters.");
       const assigneeIdSet = new Set(task.assigneeIds);
@@ -2200,6 +2204,11 @@ const server = createServer(async (request, response) => {
       const existing = await getTask(taskMatch[1]);
       if (!existing) return send(response, 404, { message: "Task not found." });
       if (!canLead(actor, existing)) return send(response, 403, { message: "You cannot edit this task." });
+      // Only enforce on a changed title, so older short titles don't block other edits.
+      const editedTitle = String(body.title ?? "").trim();
+      if (editedTitle !== existing.title && taskTitleTooShort(body.title)) {
+        return send(response, 400, { message: `Task title must be at least ${MIN_TASK_TITLE_LENGTH} characters.` });
+      }
       if (existing.status === "done") return send(response, 409, { message: "Completed tasks must be reopened before they can be edited." });
       if (existing.action_request?.state === "pending") return send(response, 409, { message: "Review the pending task action before editing." });
       if (existing.allocation_request?.isNew || existing.allocation_request?.state === "pending") return send(response, 409, { message: "Review the pending allocation before editing this task." });

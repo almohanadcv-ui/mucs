@@ -3,6 +3,11 @@ import { useEffect } from "react";
 export type SiteLanguage = "en" | "ar";
 
 const arabic: Record<string, string> = {
+  "Available capacity": "طاقة متاحة",
+  "Without active work": "بدون مهام نشطة",
+  "No active tasks — ready to be assigned": "لا توجد مهام نشطة — جاهز للتكليف",
+  "Everyone has active work.": "الجميع لديهم مهام نشطة.",
+  "Task title (at least 10 characters)": "عنوان المهمة (10 أحرف على الأقل)",
   "Email notifications": "إشعارات البريد الإلكتروني",
   "Off — no notification emails will be sent to you.": "متوقفة — لن تُرسل إليك أي إشعارات على البريد.",
   "Send an email when a new task, approval, or reminder arrives for you.": "إرسال بريد عند وصول مهمة أو موافقة أو تذكير جديد لك.",
