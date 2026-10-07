@@ -3706,7 +3706,7 @@ button.dash-kpi:hover { box-shadow: 0 10px 26px rgba(17,120,184,0.13); transform
   cursor: pointer;
   display: grid;
   gap: 12px;
-  grid-template-columns: auto minmax(220px, 1fr) auto minmax(120px, 0.5fr) auto;
+  grid-template-columns: auto minmax(220px, 1fr) auto minmax(120px, 0.5fr) auto auto;
   list-style: none;
   min-height: 72px;
   padding: 10px 14px;
@@ -10292,3 +10292,42 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--mab-blue)
   background: transparent; color: #64748b; cursor: pointer; line-height: 0;
 }
 .password-field button.password-eye:hover { background: rgba(100,116,139,.14) !important; color: #0f2b46; }
+
+/* Duplicate: a compact button pinned to the right (active + finished task cards).
+   Kept last so it wins over the responsive rules above that stretched it full-width. */
+.active-task-summary .task-summary-action,
+.archive-task-card > summary .task-summary-action {
+  align-self: center;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 5px;
+  grid-column: auto;
+  justify-self: end;
+  min-height: 28px;
+  padding: 0 10px;
+}
+
+/* Progress sits under the title, Duplicate on the far right of the same row. */
+@media (min-width: 701px) {
+  .active-task-summary .archive-completed {
+    grid-column: 2;
+    justify-self: start;
+  }
+  .active-task-summary .task-summary-action {
+    grid-column: -2 / -1;
+  }
+}
+
+@media (max-width: 1080px) {
+  .archive-task-card > summary .task-summary-action {
+    grid-column: -2 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .active-task-summary .task-summary-action,
+  .archive-task-card > summary .task-summary-action {
+    grid-column: 1 / -1;
+  }
+}

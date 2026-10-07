@@ -2199,7 +2199,7 @@ const server = createServer(async (request, response) => {
     if (taskMatch && request.method === "PUT") {
       const existing = await getTask(taskMatch[1]);
       if (!existing) return send(response, 404, { message: "Task not found." });
-      if (!canManage(actor, existing)) return send(response, 403, { message: "You cannot edit this task." });
+      if (!canLead(actor, existing)) return send(response, 403, { message: "You cannot edit this task." });
       if (existing.status === "done") return send(response, 409, { message: "Completed tasks must be reopened before they can be edited." });
       if (existing.action_request?.state === "pending") return send(response, 409, { message: "Review the pending task action before editing." });
       if (existing.allocation_request?.isNew || existing.allocation_request?.state === "pending") return send(response, 409, { message: "Review the pending allocation before editing this task." });

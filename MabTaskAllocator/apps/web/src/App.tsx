@@ -3104,7 +3104,8 @@ export function App() {
     const canDeleteTask = canManageTask(task);
     const allocationPending = task.allocationRequest?.state === "pending";
     const actionPending = Boolean(task.actionRequest);
-    const canEditTask = canDeleteTask && task.status !== "done" && !allocationPending && !actionPending && !task.allocationRequest?.isNew;
+    // Team leaders can edit too; deleting stays with admins / technical managers.
+    const canEditTask = canLeadTask(task) && task.status !== "done" && !allocationPending && !actionPending && !task.allocationRequest?.isNew;
     const canDuplicateTask = canLeadTask(task);
     const claimRequests = task.claimRequests ?? (task.claimRequest ? [task.claimRequest] : []);
     const userHasClaimRequest = Boolean(currentUser && claimRequests.some((request) => request.userId === currentUser.id));
@@ -3117,7 +3118,7 @@ export function App() {
       task.status === "new";
     const hasPendingClaim = Boolean(claimRequests.length && !task.assigneeIds.length);
     const canReviewClaim = Boolean(hasPendingClaim && !allocationPending && !actionPending && currentUser && canLeadTask(task));
-    const canDirectAssign = Boolean(canEditTask && !task.assigneeIds.length && !claimRequests.length);
+    const canDirectAssign = Boolean(canDeleteTask && canEditTask && !task.assigneeIds.length && !claimRequests.length);
     const canSubmitForReview =
       currentUser?.role === "user" &&
       task.assigneeIds.includes(currentUser.id) &&
@@ -3177,7 +3178,7 @@ export function App() {
                 duplicateTask(task);
               }}
             >
-              <CopyPlus aria-hidden="true" size={15} />
+              <CopyPlus aria-hidden="true" size={14} />
               <span>Duplicate</span>
             </button>
           ) : null}
@@ -5796,6 +5797,20 @@ export function App() {
                     <span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span>
                     <span className="archive-owner">{task.candidateName || "Unassigned"}</span>
                     <span className="archive-completed"><small>Completed</small><strong>{task.completedAt || "Recorded"}</strong></span>
+                    {canLeadTask(task) ? (
+                      <button
+                        type="button"
+                        className="task-summary-action"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          duplicateTask(task);
+                        }}
+                      >
+                        <CopyPlus aria-hidden="true" size={14} />
+                        <span>Duplicate</span>
+                      </button>
+                    ) : null}
                   </summary>
                   <div className="archive-task-details">
                     <div><span>Project</span><strong>{task.projectName || "No project"}</strong></div>
