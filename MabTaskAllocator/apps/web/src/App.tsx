@@ -343,6 +343,100 @@ function exportTasksToCSV(tasks: ManagedTask[], filename: string) {
   if (!tasks.length) return;
   const isArchive = filename.startsWith("mab-finished");
 
+  function xmlCell(value: string | number | null | undefined, style = "") {
+    const escaped = String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    return `<Cell${style ? ` ss:StyleID="${style}"` : ""}><Data ss:Type="${typeof value === "number" ? "Number" : "String"}">${escaped}</Data></Cell>`;
+  }
+
+  if (isArchive) {
+    const archiveHeaders = [
+      "Task ID", "Title", "Department", "Project", "Task Type",
+      "Priority", "Status", "Assigned To", "Subtask", "Subtask Assigned To", "Task Share",
+      "Due Date", "Started", "Progress %", "Complexity", "Completed", "On Time",
+      "Cycle Time (days)", "Reopens", "Review Comment", "Created"
+    ];
+    const archiveRows = tasks.flatMap((task, taskIndex) => {
+      const started = task.startedAt ? new Date(task.startedAt).toISOString().slice(0, 10) : "";
+      const completed = task.completedAtIso ? new Date(task.completedAtIso).toISOString().slice(0, 10) : "";
+      const onTime = task.completedAtIso && task.dueDate ? (task.completedAtIso.slice(0, 10) <= task.dueDate ? "Yes" : "No") : "";
+      const cycleTime = task.completedAtIso && task.startedAt
+        ? Math.round((new Date(task.completedAtIso).getTime() - new Date(task.startedAt).getTime()) / 86_400_000)
+        : "";
+      const checklist = task.checklist ?? [];
+      const taskComplexity = complexityPoints(task);
+      const taskRow = [
+        task.taskCode, task.title, task.department, task.projectName ?? "",
+        task.taskType, priorityLabels[task.priority], statusLabels[task.status],
+        task.candidateNames.join("; ") || "Unassigned",
+        checklist.length ? `${checklist.length} subtasks` : "", "", "100%",
+        task.dueDate || "", started, task.progress, taskComplexity,
+        completed, onTime, cycleTime, task.reopenCount, task.reviewComment ?? "",
+        task.createdAt ? new Date(task.createdAt).toISOString().slice(0, 10) : ""
+      ];
+      const subtaskRows = checklist.flatMap((step) => {
+        const fallbackOwners = task.candidateNames.length ? task.candidateNames : ["Unassigned"];
+        const owners = step.assigneeName ? [step.assigneeName] : fallbackOwners;
+        const share = 1 / checklist.length / owners.length;
+        return owners.map((owner) => [
+          "", "", "", "", "", "", "",
+          "",
+          step.title, owner, `${Math.round(share * 100)}%`,
+          "", "", step.completed ? 100 : 0, Math.round(taskComplexity * share),
+          "", "", "", "", "", ""
+        ]);
+      });
+      const spacer = taskIndex < tasks.length - 1 ? [["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]] : [];
+      return [taskRow, ...subtaskRows, ...spacer];
+    });
+    const columns = archiveHeaders.map((header, columnIndex) => {
+      const longest = [header, ...archiveRows.map((row) => String(row[columnIndex] ?? ""))]
+        .reduce((max, value) => Math.max(max, value.length), 0);
+      const width = Math.min(360, Math.max(70, longest * 7 + 22));
+      return `<Column ss:AutoFitWidth="0" ss:Width="${width}"/>`;
+    }).join("");
+    const rows = [
+      `<Row>${archiveHeaders.map((header) => xmlCell(header, "header")).join("")}</Row>`,
+      ...archiveRows.map((row, index) => {
+        const isTaskRow = Boolean(row[0]);
+        const isSpacer = row.every((value) => value === "");
+        const style = isTaskRow ? "task" : isSpacer ? "spacer" : index % 2 ? "alt" : "";
+        return `<Row>${row.map((value) => xmlCell(value, style)).join("")}</Row>`;
+      })
+    ].join("");
+    const filterLastRow = archiveRows.length + 1;
+    const filterLastColumn = archiveHeaders.length;
+    const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:x="urn:schemas-microsoft-com:office:excel">
+  <Styles>
+    <Style ss:ID="header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1178B8" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="task"><Font ss:Bold="1" ss:Color="#0B456B"/><Interior ss:Color="#DCEFFF" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="alt"><Interior ss:Color="#EEF8FF" ss:Pattern="Solid"/></Style>
+    <Style ss:ID="spacer"><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>
+  </Styles>
+  <Worksheet ss:Name="Finished Tasks">
+    <Table>${columns}${rows}</Table>
+    <AutoFilter x:Range="R1C1:R${filterLastRow}C${filterLastColumn}" xmlns="urn:schemas-microsoft-com:office:excel"/>
+    <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+      <FreezePanes/>
+      <FrozenNoSplit/>
+      <SplitHorizontal>1</SplitHorizontal>
+      <TopRowBottomPane>1</TopRowBottomPane>
+      <ActivePane>2</ActivePane>
+    </WorksheetOptions>
+  </Worksheet>
+</Workbook>`;
+    const blob = new Blob([workbook], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename.replace(/\.csv$/i, ".xls"); a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
+
   function cell(val: string | number | null | undefined): string {
     const s = String(val ?? "");
     return s.includes(",") || s.includes('"') || s.includes("\n")
@@ -5425,7 +5519,7 @@ export function App() {
                     onClick={() => exportTasksToCSV(filteredActiveTaskSectionTasks, `mab-active-tasks-${new Date().toISOString().slice(0, 10)}.csv`)}
                   >
                     <Download aria-hidden="true" size={15} />
-                    Export CSV
+                    Export Excel
                     <span className="export-count">{filteredActiveTaskSectionTasks.length}</span>
                   </button>
                 ) : null}
@@ -6130,8 +6224,8 @@ export function App() {
                     className="ghost-button export-csv-btn"
                     disabled={!filteredArchiveTasks.length}
                     type="button"
-                    title={filteredArchiveTasks.length ? `Download ${filteredArchiveTasks.length} finished task${filteredArchiveTasks.length === 1 ? "" : "s"} as CSV` : "No tasks to export"}
-                    onClick={() => exportTasksToCSV(filteredArchiveTasks, `mab-finished-tasks-${new Date().toISOString().slice(0, 10)}.csv`)}
+                    title={filteredArchiveTasks.length ? `Download ${filteredArchiveTasks.length} finished task${filteredArchiveTasks.length === 1 ? "" : "s"} as Excel` : "No tasks to export"}
+                    onClick={() => exportTasksToCSV(filteredArchiveTasks, `mab-finished-tasks-${new Date().toISOString().slice(0, 10)}.xls`)}
                   >
                     <Download aria-hidden="true" size={15} />
                     Export CSV
