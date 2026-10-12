@@ -108,6 +108,68 @@ function TaskTitleHint({ title }: { title: string }) {
 const themeKeyPrefix = "mab-task-allocator.theme.";
 const settingsKeyPrefix = "mab-task-allocator.settings.";
 const announcedNotificationPrefix = "mab-task-allocator.notified.";
+const aiLaunchPrefix = "mab-task-allocator.ai-launch.";
+const aiChatsKeyPrefix = "mab-task-allocator.ai-chats.";
+const aiLaunchDurationMs = 4 * 24 * 60 * 60 * 1000;
+const aiWelcomeMessage = "Hello! I'm the MAB AI assistant. Ask me to help organize work, draft a task update, summarize an issue, or plan your day.";
+
+type AiAttachment = { id: string; name: string; data: string; mimeType: string; size: number };
+type AiMessage = { id: string; role: "user" | "assistant"; text: string; files?: AiAttachment[]; createdAt: string };
+type AiChat = { id: string; title: string; messages: AiMessage[]; createdAt: string; updatedAt: string };
+
+function aiLaunchKey(ownerId: string, suffix: string) {
+  return `${aiLaunchPrefix}${ownerId}.${suffix}`;
+}
+
+function makeAiMessage(role: "user" | "assistant", text: string, files?: AiAttachment[]): AiMessage {
+  return { id: crypto.randomUUID(), role, text, files, createdAt: new Date().toISOString() };
+}
+
+function newAiChat(): AiChat {
+  const now = new Date().toISOString();
+  return {
+    id: crypto.randomUUID(),
+    title: "New chat",
+    createdAt: now,
+    updatedAt: now,
+    messages: [makeAiMessage("assistant", aiWelcomeMessage)]
+  };
+}
+
+function storedAiChats(ownerId: string): AiChat[] {
+  try {
+    const saved = window.localStorage.getItem(`${aiChatsKeyPrefix}${ownerId}`);
+    if (!saved) return [newAiChat()];
+    const chats = JSON.parse(saved) as AiChat[];
+    return Array.isArray(chats) && chats.length ? chats : [newAiChat()];
+  } catch {
+    return [newAiChat()];
+  }
+}
+
+function downloadAiAttachment(file: AiAttachment) {
+  const bytes = Uint8Array.from(atob(file.data), (char) => char.charCodeAt(0));
+  const blob = new Blob([bytes], { type: file.mimeType || "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = file.name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function aiLaunchStartedAt(ownerId: string) {
+  const key = aiLaunchKey(ownerId, "startedAt");
+  const saved = Number(window.localStorage.getItem(key));
+  if (Number.isFinite(saved) && saved > 0) return saved;
+  const startedAt = Date.now();
+  window.localStorage.setItem(key, String(startedAt));
+  return startedAt;
+}
+
+function aiLaunchIsActive(ownerId: string) {
+  return Date.now() - aiLaunchStartedAt(ownerId) < aiLaunchDurationMs;
+}
 
 type UserSettings = {
   desktopNotifications: boolean;
@@ -780,14 +842,16 @@ export function App() {
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
   const [showAiResetConfirm, setShowAiResetConfirm] = useState(false);
+  const [showAiLaunchPrompt, setShowAiLaunchPrompt] = useState(false);
+  const [aiLaunchNotInterested, setAiLaunchNotInterested] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [aiDraft, setAiDraft] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiFiles, setAiFiles] = useState<Array<{ name: string; data: string; mimeType: string; size: number }>>([]);
+  const [aiFiles, setAiFiles] = useState<AiAttachment[]>([]);
   const aiFileInputRef = useRef<HTMLInputElement>(null);
-  const [aiMessages, setAiMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
-    { role: "assistant", text: "Hello! I’m the MAB AI assistant. Ask me to help organize work, draft a task update, summarize an issue, or plan your day." }
-  ]);
+  const aiMessageListRef = useRef<HTMLDivElement | null>(null);
+  const [aiChats, setAiChats] = useState<AiChat[]>(() => storedAiChats("login"));
+  const [activeAiChatId, setActiveAiChatId] = useState(() => aiChats[0]?.id ?? "");
   const [activeView, setActiveView] = useState<AppView>(() => viewFromUrl());
   const navigationFromPopRef = useRef(false);
   const appNavigationDepthRef = useRef(0);
@@ -1056,6 +1120,84 @@ export function App() {
   const projectDepartments = [...(canChooseDepartment && departmentHierarchy.some(node => node.name === technicalDepartment) ? [technicalDepartment] : []), ...managedDepartments];
   const editingLastSuperAdmin = users.find((user) => user.id === editingUserId)?.role === "superadmin" && users.filter((user) => user.role === "superadmin").length === 1;
   const canAllocateTasks = canManagePeople || currentUser?.role === "team_leader";
+  const aiLaunchActive = Boolean(currentUser && aiLaunchIsActive(currentUser.id));
+  const activeAiChat = aiChats.find((chat) => chat.id === activeAiChatId) ?? aiChats[0] ?? newAiChat();
+
+  useEffect(() => {
+    const ownerId = currentUser?.id ?? "login";
+    const chats = storedAiChats(ownerId);
+    setAiChats(chats);
+    setActiveAiChatId(chats[0]?.id ?? "");
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    const ownerId = currentUser?.id ?? "login";
+    try {
+      window.localStorage.setItem(`${aiChatsKeyPrefix}${ownerId}`, JSON.stringify(aiChats));
+    } catch {
+      // Large attachments can exceed browser storage; keep the current session usable.
+    }
+  }, [aiChats, currentUser?.id]);
+
+  useEffect(() => {
+    if (!showAiAssistant) return;
+    const frame = window.requestAnimationFrame(() => {
+      const messageList = aiMessageListRef.current;
+      if (!messageList) return;
+      messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [showAiAssistant, activeAiChat.id, activeAiChat.messages.length, aiLoading]);
+
+  function updateActiveAiChat(updater: (chat: AiChat) => AiChat) {
+    setAiChats((chats) => chats.map((chat) => chat.id === activeAiChat.id ? updater(chat) : chat));
+  }
+
+  function createAiChat() {
+    const chat = newAiChat();
+    setAiChats((chats) => [chat, ...chats]);
+    setActiveAiChatId(chat.id);
+    setAiDraft("");
+    setAiFiles([]);
+    setShowAiResetConfirm(false);
+  }
+
+  function deleteAiChat(chatId: string) {
+    setAiChats((chats) => {
+      const next = chats.filter((chat) => chat.id !== chatId);
+      const safe = next.length ? next : [newAiChat()];
+      if (activeAiChatId === chatId) setActiveAiChatId(safe[0].id);
+      return safe;
+    });
+  }
+
+  function resetActiveAiChat() {
+    updateActiveAiChat((chat) => ({ ...newAiChat(), id: chat.id, title: chat.title }));
+    setAiDraft("");
+    setAiFiles([]);
+    setShowAiResetConfirm(false);
+  }
+
+  useEffect(() => {
+    if (!currentUser || !aiLaunchActive) {
+      setShowAiLaunchPrompt(false);
+      return;
+    }
+    setAiLaunchNotInterested(false);
+    setShowAiLaunchPrompt(window.localStorage.getItem(aiLaunchKey(currentUser.id, "notInterested")) !== "true");
+  }, [currentUser?.id, aiLaunchActive]);
+
+  function openAiAssistantFromLaunch() {
+    setShowAiAssistant(true);
+    setShowAiLaunchPrompt(false);
+  }
+
+  function ignoreAiLaunchPrompt() {
+    if (currentUser && aiLaunchNotInterested) {
+      window.localStorage.setItem(aiLaunchKey(currentUser.id, "notInterested"), "true");
+    }
+    setShowAiLaunchPrompt(false);
+  }
 
   function requestConfirmation(
     message: string,
@@ -2071,18 +2213,24 @@ export function App() {
     event.preventDefault();
     const message = aiDraft.trim();
     if ((!message && !aiFiles.length) || aiLoading) return;
-    const history = aiMessages.slice(-10);
+    const history = activeAiChat.messages.slice(-10).map(({ role, text }) => ({ role, text }));
     const filesToSend = aiFiles.map(({ name, data, mimeType }) => ({ name, data, mimeType }));
     const userText = message || `[${aiFiles.map((f) => f.name).join(", ")}]`;
+    const userMessage = makeAiMessage("user", userText, aiFiles.length ? aiFiles : undefined);
     setAiDraft("");
     setAiFiles([]);
-    setAiMessages((items) => [...items, { role: "user", text: userText }]);
+    updateActiveAiChat((chat) => ({
+      ...chat,
+      title: chat.title === "New chat" ? userText.slice(0, 48) : chat.title,
+      updatedAt: new Date().toISOString(),
+      messages: [...chat.messages, userMessage]
+    }));
     setAiLoading(true);
     try {
       const result = await api.askAiAssistant(message, history, filesToSend.length ? filesToSend : undefined);
-      setAiMessages((items) => [...items, { role: "assistant", text: result.reply }]);
+      updateActiveAiChat((chat) => ({ ...chat, updatedAt: new Date().toISOString(), messages: [...chat.messages, makeAiMessage("assistant", result.reply)] }));
     } catch (error) {
-      setAiMessages((items) => [...items, { role: "assistant", text: error instanceof Error ? error.message : "The AI assistant is unavailable right now." }]);
+      updateActiveAiChat((chat) => ({ ...chat, updatedAt: new Date().toISOString(), messages: [...chat.messages, makeAiMessage("assistant", error instanceof Error ? error.message : "The AI assistant is unavailable right now.")] }));
     } finally {
       setAiLoading(false);
     }
@@ -2103,7 +2251,7 @@ export function App() {
       reader.onload = () => {
         const dataUrl = reader.result as string;
         const base64 = dataUrl.split(",")[1] ?? "";
-        setAiFiles((prev) => prev.length < maxCount ? [...prev, { name: file.name, data: base64, mimeType: file.type || "application/octet-stream", size: file.size }] : prev);
+        setAiFiles((prev) => prev.length < maxCount ? [...prev, { id: crypto.randomUUID(), name: file.name, data: base64, mimeType: file.type || "application/octet-stream", size: file.size }] : prev);
       };
       reader.readAsDataURL(file);
     });
@@ -3659,13 +3807,17 @@ export function App() {
               </div>
               <div className="chat-management-actions">
                 <button
-                  className={`ghost-button ai-toggle-button ${showAiAssistant ? "active" : ""}`}
-                  onClick={() => setShowAiAssistant((visible) => !visible)}
+                  className={`ghost-button ai-toggle-button ${showAiAssistant ? "active" : ""} ${aiLaunchActive ? "ai-feature-launch" : ""}`}
+                  onClick={() => {
+                    setShowAiLaunchPrompt(false);
+                    setShowAiAssistant((visible) => !visible);
+                  }}
                   type="button"
                   aria-expanded={showAiAssistant}
                 >
                   <Sparkles aria-hidden="true" size={16} />
                   AI Assistant
+                  {aiLaunchActive ? <span className="feature-badge">New</span> : null}
                 </button>
                 {canManagePeople ? (
                   <>
@@ -3936,10 +4088,30 @@ export function App() {
       {/* Global AI assistant — opens from the top bar (AI Chat) on any page. */}
       {showAiAssistant ? (
         <section className="ai-assistant ai-assistant-floating" aria-label="MAB AI assistant">
+          <aside className="ai-chat-sidebar" aria-label="Saved AI chats">
+            <div className="ai-sidebar-header">
+              <div><strong>MAB AI</strong><small>{aiChats.length} saved chat{aiChats.length === 1 ? "" : "s"}</small></div>
+              <button className="icon-button" type="button" onClick={createAiChat} aria-label="New AI chat" title="New chat"><Plus size={15} /></button>
+            </div>
+            <div className="ai-chat-history">
+              {aiChats.map((chat) => (
+                <button className={`ai-history-item ${chat.id === activeAiChat.id ? "active" : ""}`} key={chat.id} onClick={() => { setActiveAiChatId(chat.id); setShowAiResetConfirm(false); setAiDraft(""); setAiFiles([]); }} type="button">
+                  <MessageSquare aria-hidden="true" size={14} />
+                  <span>{chat.title}</span>
+                </button>
+              ))}
+            </div>
+            <div className="ai-sidebar-footer">
+              <span><Sparkles aria-hidden="true" size={14} /></span>
+              <div><strong>Work assistant</strong><small>Tasks, reports, documents, messages</small></div>
+            </div>
+          </aside>
+          <div className="ai-chat-main">
           <header>
             <span><Sparkles aria-hidden="true" size={17} /></span>
-            <div><strong>MAB AI Assistant</strong><small>Powered by Gemini · responses may need review</small></div>
+            <div><strong>{activeAiChat.title}</strong><small>Full AI chat for tasks, documents, messages and planning</small></div>
             <button className="icon-button" type="button" onClick={() => setShowAiResetConfirm(true)} aria-label="Reset chat" title="Reset conversation"><RotateCcw size={14} /></button>
+            <button className="icon-button danger" type="button" onClick={() => deleteAiChat(activeAiChat.id)} aria-label="Delete chat" title="Delete chat"><Trash2 size={14} /></button>
             <button className="icon-button" type="button" onClick={() => setShowAiAssistant(false)} aria-label="Close AI assistant"><X size={15} /></button>
           </header>
           {showAiResetConfirm && (
@@ -3950,7 +4122,7 @@ export function App() {
                   className="primary-button"
                   type="button"
                   onClick={() => {
-                    setAiMessages([{ role: "assistant", text: "Hello! I'm the MAB AI assistant. Ask me to help organize work, draft a task update, summarize an issue, or plan your day." }]);
+                    resetActiveAiChat();
                     setAiDraft("");
                     setAiFiles([]);
                     setShowAiResetConfirm(false);
@@ -3962,13 +4134,34 @@ export function App() {
               </div>
             </div>
           )}
-          <div className="ai-message-list" aria-live="polite">
-            {aiMessages.map((message, index) => (
-              <p className={message.role} key={`${message.role}-${index}`}>{message.text}</p>
+          <div className="ai-message-list" aria-live="polite" ref={aiMessageListRef}>
+            {activeAiChat.messages.map((message) => (
+              <article className={`ai-message ${message.role}`} key={message.id}>
+                <span className="ai-message-avatar" aria-hidden="true">{message.role === "assistant" ? <Sparkles size={15} /> : initials(currentUser.name)}</span>
+                <div className="ai-message-body">
+                <p>{message.text}</p>
+                {message.files?.length ? (
+                  <div className="ai-message-files">
+                    {message.files.map((file) => (
+                      <button key={file.id} type="button" onClick={() => downloadAiAttachment(file)} title={`Download ${file.name}`}>
+                        <Paperclip size={12} />
+                        <span>{file.name}</span>
+                        <Download size={12} />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                </div>
+              </article>
             ))}
             {aiLoading ? <p className="assistant ai-thinking">Thinking…</p> : null}
           </div>
           <form onSubmit={sendAiMessage} className="ai-chat-form">
+            <div className="ai-prompt-chips" aria-label="Suggested prompts">
+              {["Summarize my active tasks", "Draft a professional update", "Plan my priorities today", "Review this document"].map((prompt) => (
+                <button key={prompt} type="button" onClick={() => setAiDraft(prompt)}>{prompt}</button>
+              ))}
+            </div>
             {aiFiles.length > 0 && (
               <div className="ai-file-chips">
                 {aiFiles.map((file, index) => (
@@ -4002,7 +4195,9 @@ export function App() {
               <input maxLength={2000} value={aiDraft} onChange={(event) => setAiDraft(event.target.value)} placeholder="Ask the MAB assistant…" />
               <button className="primary-button" disabled={(!aiDraft.trim() && !aiFiles.length) || aiLoading} type="submit">Ask</button>
             </div>
+            <small className="ai-composer-note">Attach up to 3 files. AI can help draft, summarize, compare, and plan work.</small>
           </form>
+          </div>
         </section>
       ) : null}
       <aside className="sidebar" aria-label="Main navigation">
@@ -4151,16 +4346,45 @@ export function App() {
                 <span>New Task</span>
               </button>
             ) : null}
-            <button
-              className={`ghost-button topbar-ai-button ${showAiAssistant ? "active" : ""}`}
-              onClick={() => setShowAiAssistant((open) => !open)}
-              type="button"
-              aria-label="AI assistant"
-              aria-expanded={showAiAssistant}
-            >
-              <Sparkles aria-hidden="true" size={18} />
-              <span>AI Chat</span>
-            </button>
+            <span className={`ai-launch-anchor ${showAiLaunchPrompt && aiLaunchActive ? "ai-launch-target" : ""}`}>
+              <button
+                className={`ghost-button topbar-ai-button ${showAiAssistant ? "active" : ""} ${aiLaunchActive ? "ai-feature-launch" : ""}`}
+                onClick={() => {
+                  setShowAiLaunchPrompt(false);
+                  setShowAiAssistant((open) => !open);
+                }}
+                type="button"
+                aria-label="AI assistant"
+                aria-expanded={showAiAssistant}
+              >
+                <Sparkles aria-hidden="true" size={18} />
+                <span>AI Chat</span>
+                {aiLaunchActive ? <span className="feature-badge">New</span> : null}
+              </button>
+              {showAiLaunchPrompt && aiLaunchActive ? (
+                <section className="ai-launch-popover" aria-label="New AI feature available">
+                  <span className="ai-launch-arrow" aria-hidden="true" />
+                  <div className="ai-launch-card">
+                    <div>
+                      <strong>Full AI Chat is now available</strong>
+                      <small>Use it like ChatGPT inside MAB: ask questions, draft messages, summarize tasks, plan your day, and get instant work support.</small>
+                    </div>
+                    <label className="ai-launch-checkbox">
+                      <input
+                        checked={aiLaunchNotInterested}
+                        onChange={(event) => setAiLaunchNotInterested(event.target.checked)}
+                        type="checkbox"
+                      />
+                      Not interested
+                    </label>
+                    <div className="ai-launch-actions">
+                      <button className="primary-button" onClick={openAiAssistantFromLaunch} type="button">Try now</button>
+                      <button className="ghost-button" onClick={ignoreAiLaunchPrompt} type="button">Ignore</button>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+            </span>
             <button
               aria-label={`Switch to ${darkMode ? "light" : "dark"} mode`}
               aria-pressed={darkMode}
