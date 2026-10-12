@@ -1244,7 +1244,9 @@ for (const task of await db.prepare("SELECT id FROM tasks").all()) await ensureT
 
 async function buildProductivityReport(user, month = "") {
   const monthFilter = /^\d{4}-\d{2}$/.test(month) ? month : "";
-  const roundedComplexity = (value) => Math.round(Number(value) || 0);
+  // Two decimals: subtask shares are fractions (e.g. 3 pts / 10 steps = 0.3),
+  // so whole-number rounding showed them as 0.
+  const roundedComplexity = (value) => Math.round((Number(value) || 0) * 100) / 100;
   const rows = await db.prepare(`
     SELECT DISTINCT tasks.id, tasks.task_code, tasks.title, tasks.department, tasks.priority, tasks.status,
       tasks.due_date, tasks.complexity, tasks.started_at, tasks.progress, tasks.created_at, tasks.updated_at, tasks.completed_at,
@@ -1363,6 +1365,8 @@ async function buildProductivityReport(user, month = "") {
   summary.getCell("B14").numFmt = "0%";
   summary.getCell("B15").numFmt = "0.0";
   summary.getCell("B16").numFmt = "0.0";
+  // Total / active / completed complexity points.
+  for (const cell of ["B19", "B20", "B21"]) summary.getCell(cell).numFmt = "0.00";
   summary.getCell("B17").numFmt = "0.0";
   summary.getCell("B18").numFmt = "0%";
   summary.columns = [{ width: 24 }, { width: 28 }, { width: 4 }, { width: 4 }];
@@ -1399,7 +1403,7 @@ async function buildProductivityReport(user, month = "") {
     }
   });
   breakdown.getColumn("share").numFmt = "0%";
-  breakdown.getColumn("points").numFmt = "0";
+  breakdown.getColumn("points").numFmt = "0.00";
   breakdown.autoFilter = { from: "A1", to: "F1" };
   breakdown.eachRow((row, rowNumber) => {
     if (rowNumber > 1 && rowNumber % 2 === 0) row.eachCell((cell) => { cell.fill = paleFill; });
@@ -1459,7 +1463,7 @@ async function buildProductivityReport(user, month = "") {
     });
   }
   tasks.getColumn("taskShare").numFmt = "0%";
-  tasks.getColumn("complexity").numFmt = "0";
+  tasks.getColumn("complexity").numFmt = "0.00";
   tasks.getColumn("progress").numFmt = "0%";
   tasks.getColumn("created").numFmt = "yyyy-mm-dd";
   tasks.getColumn("started").numFmt = "yyyy-mm-dd hh:mm";

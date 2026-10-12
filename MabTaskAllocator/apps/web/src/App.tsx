@@ -5605,7 +5605,7 @@ export function App() {
                         <thead><tr><th>Candidate</th><th>Productivity index</th><th>Achievement points</th><th>Active load</th><th>Finished in month</th><th>Avg. cycle time</th><th>Reopens</th><th>Report</th></tr></thead>
                         <tbody>{candidates.length ? candidates.map((user) => {
                           const metrics = userMetrics(user.id);
-                          return <tr key={`team-${user.id}`}><td><strong>{user.name}</strong><small>{user.username}</small></td><td><strong>{metrics.performance.productivityIndex || "—"}</strong><small>{metrics.performance.status}</small></td><td>{metrics.performance.achievementPoints}</td><td>{metrics.activeComplexity} pts</td><td>{metrics.completedInMonth}</td><td>{metrics.completed ? `${metrics.averageCompletionDays.toFixed(1)} days` : "—"}</td><td>{metrics.performance.reopenTotal}</td><td><button className="icon-button" type="button" onClick={() => downloadProductivityReport(user.id, teamMonth)} title={`Download ${teamMonth} report`}><Download aria-hidden="true" size={15} /></button></td></tr>;
+                          return <tr key={`team-${user.id}`}><td><strong>{user.name}</strong><small>{user.username}</small></td><td><strong>{metrics.performance.productivityIndex || "—"}</strong><small>{metrics.performance.status}</small></td><td>{metrics.performance.achievementPoints}</td><td>{formatMetricNumber(metrics.activeComplexity, 2)} pts</td><td>{metrics.completedInMonth}</td><td>{metrics.completed ? `${metrics.averageCompletionDays.toFixed(1)} days` : "—"}</td><td>{metrics.performance.reopenTotal}</td><td><button className="icon-button" type="button" onClick={() => downloadProductivityReport(user.id, teamMonth)} title={`Download ${teamMonth} report`}><Download aria-hidden="true" size={15} /></button></td></tr>;
                         }) : <tr><td colSpan={8}>No normal users in this department.</td></tr>}</tbody>
                       </table></div>
                     </section>
@@ -5930,7 +5930,7 @@ export function App() {
                       <td><strong>{metrics.achievementPoints}</strong></td>
                       <td><span className="achievement-index"><i style={{ width: `${Math.min(100, metrics.productivityIndex)}%` }} /><strong>{metrics.productivityIndex || "—"}</strong></span></td>
                       <td>{metrics.attendance.expectedDays ? `${Math.round(metrics.attendance.attendanceRate * 100)}%` : "—"}</td>
-                      <td>{metrics.complexityDelivered} pts</td>
+                      <td>{formatMetricNumber(metrics.complexityDelivered, 2)} pts</td>
                       <td>{metrics.completed ? `${Math.round(metrics.averageSpeedFactor * 100)}%` : "—"}</td>
                       <td>{metrics.teamworkTasks}</td>
                       <td className={metrics.reopenTotal ? "metric-warning" : ""}>{metrics.reopenTotal}</td>
@@ -5975,8 +5975,8 @@ export function App() {
                       <span><strong>{metrics.overdue}</strong>Overdue</span>
                       <span><strong>{metrics.averageProgress}%</strong>Avg. progress</span>
                       <span><strong>{metrics.active}</strong>Active now</span>
-                      <span><strong>{metrics.activeComplexity}</strong>Active complexity</span>
-                      <span><strong>{metrics.completedComplexity}</strong>Completed points</span>
+                      <span><strong>{formatMetricNumber(metrics.activeComplexity, 2)}</strong>Active complexity</span>
+                      <span><strong>{formatMetricNumber(metrics.completedComplexity, 2)}</strong>Completed points</span>
                       <span><strong>{metrics.performance.productivityIndex || "—"}</strong>Productivity index</span>
                       <span><strong>{metrics.performance.achievementPoints}</strong>Achievement score</span>
                       <span><strong>{metrics.performance.reopenTotal}</strong>Admin reopens</span>
