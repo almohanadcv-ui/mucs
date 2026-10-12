@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, Pencil, Trash2, X } from "lucide-react";
 import { api, type ManagedTask } from "../api";
 
 type Change = {
@@ -36,6 +36,33 @@ export function TaskChecklist({
 
   const items = task.checklist ?? [];
   const finished = items.filter((item) => item.completed).length;
+  const listRef = useRef<HTMLUListElement>(null);
+  const [hiddenBelow, setHiddenBelow] = useState(0);
+
+  // Counts steps that are scrolled out of view below the list, so the panel
+  // can tell people there is more to see.
+  const measureHidden = useCallback(() => {
+    const list = listRef.current;
+    if (!list || list.clientHeight === 0 || list.scrollHeight - list.scrollTop - list.clientHeight < 4) {
+      setHiddenBelow(0);
+      return;
+    }
+    const listBottom = list.getBoundingClientRect().bottom;
+    const rows = Array.from(list.children) as HTMLElement[];
+    setHiddenBelow(rows.filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.top + rect.height / 2 > listBottom;
+    }).length);
+  }, []);
+
+  useEffect(() => {
+    measureHidden();
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureHidden);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [items.length, measureHidden]);
   const locked = ["done", "under_review"].includes(task.status) || Boolean(task.actionRequest) || task.allocationRequest?.state === "pending";
   const assignees = task.assigneeIds.map((id, index) => ({ id, name: task.candidateNames[index] ?? "Assigned user" }));
 
@@ -77,7 +104,8 @@ export function TaskChecklist({
         <small>{items.length ? `${finished} of ${items.length} optional steps complete` : task.status === "done" ? "Approved and completed" : task.status === "under_review" ? "Submitted as complete, awaiting approval" : "Add work steps to measure completion"}</small>
       </header>
       <p>Optional work steps guide progress. A step can be assigned to one responsible user, or left open for anyone assigned to close.</p>
-      <ul>
+      <div className="checklist-list-wrap">
+      <ul ref={listRef} onScroll={measureHidden}>
         {items.map((item) => (
           <li key={item.id}>
             {editing === item.id ? (
@@ -115,6 +143,17 @@ export function TaskChecklist({
           </li>
         ))}
       </ul>
+      {hiddenBelow > 0 ? (
+        <button
+          className="checklist-more"
+          onClick={() => listRef.current?.scrollBy({ top: listRef.current.clientHeight * 0.8, behavior: "smooth" })}
+          type="button"
+        >
+          <ChevronDown aria-hidden="true" size={14} />
+          {hiddenBelow} more step{hiddenBelow === 1 ? "" : "s"} below
+        </button>
+      ) : null}
+      </div>
       {canManage && !locked ? (
         <div className="checklist-add">
           <input

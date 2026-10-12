@@ -48,7 +48,10 @@ import {
   Users,
   Volume2,
   VolumeX,
-  X
+  X,
+  FileText,
+  ArrowLeft,
+  ChevronLeft
 } from "lucide-react";
 import type { AppUser, DepartmentName, TaskPriority, TaskStatus, TaskType, UserRole } from "@mab/shared";
 import { api, getLastActivity, hasSession, inactivityLimitMs, markActivity } from "./api";
@@ -282,6 +285,8 @@ const taskEventLabels: Record<string, string> = {
   reassigned: "Task reassigned"
 };
 
+const kanbanStatuses: TaskStatus[] = ["assigned", "in_progress", "under_review", "done"];
+
 const roleLabels: Record<UserRole, string> = {
   superadmin: "Super Admin",
   admin: "Admin",
@@ -294,6 +299,7 @@ const viewTitles = {
   dashboard: "Command Center",
   projects: "Projects",
   tasks: "Active Tasks",
+  kanban: "Kanban Board",
   todos: "My TODOs",
   finished: "Finished Tasks",
   people: "People Directory",
@@ -308,8 +314,8 @@ const viewTitles = {
 } as const;
 
 type AppView = keyof typeof viewTitles;
-const pageIcons = {chat:MessageSquare,dashboard:Gauge,tasks:ClipboardList,finished:Archive,people:Users,projects:FolderKanban,team:Users,todos:ListTodo,intelligence:Sparkles,achievements:Trophy,attendance:Calendar,productivity:FileSpreadsheet,audit:ShieldCheck,settings:Settings};
-const pageDescriptions = {chat:"Conversations with your teams",dashboard:"Your workspace at a glance",tasks:"Assign, track and review your team's work",finished:"Completed work, delivery records and documents",people:"People, positions and department responsibilities",projects:"Project teams, leaders and shared work",team:"Team capacity and leadership performance",todos:"Your personal priorities and checklist",intelligence:"Risks, overdue work and matters needing attention",achievements:"Recognize delivery, quality and team contribution",attendance:"Attendance records and working days",productivity:"Workload, delivery and performance reports",audit:"A record of management actions",settings:"Manage your workspace preferences"};
+const pageIcons = {chat:MessageSquare,dashboard:Gauge,tasks:ClipboardList,kanban:FolderKanban,finished:Archive,people:Users,projects:FolderKanban,team:Users,todos:ListTodo,intelligence:Sparkles,achievements:Trophy,attendance:Calendar,productivity:FileSpreadsheet,audit:ShieldCheck,settings:Settings};
+const pageDescriptions = {chat:"Conversations with your teams",dashboard:"Your workspace at a glance",tasks:"Assign, track and review your team's work",kanban:"Live task status board",finished:"Completed work, delivery records and documents",people:"People, positions and department responsibilities",projects:"Project teams, leaders and shared work",team:"Team capacity and leadership performance",todos:"Your personal priorities and checklist",intelligence:"Risks, overdue work and matters needing attention",achievements:"Recognize delivery, quality and team contribution",attendance:"Attendance records and working days",productivity:"Workload, delivery and performance reports",audit:"A record of management actions",settings:"Manage your workspace preferences"};
 function WorkspacePageHeader({view,department,greeting}:{view:AppView;department:string;greeting?:string}) { const Icon=pageIcons[view]; return <header className="workspace-page-header"><span className="workspace-page-icon"><Icon size={25}/></span><div><p>{department}</p><h2>{viewTitles[view]}</h2>{greeting ? <p className="workspace-page-greeting">{greeting}</p> : <small>{pageDescriptions[view]}</small>}</div></header>; }
 
 const appViews = Object.keys(viewTitles) as AppView[];
@@ -632,6 +638,33 @@ function projectContainsDepartment(projectDepartment: string, department: string
 function projectTaskDepartment(project: Project | undefined, fallback: string) {
   if (!project) return fallback;
   return sameDepartment(project.department, technicalDepartment) ? (isTechnicalDiscipline(fallback) ? fallback : technicalDisciplines[0]) : project.department;
+}
+
+// Keeps a workflow-messages feed pinned to its newest entry. It starts pinned,
+// stays pinned while the card opens and its layout settles (any size change),
+// and re-pins when a new entry arrives. Scrolling up unpins it until the user
+// scrolls back near the bottom.
+function stickFeedToLatest(feed: HTMLDivElement | null, entryCount: number) {
+  if (!feed) return;
+  const scrollToLatest = () => { feed.scrollTop = feed.scrollHeight; };
+  if (!feed.dataset.watching) {
+    feed.dataset.watching = "true";
+    feed.dataset.pinned = "true";
+    feed.addEventListener("scroll", () => {
+      if (feed.clientHeight === 0) return;
+      feed.dataset.pinned = String(feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48);
+    }, { passive: true });
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(() => {
+        if (feed.dataset.pinned === "true") scrollToLatest();
+      }).observe(feed);
+    }
+  }
+  if (feed.dataset.entryCount !== String(entryCount)) {
+    feed.dataset.entryCount = String(entryCount);
+    feed.dataset.pinned = "true";
+    window.requestAnimationFrame(scrollToLatest);
+  }
 }
 
 function initials(name: string) {
@@ -1007,6 +1040,9 @@ export function App() {
   const [aiChats, setAiChats] = useState<AiChat[]>(() => storedAiChats("login"));
   const [activeAiChatId, setActiveAiChatId] = useState(() => aiChats[0]?.id ?? "");
   const [activeView, setActiveView] = useState<AppView>(() => viewFromUrl());
+  // Single-task focus: while a task is open, its list shows only that task.
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
+  const lastFocusedTaskId = useRef<string | null>(null);
   const navigationFromPopRef = useRef(false);
   const appNavigationDepthRef = useRef(0);
   const [canGoBackInApp, setCanGoBackInApp] = useState(false);
@@ -1052,6 +1088,7 @@ export function App() {
   const [assignDraft, setAssignDraft] = useState<{ assigneeIds: string[]; dueDate: string }>({ assigneeIds: [], dueDate: "" });
   const [claimSelection, setClaimSelection] = useState<Record<string, string[]>>({});
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+  const [taskTabs, setTaskTabs] = useState<Record<string, "steps" | "documents">>({});
   const [taskMessageStatus, setTaskMessageStatus] = useState<Record<string, string>>({});
   const [reviewDrafts, setReviewDrafts] = useState<Record<string, string>>({});
   const [taskFiles, setTaskFiles] = useState<File[]>([]);
@@ -1876,6 +1913,14 @@ export function App() {
     return { status, count, label: statusLabels[status] };
   }).filter((item) => item.count > 0);
   const maxStatusCount = Math.max(1, ...statusReports.map((item) => item.count));
+  const kanbanSourceTasks = (currentUser?.role === "user"
+    ? visibleTasks.filter((task) => task.assigneeIds.includes(currentUser.id) || (task.checklist ?? []).some((step) => step.assigneeId === currentUser.id))
+    : visibleTasks
+  ).filter((task) => !activeWorkerId || task.assigneeIds.includes(activeWorkerId) || (task.checklist ?? []).some((step) => step.assigneeId === activeWorkerId));
+  const kanbanColumns = kanbanStatuses.map((status) => ({
+    status,
+    tasks: sortTasksByPriority(kanbanSourceTasks.filter((task) => task.status === status))
+  }));
   const dashboardActionCards = [
     {
       label: "Waiting for approval",
@@ -2054,6 +2099,92 @@ export function App() {
     if (currentUser?.role === "user") setActiveTaskSection(section === "overdue" ? "overdue" : section === "free" ? "free" : "assigned");
     else setManagerTaskSection(section === "overdue" ? "overdue" : section === "review" ? "review" : section === "free" ? "free" : "all");
     setActiveView("tasks");
+  }
+
+  useEffect(() => {
+    setFocusedTaskId(null);
+  }, [activeView]);
+
+  useEffect(() => {
+    if (focusedTaskId) {
+      lastFocusedTaskId.current = focusedTaskId;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    // Back to the list: bring the task the user just left into view.
+    const previous = lastFocusedTaskId.current;
+    lastFocusedTaskId.current = null;
+    if (previous) window.setTimeout(() => document.getElementById(`task-${previous}`)?.scrollIntoView({ block: "center" }), 60);
+  }, [focusedTaskId]);
+
+  useEffect(() => {
+    if (!focusedTaskId) return;
+    function leaveOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (document.querySelector(".modal-backdrop, .confirm-dialog, [role='dialog']")) return;
+      setFocusedTaskId(null);
+    }
+    window.addEventListener("keydown", leaveOnEscape);
+    return () => window.removeEventListener("keydown", leaveOnEscape);
+  }, [focusedTaskId]);
+
+  function syncTaskFocus(taskId: string, open: boolean) {
+    setFocusedTaskId((current) => (open ? taskId : current === taskId ? null : current));
+  }
+
+  function focusedSubset<T extends { id: string }>(tasks: T[]) {
+    return focusedTaskId && tasks.some((task) => task.id === focusedTaskId) ? tasks.filter((task) => task.id === focusedTaskId) : tasks;
+  }
+
+  function renderTaskFocusBar(tasks: Array<{ id: string; taskCode: string; title: string }>, listLabel: string) {
+    const index = tasks.findIndex((task) => task.id === focusedTaskId);
+    if (index < 0) return null;
+    const current = tasks[index];
+    const previous = tasks[index - 1];
+    const next = tasks[index + 1];
+    return (
+      <div className="task-focus-bar" role="navigation" aria-label="Task navigation">
+        <button className="task-focus-back" onClick={() => setFocusedTaskId(null)} type="button">
+          <ArrowLeft aria-hidden="true" size={16} />
+          <span>Back to {listLabel}</span>
+        </button>
+        <div className="task-focus-crumb" title={current.title}>
+          <button className="task-focus-crumb-link" onClick={() => setFocusedTaskId(null)} title={`Back to ${listLabel.toLowerCase()}`} type="button">{listLabel}</button>
+          <ChevronRight aria-hidden="true" size={14} />
+          <strong>#{current.taskCode}</strong>
+        </div>
+        <div className="task-focus-nav">
+          <small>{index + 1} of {tasks.length}</small>
+          <button aria-label="Previous task" disabled={!previous} onClick={() => previous && setFocusedTaskId(previous.id)} title={previous ? `Previous: ${previous.title}` : "No previous task"} type="button">
+            <ChevronLeft aria-hidden="true" size={16} />
+          </button>
+          <button aria-label="Next task" disabled={!next} onClick={() => next && setFocusedTaskId(next.id)} title={next ? `Next: ${next.title}` : "No next task"} type="button">
+            <ChevronRight aria-hidden="true" size={16} />
+          </button>
+          <kbd title="Press Escape to go back">Esc</kbd>
+        </div>
+      </div>
+    );
+  }
+
+  function openTaskFromKanban(task: ManagedTask) {
+    if (task.status === "done") {
+      setArchiveFilters({ search: "", projectId: "", department: "", taskType: "", assigneeId: "", delivery: "", reopened: "", from: "", to: "" });
+      setArchivePeriod("");
+      setActiveView("finished");
+    } else {
+      setActiveTaskFilters({ projectId: "", department: "", priority: "", status: "", deadline: "" });
+      if (currentUser?.role === "user") setActiveTaskSection("assigned");
+      else setManagerTaskSection(task.status === "under_review" ? "review" : "all");
+      setActiveView("tasks");
+    }
+    window.setTimeout(() => {
+      const panel = document.getElementById(`task-${task.id}`);
+      if (panel instanceof HTMLDetailsElement) panel.open = true;
+      panel?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 120);
   }
 
   function insertChatMention(user: AppUser) {
@@ -3027,7 +3158,7 @@ export function App() {
   }
 
   async function reopenTask(task: ManagedTask) {
-    if (!currentUser || !canLeadTask(task) || (currentUser.role !== "team_leader" && !["under_review", "done"].includes(task.status))) return;
+    if (!currentUser || !canLeadTask(task) || !["under_review", "done"].includes(task.status)) return;
 
     const comment = reviewDrafts[task.id]?.trim();
     if (!comment) {
@@ -3321,7 +3452,7 @@ export function App() {
     });
   }
 
-  function renderTaskChatter(task: ManagedTask, mode: "active" | "archive" = "active") {
+  function renderTaskChatter(task: ManagedTask, mode: "active" | "archive" = "active", part: "all" | "workspace" | "messages" = "all") {
     const chatterItems = [
       ...task.events.filter((event) => !["commented", "comment_edited"].includes(event.type)).map((event, index) => ({
         id: `event-${event.id}`,
@@ -3349,9 +3480,19 @@ export function App() {
     const readOnly = task.status === "done";
     const canCollaborate = Boolean(currentUser && (currentUser.role !== "user" || task.assigneeIds.includes(currentUser.id)));
     const collaborationLocked = mode === "active" && !readOnly && !canCollaborate;
+    const tabbed = mode === "active" || part !== "all";
+    const showWorkspace = part !== "messages";
+    const showMessages = part !== "workspace";
+    const activeTab = taskTabs[task.id] ?? "steps";
+    const stepTotal = task.checklist?.length ?? 0;
+    const stepDone = task.checklist?.filter((step) => step.completed).length ?? 0;
+    const workspaceTabs = [
+      { id: "steps" as const, label: "Work steps", count: stepTotal ? `${stepDone}/${stepTotal}` : "0", Icon: ListTodo },
+      { id: "documents" as const, label: "Documents", count: String(task.files.length), Icon: FileText }
+    ];
 
     return (
-      <section className={`workflow-chatter ${mode === "archive" ? "archive-chatter" : ""}`} aria-label={`Workflow updates for ${task.taskCode}`}>
+      <section className={`workflow-chatter ${mode === "archive" ? "archive-chatter" : ""} ${part === "messages" ? "workflow-messages" : ""} ${part === "workspace" ? "workflow-workspace" : ""}`} aria-label={`${part === "workspace" ? "Workspace" : "Workflow updates"} for ${task.taskCode}`}>
         <header className="task-chatter-header">
           <div>
             <MessageSquare aria-hidden="true" size={17} />
@@ -3367,11 +3508,32 @@ export function App() {
           {readOnly ? <span><Lock aria-hidden="true" size={12} />Read-only</span> : null}
         </div>
 
-        <TaskDocuments task={task} canManage={canLeadTask(task)} canSubmit={canCollaborate} onSaved={() => refreshData(true)} notify={showSuccess} confirm={(message, action) => requestConfirmation(message, action)} />
 
-        <TaskChecklist task={task} canManage={canLeadTask(task)} canUpdate={canLeadTask(task) || Boolean(currentUser && task.assigneeIds.includes(currentUser.id))} currentUserId={currentUser?.id} onSaved={() => refreshData(true)} confirm={(message, action) => requestConfirmation(message, action, { title: "Confirm work step", confirmLabel: "Yes, confirm", danger: false })} />
-        <div className="chatter-feed">
-          {chatterItems.length ? chatterItems.map((item) => {
+        {showWorkspace && tabbed ? (
+          <nav className="task-tabs" role="tablist" aria-label={`Workspace sections for ${task.taskCode}`}>
+            {workspaceTabs.map(({ id, label, count, Icon }) => (
+              <button
+                aria-selected={activeTab === id}
+                title={id === "steps" ? "Optional work steps guide progress. A step can be assigned to one responsible user, or left open for anyone assigned to close." : "Task, reference and completion documents"}
+                className={activeTab === id ? "active" : ""}
+                key={id}
+                onClick={() => setTaskTabs((tabs) => ({ ...tabs, [task.id]: id }))}
+                role="tab"
+                type="button"
+              >
+                <Icon aria-hidden="true" size={15} />
+                <span>{label}</span>
+                <b>{count}</b>
+              </button>
+            ))}
+          </nav>
+        ) : null}
+        {showWorkspace && (!tabbed || activeTab === "documents") ? <TaskDocuments task={task} canManage={canLeadTask(task)} canSubmit={canCollaborate} onSaved={() => refreshData(true)} notify={showSuccess} confirm={(message, action) => requestConfirmation(message, action)} /> : null}
+        {showWorkspace && (!tabbed || activeTab === "steps") ? <TaskChecklist task={task} canManage={canLeadTask(task)} canUpdate={canLeadTask(task) || Boolean(currentUser && task.assigneeIds.includes(currentUser.id))} currentUserId={currentUser?.id} onSaved={() => refreshData(true)} confirm={(message, action) => requestConfirmation(message, action, { title: "Confirm work step", confirmLabel: "Yes, confirm", danger: false })} /> : null}
+
+        {showMessages ? <div className="task-activity-panel">
+        <div className="chatter-feed" ref={part === "messages" ? (feed) => stickFeedToLatest(feed, chatterItems.length) : undefined}>
+          {chatterItems.length ? (part === "messages" ? [...chatterItems].reverse() : chatterItems).map((item) => {
             const mine = item.actorId === currentUser?.id;
             const color = identityColor(item.actorId ?? item.actorName, currentUser?.id);
             return (
@@ -3407,7 +3569,7 @@ export function App() {
                     className={messageDrafts[task.id] ? "typing-input" : ""}
                     maxLength={2000}
                     onChange={(event) => setMessageDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))}
-                    placeholder="Write a comment? Type @ to mention task people"
+                    placeholder="Write a comment… Type @ to mention task people"
                     aria-label="Task comment"
                     value={messageDrafts[task.id] ?? ""}
                   />
@@ -3432,6 +3594,7 @@ export function App() {
             {taskMessageStatus[task.id] ? <p className="conversation-status">{taskMessageStatus[task.id]}</p> : null}
           </div>
         ) : null}
+        </div> : null}
       </section>
     );
   }
@@ -3467,19 +3630,22 @@ export function App() {
     const canReviewTask = canLeadTask(task) && task.status === "under_review" && !allocationPending && !actionPending && (currentUser?.role === "team_leader" ? !task.leaderApprovedAt : currentUser?.role === "technical_manager" || !requiresLeaderApproval);
     const canFinishTask = currentUser?.role === "team_leader" && canLeadTask(task) && !allocationPending && !actionPending && ["assigned", "in_progress", "blocked"].includes(task.status);
     const canReopenCompletedTask = canLeadTask(task) && task.status === "done";
-    const canReopenTask = canLeadTask(task) && !allocationPending && !actionPending && !task.allocationRequest?.isNew && (currentUser?.role === "team_leader" || ["under_review", "done"].includes(task.status));
+    // Reopen only applies to submitted (under review) or completed work. Active tasks are edited, not reopened.
+    const canReopenTask = canLeadTask(task) && !allocationPending && !actionPending && !task.allocationRequest?.isNew && ["under_review", "done"].includes(task.status);
     const taskEditProject = projects.find((project) => project.id === taskEditDraft?.projectId);
     const taskAssignableUsers = assignableUsers.filter((user) => taskEditProject
       ? taskEditProject.members.some((member) => member.id === user.id) && sameDepartment(user.department, taskEditDraft?.department)
       : sameDepartment(user.department, taskEditDraft?.department ?? task.department));
     const overdue = isTaskOverdue(task);
+    const daysToDue = task.dueDate ? Math.round((Date.parse(task.dueDate) - Date.parse(currentRiyadhDate())) / 86_400_000) : null;
+    const dueHint = daysToDue === null || task.status === "done" ? "" : daysToDue < 0 ? `${-daysToDue} day${daysToDue === -1 ? "" : "s"} overdue` : daysToDue === 0 ? "Due today" : `${daysToDue} day${daysToDue === 1 ? "" : "s"} left`;
     const taskInsight = intelligence.taskInsights.find((insight) => insight.taskId === task.id);
     const departmentAdmins = users.filter(person => person.role === "superadmin" || (person.role === "admin" && sameDepartment(person.department, task.department)) || (person.role === "technical_manager" && isTechnicalDiscipline(task.department)));
     const departmentLeaders = users.filter(person => person.role === "team_leader" && sameDepartment(person.department, task.department));
     const adminNames = departmentAdmins.filter(person => person.role !== "superadmin").map(person => person.name).join(", ") || "Superadmin";
     const leaderNames = departmentLeaders.map(person => person.name).join(", ");
     const pendingWith = task.status === "done" && !actionPending ? "Nobody - completed" : actionPending || allocationPending ? adminNames : task.status === "under_review" ? (requiresLeaderApproval ? leaderNames || adminNames : adminNames) : !task.assigneeIds.length ? (leaderNames ? leaderNames + "; " : "") + adminNames : task.pendingApprovalNames.join(", ") || task.candidateNames.join(", ");
-    const workflowStatusText = actionPending ? `Waiting for admin approval to ${task.actionRequest!.action}` : allocationPending ? "Waiting for allocation approval" : task.allocationRequest?.isNew ? "Allocation rejected ? revise and resubmit" : task.status === "done"
+    const workflowStatusText = actionPending ? `Waiting for admin approval to ${task.actionRequest!.action}` : allocationPending ? "Waiting for allocation approval" : task.allocationRequest?.isNew ? "Allocation rejected — revise and resubmit" : task.status === "done"
       ? "Completed and locked"
       : task.status === "under_review"
         ? requiresLeaderApproval ? "Waiting for team leader approval" : "Waiting for final admin approval"
@@ -3492,12 +3658,12 @@ export function App() {
               : "Ready to assign";
 
     return (
-      <details className={`task-card active-task-card task-card-priority-${task.priority}`} id={`task-${task.id}`} key={`${view}-${task.id}`}>
+      <details className={`task-card active-task-card task-card-priority-${task.priority}`} id={`task-${task.id}`} key={`${view}-${task.id}`} open={focusedTaskId === task.id} onToggle={(event) => syncTaskFocus(task.id, event.currentTarget.open)}>
         <summary className="active-task-summary">
           <span className="archive-check"><ClipboardList aria-hidden="true" size={17} /></span>
           <span className="archive-task-name">
             <strong>{task.title}</strong>
-            <small>Task #{task.taskCode}{` ? ${task.projectName || "No project"}`}</small>
+            <small>Task #{task.taskCode}{` · ${task.projectName || "No project"}`}</small>
           </span>
           <span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span>
           <span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span>
@@ -3521,6 +3687,124 @@ export function App() {
             </button>
           ) : null}
         </summary>
+        <div className="task-action-zone">
+          {task.allocationRequest ? (
+            <div className="claim-request-note manager">
+              <div className="claim-request-panel">
+                <strong>{allocationPending ? "Allocation awaiting admin approval" : "Allocation rejected"}</strong>
+                <p>Requested by {task.allocationRequest.requesterName} · Team: {task.allocationRequest.candidateNames.join(", ") || "Department free task queue"} · Deadline: {task.allocationRequest.dueDate || "None"}</p>
+                {allocationPending && canManageTask(task) ? (
+                  <div className="row-actions">
+                    <button type="button" className="task-action-button" onClick={() => void reviewAllocation(task, true)}>Approve allocation</button>
+                    <button type="button" className="task-action-button secondary" onClick={() => void reviewAllocation(task, false)}>Reject allocation</button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+  
+          {claimRequests.length ? (
+            <div className={`claim-request-note ${canReviewClaim ? "manager" : ""}`}>
+              <Hand aria-hidden="true" size={17} />
+              {canReviewClaim ? (
+                <div className="claim-request-panel">
+                  <strong>{claimRequests.length} request{claimRequests.length === 1 ? "" : "s"} to take this free task</strong>
+                  <div className="claim-request-list">
+                    {claimRequests.map((request) => (
+                      <label className="claim-request-item" key={request.userId}>
+                        <input
+                          checked={selectedClaimIds.includes(request.userId)}
+                          onChange={() => toggleClaimSelection(task.id, request.userId)}
+                          type="checkbox"
+                        />
+                        <span><b>{request.userName}</b><small>{request.requestedAt ? `Requested ${new Date(request.requestedAt).toLocaleString("en-GB")}` : "Request pending"}</small></span>
+                        <button className="ghost-button" onClick={(event) => { event.preventDefault(); void reviewTaskClaim(task, false, [request.userId]); }} type="button">
+                          Reject
+                        </button>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="claim-request-actions">
+                    <button className="task-action-button" disabled={!selectedClaimIds.length} onClick={() => reviewTaskClaim(task, true, selectedClaimIds)} type="button">
+                      <CheckCircle2 aria-hidden="true" size={15} />Approve selected ({selectedClaimIds.length})
+                    </button>
+                    <button className="task-action-button secondary" onClick={() => reviewTaskClaim(task, true, claimRequests.map((request) => request.userId))} type="button">
+                      <Users aria-hidden="true" size={15} />Approve all ({claimRequests.length})
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div><strong>{userHasClaimRequest ? "Your request is waiting for approval" : `${claimRequests.length} user${claimRequests.length === 1 ? "" : "s"} requested this task`}</strong><span>The task has not started. An admin or team leader can approve one or more requesters.</span></div>
+              )}
+            </div>
+          ) : null}
+  
+          {task.status === "under_review" && currentUser && task.assigneeIds.includes(currentUser.id) ? (
+            <p className="review-note">All assigned workers approved. Waiting for admin approval.</p>
+          ) : null}
+  
+          {task.status === "done" ? (
+            <div className="finished-stamp">
+              <CheckCircle2 aria-hidden="true" size={18} />
+              <div>
+                <strong>Approved and completed</strong>
+                <span>{task.completedAt ? `Completed ${task.completedAt}` : "Completion recorded"}</span>
+              </div>
+            </div>
+          ) : null}
+  
+          {renderTaskRequest(task)}
+          {canReviewTask || canReopenTask || canFinishTask ? (
+            <div className="review-box">
+              <input
+                onChange={(event) =>
+                  setReviewDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))
+                }
+                placeholder={canReopenCompletedTask ? "Reason for reopening (required)" : canReopenTask ? "Comment, required to send back for changes" : "Add a comment (optional)"}
+                aria-label={canReopenTask ? "Reason for reopening" : "Review comment"}
+                value={reviewDrafts[task.id] ?? ""}
+              />
+              {canFinishTask ? <button type="button" className="task-action-button" onClick={() => void approveTask(task, true)}>Finish task</button> : null}
+              {canReviewTask ? <button type="button" className="task-action-button" onClick={() => approveTask(task)}>
+                <CheckCircle2 aria-hidden="true" size={16} />
+                {currentUser?.role === "team_leader" ? "Approve task" : currentUser?.role === "technical_manager" ? "Approve as department manager" : "Final approval"}
+              </button> : null}
+              {canReopenTask ? (
+                <button
+                  type="button"
+                  className="task-action-button secondary"
+                  disabled={!(reviewDrafts[task.id] ?? "").trim()}
+                  title={(reviewDrafts[task.id] ?? "").trim() ? undefined : "Type the reason first. Reopening needs a reason."}
+                  onClick={() => reopenTask(task)}
+                >
+                  <RotateCcw aria-hidden="true" size={16} />
+                  {canReopenCompletedTask ? "Reopen Completed Task" : "Send back (reopen)"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+          {(canEditTask || canDeleteTask || canClaimTask) && !isEditingTask && !isAssigningTask ? (
+            <div className="row-actions task-actions">
+              {canClaimTask ? (
+                <button type="button" className="task-action-button" onClick={() => confirmTaskClaim(task)}>
+                  <Hand aria-hidden="true" size={16} />
+                  Request free task
+                </button>
+              ) : null}
+              {canEditTask ? (
+                <>
+                  {canDirectAssign ? <button type="button" className="task-action-button secondary" onClick={() => startAssignTask(task)}><UserPlus aria-hidden="true" size={16} />Assign User</button> : null}
+                  <button type="button" className="task-action-button secondary" onClick={() => startEditTask(task)}><Edit3 aria-hidden="true" size={16} />Edit</button>
+                </>
+              ) : null}
+              {canDeleteTask ? (
+                <button type="button" className="icon-button danger" onClick={() => deleteTask(task)} aria-label="Delete task">
+                  <Trash2 aria-hidden="true" size={16} />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <div className="task-row">
           {isEditingTask ? (
             <div className="edit-task-panel">
@@ -3710,183 +3994,88 @@ export function App() {
             </div>
           ) : (
             <div className="task-card-body task-open-workspace">
-              <div className="task-card-heading">
-                <span className="task-code">#{task.taskCode}</span>
-                <span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span>
-                <span className={`priority priority-${task.priority}`}>
-                  {priorityLabels[task.priority]}
-                </span>
-                {overdue ? (
-                  <span className="overdue-pill"><AlertTriangle aria-hidden="true" size={12} />Overdue</span>
+              <div className="task-open-main">
+                {canSubmitForReview ? (
+                  <section className={`task-finish-cta ${task.progress >= 100 ? "ready" : ""}`} aria-label="Finish this task">
+                    <span className="task-finish-cta-icon" aria-hidden="true"><CheckCircle2 size={24} /></span>
+                    <div className="task-finish-cta-text">
+                      <strong>{task.progress >= 100 ? "All work steps are done. Finish this task now." : "Finished your work on this task?"}</strong>
+                      <small>
+                        Click <b>Finish Task</b> to send it for review.
+                        {task.assigneeIds.length > 1 ? " Every assigned person must finish before it moves to review." : " Your manager approves it before it is closed."}
+                      </small>
+                    </div>
+                    <button type="button" className="task-finish-cta-button" onClick={() => confirmFinishTask(task)}>
+                      <CheckCircle2 aria-hidden="true" size={18} />
+                      Finish Task
+                    </button>
+                  </section>
                 ) : null}
-                {taskInsight && taskInsight.delayRisk >= 50 ? <span className={`risk-pill risk-${taskInsight.riskLevel}`} title={taskInsight.reasons.join(" · ")}><Sparkles aria-hidden="true" size={12} />{taskInsight.delayRisk}% delay risk</span> : null}
-              </div>
-              <h3 className="task-card-title">{task.title}</h3>
-              {task.leaderApprovedAt ? <p className="review-note">Team leader approved: {users.find((user) => user.id === task.leaderApprovedById)?.name ?? "Team Leader"}</p> : null}
-              {task.reviewComment ? <p className="review-note">Review: {task.reviewComment}</p> : null}
-              <div className="task-card-meta">
-                <span className="meta-item"><Building2 aria-hidden="true" size={13} />{task.department}</span>
-                <span className="meta-item"><FolderKanban aria-hidden="true" size={13} />{task.projectName ?? "No project"}</span>
-                <span className="meta-item"><ListTodo aria-hidden="true" size={13} />{task.taskType}</span>
-                <span className="meta-item" title={complexityLabels[complexityPoints(task)]}><Gauge aria-hidden="true" size={13} />Complexity {complexityPoints(task)}/5</span>
-                <span className="meta-item">{task.startedAt ? `Started ${new Date(task.startedAt).toLocaleDateString("en-GB")}` : "Not started"}</span>
-                <span className={`meta-item ${overdue ? "meta-item-overdue" : ""}`}>
-                  <Calendar aria-hidden="true" size={13} />
-                  {task.dueDate ? `Due ${task.dueDate}` : "No due date"}
-                </span>
-              </div>
-              <div className="task-card-footer">
-                <div className="task-progress-wrap">
-                  <div className="task-progress">
-                    <span style={{ width: `${task.progress}%` }} />
+                <aside className="task-open-aside" aria-label={`Details for ${task.taskCode}`}>
+                  <h4>Details</h4>
+                  <dl className="task-properties">
+                    <div><dt>Status</dt><dd><span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span></dd></div>
+                    <div><dt>Priority</dt><dd><span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span></dd></div>
+                    <div className="task-property-wide"><dt>Assignees</dt><dd>
+                      <div className="task-card-people">
+                          {task.assigneeIds.length ? task.assigneeIds.map((assigneeId, index) => (
+                            <span className="assignee-chip" key={assigneeId}>
+                              <span className="assignee-avatar" style={{ background: identityColor(assigneeId, currentUser?.id) }}>
+                                {initials(task.candidateNames[index] ?? "?")}
+                              </span>
+                              {task.candidateNames[index]}
+                            </span>
+                          )) : (
+                            <span className="assignee-chip unassigned"><Hand aria-hidden="true" size={13} />Unassigned</span>
+                          )}
+                        </div>
+                    </dd></div>
+                    <div className="task-property-wide"><dt>Action needed from</dt><dd>{pendingWith}</dd></div>
+                    <div><dt>Deadline</dt><dd className={overdue ? "is-overdue" : ""}><Calendar aria-hidden="true" size={14} />{task.dueDate || "Not set"}{dueHint ? <small>{dueHint}</small> : null}</dd></div>
+                    <div><dt>Started</dt><dd>{task.startedAt ? new Date(task.startedAt).toLocaleDateString("en-GB") : "Not started"}</dd></div>
+                    <div className="task-property-wide"><dt>Project</dt><dd><FolderKanban aria-hidden="true" size={14} />{task.projectName ?? "No project"}</dd></div>
+                    <div className="task-property-wide"><dt>Department</dt><dd><Building2 aria-hidden="true" size={14} />{task.department}</dd></div>
+                    {taskInsight && taskInsight.delayRisk >= 50 ? <div className="task-property-wide"><dt>Delay risk</dt><dd><span className={`risk-pill risk-${taskInsight.riskLevel}`} title={taskInsight.reasons.join(" · ")}><Sparkles aria-hidden="true" size={12} />{taskInsight.delayRisk}% delay risk</span></dd></div> : null}
+                    <div><dt>Type</dt><dd>{task.taskType}</dd></div>
+                    <div><dt>Complexity</dt><dd title={complexityLabels[complexityPoints(task)]}><span className="complexity-meter" aria-hidden="true">{[1, 2, 3, 4, 5].map((level) => <i className={level <= complexityPoints(task) ? "on" : ""} key={level} />)}</span>{complexityPoints(task)}/5</dd></div>
+                  </dl>
+                </aside>
+                {task.leaderApprovedAt ? <p className="review-note">Team leader approved: {users.find((user) => user.id === task.leaderApprovedById)?.name ?? "Team Leader"}</p> : null}
+                {task.reviewComment ? <p className="review-note">Review: {task.reviewComment}</p> : null}
+                <div className={`task-workflow-summary workflow-status-${task.status}`}>
+                  <div className="workflow-summary-head">
+                    <span><RotateCcw aria-hidden="true" size={15} />Workflow</span>
+                    <strong>{workflowStatusText}</strong>
                   </div>
-                  <b className="task-progress-value">{task.progress}%</b>
+                  {task.workerApprovals.length || task.pendingApprovalNames.length ? (
+                    <div className="workflow-approval-strip">
+                      {task.workerApprovals.length ? <span className="approved"><CheckCircle2 aria-hidden="true" size={13} />Approved: {task.workerApprovals.map((approval) => approval.name).join(", ")}</span> : null}
+                      {task.pendingApprovalNames.length ? <span className="waiting"><AlertTriangle aria-hidden="true" size={13} />Waiting: {task.pendingApprovalNames.join(", ")}</span> : null}
+                    </div>
+                  ) : null}
                 </div>
-                <div className="task-card-people">
-                  {task.assigneeIds.length ? task.assigneeIds.map((assigneeId, index) => (
-                    <span className="assignee-chip" key={assigneeId}>
-                      <span className="assignee-avatar" style={{ background: identityColor(assigneeId, currentUser?.id) }}>
-                        {initials(task.candidateNames[index] ?? "?")}
-                      </span>
-                      {task.candidateNames[index]}
-                    </span>
-                  )) : (
-                    <span className="assignee-chip unassigned"><Hand aria-hidden="true" size={13} />Unassigned</span>
-                  )}
-                </div>
-              </div>
-              <dl className="task-responsibility"><div><dt>Assigned to</dt><dd>{task.candidateNames.join(", ") || "Unassigned"}</dd></div><div><dt>Deadline</dt><dd>{task.dueDate || "Not set"}{overdue ? " — overdue" : ""}</dd></div><div><dt>Action needed from</dt><dd>{pendingWith}</dd></div><div><dt>Status</dt><dd>{workflowStatusText}</dd></div></dl>
-              <div className={`task-workflow-summary workflow-status-${task.status}`}>
-                <div className="workflow-summary-head">
-                  <span><RotateCcw aria-hidden="true" size={15} />Workflow</span>
-                  <strong>{workflowStatusText}</strong>
-                </div>
-                {task.workerApprovals.length || task.pendingApprovalNames.length || canSubmitForReview ? (
-                  <div className="workflow-approval-strip">
-                    {task.workerApprovals.length ? <span className="approved"><CheckCircle2 aria-hidden="true" size={13} />Approved: {task.workerApprovals.map((approval) => approval.name).join(", ")}</span> : null}
-                    {task.pendingApprovalNames.length ? <span className="waiting"><AlertTriangle aria-hidden="true" size={13} />Waiting: {task.pendingApprovalNames.join(", ")}</span> : null}
-                    {canSubmitForReview ? (
-                      <button type="button" className="task-action-button workflow-finish-button" onClick={() => confirmFinishTask(task)}>
-                        <CheckCircle2 aria-hidden="true" size={15} />
-                        Finish Task
-                      </button>
-                    ) : null}
+                <div className="task-open-progress" aria-label={`${task.progress}% progress`}>
+                  <div className="task-open-progress-head">
+                    <span>Progress</span>
+                    <b className="task-progress-value">{task.progress}%</b>
                   </div>
-                ) : null}
-                {renderTaskChatter(task)}
+                  <div className="task-progress"><span style={{ width: `${task.progress}%` }} /></div>
+                  {task.checklist?.length ? <small>{task.checklist.filter((step) => step.completed).length} of {task.checklist.length} work steps complete</small> : null}
+                </div>
+                {renderTaskChatter(task, "active", "workspace")}
               </div>
+              <section className="task-open-messages" aria-label={`Workflow messages for ${task.taskCode}`}>
+                <header>
+                  <MessageSquare aria-hidden="true" size={16} />
+                  <h4>Workflow messages</h4>
+                  <span>{task.messages.length} comment{task.messages.length === 1 ? "" : "s"} · {task.events.filter((event) => !["commented", "comment_edited"].includes(event.type)).length} updates</span>
+                </header>
+                {renderTaskChatter(task, "active", "messages")}
+              </section>
             </div>
           )}
 
-          {(canEditTask || canDeleteTask || canClaimTask) && !isEditingTask && !isAssigningTask ? (
-            <div className="row-actions task-actions">
-              {canClaimTask ? (
-                <button type="button" className="task-action-button" onClick={() => confirmTaskClaim(task)}>
-                  <Hand aria-hidden="true" size={16} />
-                  Request free task
-                </button>
-              ) : null}
-              {canEditTask ? (
-                <>
-                  {canDirectAssign ? <button type="button" className="task-action-button secondary" onClick={() => startAssignTask(task)}><UserPlus aria-hidden="true" size={16} />Assign User</button> : null}
-                  <button type="button" className="task-action-button secondary" onClick={() => startEditTask(task)}><Edit3 aria-hidden="true" size={16} />Edit</button>
-                </>
-              ) : null}
-              {canDeleteTask ? (
-                <button type="button" className="icon-button danger" onClick={() => deleteTask(task)} aria-label="Delete task">
-                  <Trash2 aria-hidden="true" size={16} />
-                </button>
-              ) : null}
-            </div>
-          ) : null}
         </div>
-
-        {task.allocationRequest ? (
-          <div className="claim-request-note manager">
-            <div className="claim-request-panel">
-              <strong>{allocationPending ? "Allocation awaiting admin approval" : "Allocation rejected"}</strong>
-              <p>Requested by {task.allocationRequest.requesterName} · Team: {task.allocationRequest.candidateNames.join(", ") || "Department free task queue"} · Deadline: {task.allocationRequest.dueDate || "None"}</p>
-              {allocationPending && canManageTask(task) ? (
-                <div className="row-actions">
-                  <button type="button" className="task-action-button" onClick={() => void reviewAllocation(task, true)}>Approve allocation</button>
-                  <button type="button" className="task-action-button secondary" onClick={() => void reviewAllocation(task, false)}>Reject allocation</button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
-
-        {claimRequests.length ? (
-          <div className={`claim-request-note ${canReviewClaim ? "manager" : ""}`}>
-            <Hand aria-hidden="true" size={17} />
-            {canReviewClaim ? (
-              <div className="claim-request-panel">
-                <strong>{claimRequests.length} request{claimRequests.length === 1 ? "" : "s"} to take this free task</strong>
-                <div className="claim-request-list">
-                  {claimRequests.map((request) => (
-                    <label className="claim-request-item" key={request.userId}>
-                      <input
-                        checked={selectedClaimIds.includes(request.userId)}
-                        onChange={() => toggleClaimSelection(task.id, request.userId)}
-                        type="checkbox"
-                      />
-                      <span><b>{request.userName}</b><small>{request.requestedAt ? `Requested ${new Date(request.requestedAt).toLocaleString("en-GB")}` : "Request pending"}</small></span>
-                      <button className="ghost-button" onClick={(event) => { event.preventDefault(); void reviewTaskClaim(task, false, [request.userId]); }} type="button">
-                        Reject
-                      </button>
-                    </label>
-                  ))}
-                </div>
-                <div className="claim-request-actions">
-                  <button className="task-action-button" disabled={!selectedClaimIds.length} onClick={() => reviewTaskClaim(task, true, selectedClaimIds)} type="button">
-                    <CheckCircle2 aria-hidden="true" size={15} />Approve selected ({selectedClaimIds.length})
-                  </button>
-                  <button className="task-action-button secondary" onClick={() => reviewTaskClaim(task, true, claimRequests.map((request) => request.userId))} type="button">
-                    <Users aria-hidden="true" size={15} />Approve all ({claimRequests.length})
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div><strong>{userHasClaimRequest ? "Your request is waiting for approval" : `${claimRequests.length} user${claimRequests.length === 1 ? "" : "s"} requested this task`}</strong><span>The task has not started. An admin or team leader can approve one or more requesters.</span></div>
-            )}
-          </div>
-        ) : null}
-
-        {task.status === "under_review" && currentUser && task.assigneeIds.includes(currentUser.id) ? (
-          <p className="review-note">All assigned workers approved. Waiting for admin approval.</p>
-        ) : null}
-
-        {task.status === "done" ? (
-          <div className="finished-stamp">
-            <CheckCircle2 aria-hidden="true" size={18} />
-            <div>
-              <strong>Approved and completed</strong>
-              <span>{task.completedAt ? `Completed ${task.completedAt}` : "Completion recorded"}</span>
-            </div>
-          </div>
-        ) : null}
-
-        {renderTaskRequest(task)}
-        {canReviewTask || canReopenTask || canFinishTask ? (
-          <div className="review-box">
-            <input
-              onChange={(event) =>
-                setReviewDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))
-              }
-              placeholder={canReopenCompletedTask ? "Explain why this completed task must be reopened" : "Add comments if this needs changes"}
-              value={reviewDrafts[task.id] ?? ""}
-            />
-            {canFinishTask ? <button type="button" className="task-action-button" onClick={() => void approveTask(task, true)}>Finish task</button> : null}
-            {canReviewTask ? <button type="button" className="task-action-button" onClick={() => approveTask(task)}>
-              <CheckCircle2 aria-hidden="true" size={16} />
-              {currentUser?.role === "team_leader" ? "Approve task" : currentUser?.role === "technical_manager" ? "Approve as department manager" : "Final approval"}
-            </button> : null}
-            <button type="button" className="task-action-button secondary" onClick={() => reopenTask(task)}>
-              <RotateCcw aria-hidden="true" size={16} />
-              {canReopenCompletedTask ? "Reopen Completed Task" : "Reopen"}
-            </button>
-          </div>
-        ) : null}
 
       </details>
     );
@@ -4410,6 +4599,15 @@ export function App() {
             <ClipboardList aria-hidden="true" size={17} />
             {displayText("Active Tasks")}
             <span>{dashboardTasks.length}</span>
+          </button>
+<button
+            type="button"
+            className={`sidebar-nav-button ${activeView === "kanban" ? "active" : ""}`}
+            onClick={() => setActiveView("kanban")}
+          >
+            <FolderKanban aria-hidden="true" size={17} />
+            {displayText("Kanban")}
+            <span>{kanbanSourceTasks.length}</span>
           </button>
 <button
             type="button"
@@ -5362,12 +5560,26 @@ export function App() {
                 const eligibleMembers = assignableUsers.filter((user) => projectContainsDepartment(project.department, user.department));
                 const memberIds = projectMemberDrafts[project.id] ?? project.members.map((member) => member.id);
                 const projectDetails = projectEditDrafts[project.id] ?? { name: project.name, description: project.description };
+                const projectTaskList = visibleTasks.filter((task) => task.projectId === project.id);
+                const projectDone = projectTaskList.filter((task) => task.status === "done").length;
+                const projectReview = projectTaskList.filter((task) => task.status === "under_review").length;
+                const projectActive = projectTaskList.length - projectDone;
+                const projectCompletion = projectTaskList.length ? Math.round((projectDone / projectTaskList.length) * 100) : 0;
                 return (
                   <article className="project-card" key={project.id}>
                     <div className="member-heading"><div><strong>{project.name}</strong><p>{project.department}</p></div><span>{project.taskCount} tasks</span></div>
+                    <div className="project-stats" aria-label={`${project.name} task summary`}>
+                      <span><b>{projectActive}</b>Active</span>
+                      <span><b>{projectReview}</b>In review</span>
+                      <span><b>{projectDone}</b>Done</span>
+                    </div>
+                    <div className="project-completion" aria-label={`${projectCompletion}% of tasks complete`}>
+                      <div><i style={{ width: `${projectCompletion}%` }} /></div>
+                      <small>{projectCompletion}% complete</small>
+                    </div>
                     <div className="project-members"><strong>Team leaders</strong><span>{(project.leaders ?? []).map(person => person.name).join(", ") || "No team leader assigned"}{currentUser.role === "team_leader" && project.leaders?.some(person => person.id === currentUser.id) ? " ? Your project" : ""}</span></div>
                     {canManagePeople ? <details className="project-leader-assignment"><summary>Manage team leaders</summary><div className="multi-select-field">Assign team leaders<CandidatePicker candidates={users.filter(person => person.role === "team_leader" && projectContainsDepartment(project.department, person.department))} selectedIds={projectLeaderDrafts[project.id] ?? (project.leaders ?? []).map(person => person.id)} onChange={ids => setProjectLeaderDrafts(drafts => ({ ...drafts, [project.id]: ids }))} emptyMessage="Create a team leader in this department first." /></div><button className="ghost-button" type="button" onClick={() => void saveProjectLeaders(project)}>Save team leaders</button></details> : null}
-                    <div className="project-members"><strong>Members</strong><span>{project.members.map((member) => member.name).join(", ") || "No members yet"}</span></div>
+                    <div className="project-members"><strong>Members</strong>{project.members.length ? <span className="project-avatar-row">{project.members.slice(0, 6).map((member) => <i key={member.id} title={member.name}>{initials(member.name)}</i>)}{project.members.length > 6 ? <i className="project-avatar-more">+{project.members.length - 6}</i> : null}</span> : null}<span>{project.members.map((member) => member.name).join(", ") || "No members yet"}</span></div>
                     {currentUser.role === "team_leader" ? <div className="project-edit-fields">
                       <div className="multi-select-field">Add normal users to this project<CandidatePicker candidates={eligibleMembers.filter((user) => !project.members.some((member) => member.id === user.id))} emptyMessage="All available normal users are already project members." selectedIds={projectMemberDrafts[project.id] ?? []} onChange={(ids) => setProjectMemberDrafts((drafts) => ({ ...drafts, [project.id]: ids }))} /></div>
                       <button className="primary-button" type="button" onClick={() => void addProjectMembers(project)}>Add selected people</button>
@@ -5418,8 +5630,73 @@ export function App() {
               }) : <p className="empty-state">No projects are available yet.</p>}
             </div>
           </section>
+        ) : activeView === "kanban" ? (
+          <section className="panel page-panel kanban-page" id="kanban-page">
+            <div className="panel-header">
+              <div>
+                <p>{currentUser.role === "user" ? "My live workflow" : "Live workflow by status"}</p>
+                <h2>Kanban Board</h2>
+                <p>Cards move automatically when task status changes through the normal workflow.</p>
+              </div>
+              <strong className="result-count">{kanbanSourceTasks.length} task{kanbanSourceTasks.length === 1 ? "" : "s"}</strong>
+            </div>
+            {currentUser.role !== "user" ? (
+              <div className="kanban-filter-bar">
+                <label><span>Worker</span>
+                  <select value={activeWorkerId} onChange={(event) => setActiveWorkerId(event.target.value)}>
+                    <option value="">All workers</option>
+                    {assignableUsers.map((worker) => <option key={worker.id} value={worker.id}>{worker.name} - {worker.department}</option>)}
+                  </select>
+                </label>
+                {activeWorkerId ? <button className="ghost-button" type="button" onClick={() => setActiveWorkerId("")}>Show all</button> : null}
+              </div>
+            ) : null}
+            <div className="kanban-board" aria-label="Live task Kanban board">
+              {kanbanColumns.map((column) => (
+                <section className={`kanban-column kanban-${column.status}`} key={column.status}>
+                  <header>
+                    <span>{statusLabels[column.status]}</span>
+                    <strong>{column.tasks.length}</strong>
+                  </header>
+                  <div className="kanban-card-list">
+                    {column.tasks.length ? column.tasks.map((task) => {
+                      const stepCount = task.checklist?.length ?? 0;
+                      const doneSteps = task.checklist?.filter((step) => step.completed).length ?? 0;
+                      const assigneeList = task.assigneeIds.map((id) => users.find((user) => user.id === id)?.name).filter((name): name is string => Boolean(name));
+                      if (!assigneeList.length) assigneeList.push(...task.candidateNames);
+                      return (
+                        <button className={`kanban-card${isTaskOverdue(task) ? " kanban-card-overdue" : ""}`} key={`kanban-${task.id}`} type="button" onClick={() => openTaskFromKanban(task)}>
+                          <div className="kanban-card-top">
+                            <span className="kanban-card-code">#{task.taskCode}</span>
+                            <span className={`kanban-priority kanban-priority-${task.priority}`}>{priorityLabels[task.priority]}</span>
+                          </div>
+                          <strong>{task.title}</strong>
+                          <small>{task.projectName || task.department}</small>
+                          <div className="kanban-progress-row">
+                            <div className="kanban-progress" aria-label={`${task.progress}% progress`}><i style={{ width: `${task.progress}%` }} /></div>
+                            <em>{task.progress}%</em>
+                          </div>
+                          <div className="kanban-card-footer">
+                            <span className="kanban-avatars">
+                              {assigneeList.length ? assigneeList.slice(0, 3).map((name) => <i key={name} title={name}>{initials(name)}</i>) : <i className="kanban-avatar-empty" title="Unassigned">?</i>}
+                              <b>{assigneeList.length ? assigneeList[0].split(" ")[0] + (assigneeList.length > 1 ? ` +${assigneeList.length - 1}` : "") : "Unassigned"}</b>
+                            </span>
+                            <span className="kanban-card-due">
+                              {stepCount ? <em>{doneSteps}/{stepCount}</em> : null}
+                              <time>{task.dueDate ? task.dueDate.slice(5) : "No date"}</time>
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    }) : <p className="kanban-empty">No tasks in this status.</p>}
+                  </div>
+                </section>
+              ))}
+            </div>
+          </section>
         ) : activeView === "tasks" ? (
-          <section className="panel page-panel" id="active-tasks-page">
+          <section className={`panel page-panel ${focusedTaskId && filteredActiveTaskSectionTasks.some((task) => task.id === focusedTaskId) ? "task-focus-mode" : ""}`} id="active-tasks-page">
+            {renderTaskFocusBar(filteredActiveTaskSectionTasks, "Active tasks")}
             <div className="panel-header">
               <div>
                 <p>{currentUser.role === "superadmin" ? "Organization work queue" : currentUser.department}</p>
@@ -5537,7 +5814,7 @@ export function App() {
             </div>
             <div className="task-list">
               {filteredActiveTaskSectionTasks.length
-                ? filteredActiveTaskSectionTasks.map((task) => renderTaskCard(task))
+                ? focusedSubset(filteredActiveTaskSectionTasks).map((task) => renderTaskCard(task))
                 : <p className="empty-state">{(currentUser.role === "user" ? activeTaskSection : managerTaskSection) === "overdue" ? "There are no overdue tasks." : currentUser.role === "user"
                   ? activeTaskSection === "free" ? "There are no free tasks in your department right now." : "No active tasks are assigned to you."
                   : activeWorkerId ? "This worker has no tasks in the selected queue." : managerTaskSection === "review" ? "No tasks are waiting for review." : managerTaskSection === "free" ? "No tasks are currently unassigned." : "There are no active tasks."}</p>}
@@ -5621,7 +5898,7 @@ export function App() {
               </details>
             ) : null}
             <div className="people-directory-toolbar">
-              <label className="people-search"><Search aria-hidden="true" size={16} /><input aria-label="Search people" type="search" name="people-directory-search" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Search name, email or position?" value={peopleQuery} onChange={(event) => setPeopleQuery(event.target.value)} /></label>
+              <label className="people-search"><Search aria-hidden="true" size={16} /><input aria-label="Search people" type="search" name="people-directory-search" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="Search name, email or position…" value={peopleQuery} onChange={(event) => setPeopleQuery(event.target.value)} /></label>
               <label className="people-filter"><span>Position</span><select aria-label="Filter by position" value={peoplePosition} onChange={(event) => setPeoplePosition(event.target.value)}><option value="">All positions</option>{[...new Set(visibleUsers.map((user) => user.role))].map((role) => <option key={role} value={role}>{role === "user" ? "Engineers & users" : positionLabel({ role, department: "" })}</option>)}</select></label>
               <label className="people-filter"><span>Team</span><select aria-label="Filter by team" value={peopleDepartment} onChange={(event) => setPeopleDepartment(event.target.value)}><option value="">All teams</option>{[...new Set(visibleUsers.map((user) => user.department))].map((department) => <option key={department} value={department}>{departmentPath(department)}</option>)}</select></label>
             </div>
@@ -6123,7 +6400,8 @@ export function App() {
             {peopleMessage ? <p className="success-message">{peopleMessage}</p> : null}
           </section>
         ) : (
-          <section className="panel finished-panel" id="finished-tasks">
+          <section className={`panel finished-panel ${focusedTaskId && filteredArchiveTasks.some((task) => task.id === focusedTaskId) ? "task-focus-mode" : ""}`} id="finished-tasks">
+            {renderTaskFocusBar(filteredArchiveTasks, "Finished tasks")}
             <header className="archive-header">
               <div className="archive-title-block">
                 <span className="archive-title-icon"><Archive aria-hidden="true" size={22} /></span>
@@ -6245,11 +6523,11 @@ export function App() {
             </div>
 
             <div className="archive-task-list">
-              {filteredArchiveTasks.length ? filteredArchiveTasks.map((task) => (
-                <details className="archive-task-card" id={`task-${task.id}`} key={`archive-${task.id}`}>
+              {filteredArchiveTasks.length ? focusedSubset(filteredArchiveTasks).map((task) => (
+                <details className="archive-task-card" id={`task-${task.id}`} key={`archive-${task.id}`} open={focusedTaskId === task.id} onToggle={(event) => syncTaskFocus(task.id, event.currentTarget.open)}>
                   <summary>
                     <span className="archive-check"><CheckCircle2 aria-hidden="true" size={17} /></span>
-                    <span className="archive-task-name"><strong>{task.title}</strong><small>Task #{task.taskCode}{` - ${task.projectName || "No project"}`}</small></span>
+                    <span className="archive-task-name"><strong>{task.title}</strong><small>Task #{task.taskCode}{` · ${task.projectName || "No project"}`}</small></span>
                     <span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span>
                     <span className="archive-owner">{task.candidateName || "Unassigned"}</span>
                     <span className="archive-completed"><small>Completed</small><strong>{task.completedAt || "Recorded"}</strong></span>
@@ -6268,19 +6546,66 @@ export function App() {
                       </button>
                     ) : null}
                   </summary>
-                  <div className="archive-task-details">
-                    <div><span>Project</span><strong>{task.projectName || "No project"}</strong></div>
-                    <div><span>Department</span><strong>{task.department}</strong></div>
-                    <div><span>Task type</span><strong>{task.taskType}</strong></div>
-                    <div><span>Due date</span><strong>{task.dueDate || "Not scheduled"}</strong></div>
-                    <div><span>Final progress</span><strong>{task.progress}%</strong></div>
-                    <div><span>Complexity</span><strong>{complexityPoints(task)}/5</strong></div>
-                    <div><span>Started</span><strong>{task.startedAt ? new Date(task.startedAt).toLocaleDateString("en-GB") : "Not recorded"}</strong></div>
+                  <div className="task-action-zone">
+                    {renderTaskRequest(task)}
+                    {canLeadTask(task) && !task.actionRequest ? <div className="archive-reopen"><input value={reviewDrafts[task.id] ?? ""} onChange={(event) => setReviewDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))} placeholder="Reason for reopening (required)" aria-label="Reason for reopening" /><button className="task-action-button secondary" disabled={!(reviewDrafts[task.id] ?? "").trim()} title={(reviewDrafts[task.id] ?? "").trim() ? undefined : "Type the reason first. Reopening needs a reason."} onClick={() => reopenTask(task)} type="button"><RotateCcw aria-hidden="true" size={15} />Reopen Completed Task</button></div> : null}
                   </div>
-                  {task.reviewComment ? <p className="archive-review-note"><strong>Final review</strong>{task.reviewComment}</p> : null}
-                  {renderTaskChatter(task, "archive")}
-                  {renderTaskRequest(task)}
-                  {canLeadTask(task) && !task.actionRequest ? <div className="archive-reopen"><input value={reviewDrafts[task.id] ?? ""} onChange={(event) => setReviewDrafts((drafts) => ({ ...drafts, [task.id]: event.target.value }))} placeholder="Explain why this completed task must be reopened" /><button className="task-action-button secondary" onClick={() => reopenTask(task)} type="button"><RotateCcw aria-hidden="true" size={15} />Reopen Completed Task</button></div> : null}
+                  <div className="task-card-body task-open-workspace task-open-archive">
+                    <div className="task-open-main">
+                      <aside className="task-open-aside" aria-label={`Details for ${task.taskCode}`}>
+                        <h4>Details</h4>
+                        <dl className="task-properties">
+                          <div><dt>Status</dt><dd><span className="status-pill status-done">{statusLabels.done}</span></dd></div>
+                          <div><dt>Priority</dt><dd><span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span></dd></div>
+                          <div className="task-property-wide"><dt>Assignees</dt><dd>
+                            <div className="task-card-people">
+                              {task.assigneeIds.length ? task.assigneeIds.map((assigneeId, index) => (
+                                <span className="assignee-chip" key={assigneeId}>
+                                  <span className="assignee-avatar" style={{ background: identityColor(assigneeId, currentUser?.id) }}>
+                                    {initials(task.candidateNames[index] ?? "?")}
+                                  </span>
+                                  {task.candidateNames[index]}
+                                </span>
+                              )) : (
+                                <span className="assignee-chip unassigned"><Hand aria-hidden="true" size={13} />{task.candidateName || "Unassigned"}</span>
+                              )}
+                            </div>
+                          </dd></div>
+                          <div><dt>Completed</dt><dd><CheckCircle2 aria-hidden="true" size={14} />{task.completedAt || "Recorded"}</dd></div>
+                          <div><dt>Deadline</dt><dd className={task.dueDate && task.completedAtIso && task.completedAtIso.slice(0, 10) > task.dueDate ? "is-overdue" : ""}><Calendar aria-hidden="true" size={14} />{task.dueDate || "Not scheduled"}{task.dueDate && task.completedAtIso ? <small>{task.completedAtIso.slice(0, 10) > task.dueDate ? "Delivered late" : "Delivered on time"}</small> : null}</dd></div>
+                          <div><dt>Started</dt><dd>{task.startedAt ? new Date(task.startedAt).toLocaleDateString("en-GB") : "Not recorded"}</dd></div>
+                          <div className="task-property-wide"><dt>Project</dt><dd><FolderKanban aria-hidden="true" size={14} />{task.projectName || "No project"}</dd></div>
+                          <div className="task-property-wide"><dt>Department</dt><dd><Building2 aria-hidden="true" size={14} />{task.department}</dd></div>
+                          <div><dt>Type</dt><dd>{task.taskType}</dd></div>
+                          <div><dt>Complexity</dt><dd title={complexityLabels[complexityPoints(task)]}><span className="complexity-meter" aria-hidden="true">{[1, 2, 3, 4, 5].map((level) => <i className={level <= complexityPoints(task) ? "on" : ""} key={level} />)}</span>{complexityPoints(task)}/5</dd></div>
+                          {task.reopenCount ? <div><dt>Reopened</dt><dd>{task.reopenCount} time{task.reopenCount === 1 ? "" : "s"}</dd></div> : null}
+                        </dl>
+                      </aside>
+                      {task.reviewComment ? <p className="review-note archive-review-note"><strong>Final review</strong> {task.reviewComment}</p> : null}
+                      <div className="task-workflow-summary workflow-status-done">
+                        <div className="workflow-summary-head">
+                          <span><RotateCcw aria-hidden="true" size={15} />Workflow</span>
+                          <strong>Approved, completed and locked</strong>
+                        </div>
+                      </div>
+                      <div className="task-open-progress" aria-label={`${task.progress}% final progress`}>
+                        <div className="task-open-progress-head">
+                          <span>Final progress</span>
+                          <b className="task-progress-value">{task.progress}%</b>
+                        </div>
+                        <div className="task-progress"><span style={{ width: `${task.progress}%` }} /></div>
+                      </div>
+                      {renderTaskChatter(task, "archive", "workspace")}
+                    </div>
+                    <section className="task-open-messages" aria-label={`Workflow messages for ${task.taskCode}`}>
+                      <header>
+                        <MessageSquare aria-hidden="true" size={16} />
+                        <h4>Workflow messages</h4>
+                        <span>{task.messages.length} comment{task.messages.length === 1 ? "" : "s"} · {task.events.filter((event) => !["commented", "comment_edited"].includes(event.type)).length} updates</span>
+                      </header>
+                      {renderTaskChatter(task, "archive", "messages")}
+                    </section>
+                  </div>
                 </details>
               )) : <div className="archive-empty"><Search aria-hidden="true" size={24} /><strong>No finished tasks found</strong><span>Try a shorter task ID or clear the additional filters.</span></div>}
             </div>

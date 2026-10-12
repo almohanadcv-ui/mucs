@@ -1,0 +1,5234 @@
+/* ==========================================================================
+   MAB Design System — final visual layer.
+   Loaded after styles.css. It unifies tokens, typography, surfaces and the
+   main pages (dashboard, tasks, kanban, directory, projects) for light and
+   dark themes. Keep new page styles here rather than adding another pass to
+   styles.css.
+   ========================================================================== */
+
+:root {
+  --ds-font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --ds-font-ar: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, sans-serif;
+
+  --ds-bg: #f3f5f9;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #f8fafc;
+  --ds-surface-3: #f1f5f9;
+  --ds-border: #e2e8f0;
+  --ds-border-strong: #cbd5e1;
+  --ds-text: #0f172a;
+  --ds-text-2: #334155;
+  --ds-muted: #64748b;
+  --ds-faint: #94a3b8;
+
+  --ds-primary: #1570b8;
+  --ds-primary-strong: #0e5a96;
+  --ds-primary-soft: #e8f2fb;
+  --ds-primary-ring: rgba(21, 112, 184, 0.18);
+
+  --ds-success: #16a34a;
+  --ds-success-soft: #e9f7ef;
+  --ds-warning: #d97706;
+  --ds-warning-soft: #fdf4e3;
+  --ds-danger: #dc2626;
+  --ds-danger-soft: #fdecec;
+  --ds-violet: #7c3aed;
+  --ds-violet-soft: #f1ebfe;
+
+  --ds-radius-sm: 8px;
+  --ds-radius: 12px;
+  --ds-radius-lg: 16px;
+  --ds-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --ds-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --ds-shadow-md: 0 8px 24px -8px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.04);
+  --ds-shadow-lg: 0 24px 48px -16px rgba(15, 23, 42, 0.22);
+
+  --ds-sidebar-bg: #0b1d33;
+  --ds-sidebar-bg-2: #0a1729;
+  --ds-sidebar-text: #a9b8cc;
+  --ds-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --ds-sidebar-active: rgba(74, 163, 232, 0.16);
+
+  /* Re-point legacy tokens so older rules follow the new palette. */
+  --mab-bg: var(--ds-bg);
+  --mab-surface: var(--ds-surface);
+  --mab-surface-soft: var(--ds-surface-2);
+  --mab-border: var(--ds-border);
+  --mab-text: var(--ds-text);
+  --mab-text-muted: var(--ds-muted);
+  --mab-blue: var(--ds-primary);
+  --mab-blue-dark: var(--ds-primary-strong);
+  --mab-blue-soft: var(--ds-primary-soft);
+  --mab-section: var(--ds-surface-2);
+  --mab-open-surface: var(--ds-surface);
+  --mab-open-border: #93c2e6;
+  --mab-shadow-soft: var(--ds-shadow-sm);
+
+  color: var(--ds-text);
+  background: var(--ds-bg);
+  font-family: var(--ds-font);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="dark"] {
+  --ds-bg: #0a1220;
+  --ds-surface: #111b2c;
+  --ds-surface-2: #0e1727;
+  --ds-surface-3: #172338;
+  --ds-border: #1f2d44;
+  --ds-border-strong: #2c3e5c;
+  --ds-text: #e6edf6;
+  --ds-text-2: #c4d0df;
+  --ds-muted: #8a9bb4;
+  --ds-faint: #5f718d;
+
+  --ds-primary: #4ea5ea;
+  --ds-primary-strong: #82c1f2;
+  --ds-primary-soft: #13283f;
+  --ds-primary-ring: rgba(78, 165, 234, 0.28);
+
+  --ds-success: #34c46e;
+  --ds-success-soft: #0f2a1d;
+  --ds-warning: #f0a33a;
+  --ds-warning-soft: #2c2010;
+  --ds-danger: #f26b6b;
+  --ds-danger-soft: #331517;
+  --ds-violet: #a78bfa;
+  --ds-violet-soft: #221a3d;
+
+  --ds-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --ds-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --ds-shadow-md: 0 10px 28px -10px rgba(0, 0, 0, 0.6);
+  --ds-shadow-lg: 0 24px 48px -16px rgba(0, 0, 0, 0.7);
+
+  --ds-sidebar-bg: #08111f;
+  --ds-sidebar-bg-2: #060d18;
+
+  --mab-open-border: #2f5f86;
+}
+
+html[lang="ar"],
+html[dir="rtl"] {
+  --ds-font: var(--ds-font-ar);
+}
+
+body {
+  background: var(--ds-bg) !important;
+  color: var(--ds-text);
+  font-family: var(--ds-font);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+::selection {
+  background: var(--ds-primary-ring);
+}
+
+* {
+  scrollbar-color: var(--ds-border-strong) transparent;
+  scrollbar-width: thin;
+}
+
+/* ---------- Typography reset: calmer weights, tighter headings ---------- */
+
+.workspace h1,
+.workspace h2,
+.workspace h3,
+.workspace h4 {
+  color: var(--ds-text);
+  letter-spacing: -0.015em;
+}
+
+.workspace h2 {
+  font-weight: 700;
+}
+
+.workspace h3,
+.workspace h4 {
+  font-weight: 650;
+}
+
+.workspace strong {
+  font-weight: 600;
+}
+
+.workspace small {
+  color: var(--ds-muted);
+}
+
+/* ---------- Buttons ---------- */
+
+button {
+  border-radius: var(--ds-radius-sm);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  min-height: 38px;
+}
+
+.primary-button,
+button.primary-button {
+  background: var(--ds-primary) !important;
+  border: 1px solid transparent !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+}
+
+.primary-button:not(:disabled):hover,
+button.primary-button:not(:disabled):hover {
+  background: var(--ds-primary-strong) !important;
+  box-shadow: 0 6px 16px -6px var(--ds-primary) !important;
+}
+
+:root[data-theme="dark"] .primary-button,
+:root[data-theme="dark"] button.primary-button {
+  background: #2b87d1 !important;
+}
+
+:root[data-theme="dark"] .primary-button:not(:disabled):hover {
+  background: #3a96e0 !important;
+}
+
+.ghost-button {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  color: var(--ds-text-2) !important;
+}
+
+.ghost-button:not(:disabled):hover {
+  background: var(--ds-surface-3) !important;
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  color: var(--ds-text) !important;
+}
+
+button:focus-visible,
+summary:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--ds-primary) !important;
+  outline-offset: 2px;
+}
+
+/* ---------- Form controls ---------- */
+
+input,
+select,
+textarea {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border-strong) !important;
+  border-radius: 10px !important;
+  color: var(--ds-text) !important;
+  min-height: 40px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea {
+  background: var(--ds-surface-2) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--ds-faint);
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: var(--ds-faint) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--ds-primary) !important;
+  box-shadow: 0 0 0 4px var(--ds-primary-ring) !important;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  min-height: 0;
+  accent-color: var(--ds-primary);
+}
+
+/* ---------- App shell ---------- */
+
+.app-shell {
+  background: var(--ds-bg) !important;
+}
+
+@media (min-width: 1081px) {
+  .app-shell {
+    grid-template-columns: 264px minmax(0, 1fr);
+  }
+}
+
+/* Sidebar */
+.sidebar {
+  background:
+    radial-gradient(120% 60% at 0% 0%, rgba(41, 128, 199, 0.22), transparent 60%),
+    linear-gradient(180deg, var(--ds-sidebar-bg) 0%, var(--ds-sidebar-bg-2) 100%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
+  box-shadow: none !important;
+  padding: 18px 14px 14px !important;
+}
+
+.sidebar .brand {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
+  gap: 12px;
+  margin: 0 4px 14px !important;
+  padding: 2px 2px 16px !important;
+}
+
+.sidebar .brand img {
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25) !important;
+  height: 40px;
+  width: 58px;
+}
+
+.sidebar .brand strong {
+  color: #ffffff !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}
+
+.sidebar .brand span {
+  color: #7f98b5 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.06em;
+}
+
+.sidebar-context {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+  margin: 0 4px 10px !important;
+  padding: 10px !important;
+}
+
+.sidebar-context > span {
+  background: rgba(78, 165, 234, 0.14) !important;
+  border: 0 !important;
+  color: #8cc8f5 !important;
+}
+
+.sidebar-context small {
+  color: #6f88a6 !important;
+  font-weight: 600 !important;
+}
+
+.sidebar-context strong {
+  color: #dbe6f3 !important;
+  font-weight: 600 !important;
+}
+
+.sidebar-nav-label {
+  color: #5d7896 !important;
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.1em !important;
+  margin: 12px 12px 6px !important;
+}
+
+.sidebar nav {
+  gap: 2px !important;
+}
+
+.sidebar-nav-button {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 9px !important;
+  box-shadow: none !important;
+  color: var(--ds-sidebar-text) !important;
+  font-size: 13.5px !important;
+  font-weight: 500 !important;
+  gap: 12px !important;
+  grid-template-columns: 18px minmax(0, 1fr) auto !important;
+  min-height: 38px !important;
+  padding: 0 10px 0 12px !important;
+  position: relative;
+  transform: none !important;
+}
+
+.sidebar-nav-button svg {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #7f98b5;
+  height: 17px !important;
+  padding: 0 !important;
+  width: 17px !important;
+}
+
+.sidebar-nav-button::before {
+  display: none !important;
+}
+
+.sidebar-nav-button:hover {
+  background: var(--ds-sidebar-hover) !important;
+  color: #ffffff !important;
+}
+
+.sidebar-nav-button:hover svg {
+  color: #c9dcf0;
+}
+
+.sidebar-nav-button.active {
+  background: var(--ds-sidebar-active) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+}
+
+.sidebar-nav-button.active svg {
+  color: #7cc0f4;
+}
+
+.sidebar-nav-button.active::after {
+  background: #4ea5ea;
+  border-radius: 0 3px 3px 0;
+  content: "";
+  height: 18px;
+  inset-inline-start: -14px;
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+}
+
+.sidebar-nav-button > span {
+  background: rgba(255, 255, 255, 0.07) !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+  color: #a9bdd4 !important;
+  font-size: 11px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600 !important;
+  min-width: 24px;
+  padding: 2px 7px !important;
+  text-align: center;
+}
+
+.sidebar-nav-button.active > span {
+  background: #2b87d1 !important;
+  color: #ffffff !important;
+}
+
+.sidebar-user {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+
+.sidebar-user strong {
+  color: #ffffff !important;
+}
+
+.sidebar-user span:not(.user-avatar):not(.online-dot) {
+  color: #7f98b5 !important;
+}
+
+.sidebar-user .user-avatar {
+  background: linear-gradient(135deg, #2b87d1, #5b5bd6) !important;
+  color: #ffffff !important;
+}
+
+/* Workspace */
+.workspace {
+  background: transparent !important;
+  min-width: 0;
+  padding: 0 32px 40px !important;
+}
+
+/* Top bar: a slim sticky strip with breadcrumb + actions. The page header
+   below carries the title, so the duplicate logo and h1 are hidden here. */
+.topbar {
+  backdrop-filter: saturate(160%) blur(14px);
+  background: color-mix(in srgb, var(--ds-bg) 82%, transparent) !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 -32px 24px !important;
+  min-height: 64px;
+  padding: 10px 32px !important;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+
+.topbar-title {
+  gap: 12px !important;
+  min-width: 0;
+}
+
+.topbar-title > img {
+  display: none !important;
+}
+
+.topbar-title h1 {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.topbar-title p {
+  color: var(--ds-muted) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  margin: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: none !important;
+  white-space: nowrap;
+}
+
+.app-back-button {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  color: var(--ds-text-2) !important;
+  font-size: 13px;
+  min-height: 34px !important;
+  padding: 0 12px !important;
+}
+
+.topbar-actions {
+  gap: 8px !important;
+}
+
+.topbar-actions > button,
+.topbar-actions .ai-launch-anchor > button,
+.notification-button {
+  font-size: 13px !important;
+  min-height: 36px !important;
+}
+
+.theme-toggle,
+.notification-button,
+.topbar-ai-button,
+.topbar-actions .ghost-button {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  color: var(--ds-text-2) !important;
+}
+
+.theme-toggle:hover,
+.notification-button:hover,
+.topbar-ai-button:hover {
+  background: var(--ds-surface-3) !important;
+  color: var(--ds-text) !important;
+}
+
+/* Dark-mode toggle collapses to an icon button; the label stays for screen readers via aria-label. */
+.theme-toggle:not(.language-toggle) {
+  padding: 0 !important;
+  width: 36px;
+  justify-content: center;
+}
+
+.theme-toggle:not(.language-toggle) span {
+  display: none !important;
+}
+
+.notification-button {
+  padding: 0 !important;
+  width: 36px;
+  justify-content: center;
+  position: relative;
+}
+
+.notification-button > span {
+  background: var(--ds-danger) !important;
+  border: 2px solid var(--ds-bg) !important;
+  color: #ffffff !important;
+  font-size: 10px !important;
+}
+
+.topbar-ai-button.ai-feature-launch {
+  animation: none !important;
+  box-shadow: 0 0 0 3px var(--ds-primary-ring) !important;
+}
+
+.topbar-ai-button svg {
+  color: var(--ds-violet);
+}
+
+.feature-badge {
+  background: linear-gradient(135deg, #7c3aed, #2b87d1) !important;
+  color: #ffffff !important;
+}
+
+.ai-launch-card,
+.notification-popover {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: var(--ds-shadow-lg) !important;
+  color: var(--ds-text) !important;
+}
+
+.ai-launch-arrow {
+  background: var(--ds-surface) !important;
+  border-color: var(--ds-border) !important;
+}
+
+/* ---------- Page header ---------- */
+
+.workspace-page-header {
+  align-items: center !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  gap: 16px !important;
+  margin: 4px 0 22px !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+
+.workspace-page-header::before,
+.workspace-page-header::after {
+  display: none !important;
+}
+
+.workspace-page-icon {
+  background: linear-gradient(135deg, var(--ds-primary), #5b5bd6) !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 10px 22px -10px var(--ds-primary) !important;
+  color: #ffffff !important;
+  height: 48px !important;
+  width: 48px !important;
+}
+
+.workspace-page-icon svg {
+  height: 22px;
+  width: 22px;
+}
+
+.workspace-page-header p {
+  color: var(--ds-muted) !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.07em !important;
+  margin: 0 0 2px !important;
+  text-transform: uppercase;
+}
+
+.workspace-page-header h2 {
+  color: var(--ds-text) !important;
+  font-size: 26px !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.15 !important;
+  margin: 0 !important;
+}
+
+.workspace-page-header small,
+.workspace-page-greeting {
+  color: var(--ds-muted) !important;
+  display: block;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  margin-top: 4px !important;
+  text-transform: none !important;
+}
+
+/* ---------- Surfaces ---------- */
+
+.panel,
+.page-panel,
+.task-card,
+.archive-task-card,
+.productivity-card,
+.project-card,
+.directory-card,
+.dash-pro-hero-card,
+.dash-executive-panel,
+.dash-focus-panel,
+.dash-visual-analytics,
+.dash-online-panel,
+.dash-manager-review,
+.dash-today-card,
+.dash-ai-card,
+.dash-filter-panel,
+.settings-section,
+.technical-organization,
+.people-management,
+.management-panel {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: var(--ds-shadow-sm) !important;
+  color: var(--ds-text);
+}
+
+.panel,
+.page-panel {
+  border-radius: var(--ds-radius-lg) !important;
+  padding: 22px !important;
+}
+
+.panel-header {
+  align-items: center;
+  border-bottom: 1px solid var(--ds-border) !important;
+  margin-bottom: 18px !important;
+  padding-bottom: 16px !important;
+}
+
+.panel-header h2 {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em !important;
+  margin: 2px 0 0 !important;
+}
+
+.panel-header p {
+  color: var(--ds-muted) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  margin: 0 !important;
+}
+
+.result-count,
+.export-count {
+  background: var(--ds-primary-soft) !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  color: var(--ds-primary-strong) !important;
+  font-size: 12.5px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600 !important;
+  padding: 5px 12px !important;
+}
+
+/* Collapsible sections (create project, filters, people etc.) */
+.workspace details > summary {
+  border-radius: var(--ds-radius) !important;
+}
+
+/* Generic pills */
+.status-pill,
+.priority,
+.queue-flag {
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.02em !important;
+}
+
+/* ---------- Dashboard ---------- */
+
+.dash-pro-cockpit {
+  gap: 16px !important;
+}
+
+.dash-pro-hero-card {
+  background:
+    radial-gradient(90% 120% at 100% 0%, rgba(124, 92, 246, 0.35), transparent 55%),
+    radial-gradient(70% 90% at 0% 100%, rgba(43, 135, 209, 0.45), transparent 60%),
+    linear-gradient(135deg, #0d2742 0%, #0b1d33 100%) !important;
+  border: 0 !important;
+  border-radius: 20px !important;
+  box-shadow: 0 20px 40px -20px rgba(11, 29, 51, 0.6) !important;
+  color: #ffffff !important;
+  overflow: hidden;
+  position: relative;
+}
+
+.dash-pro-hero-card::after {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 28px 28px;
+  content: "";
+  inset: 0;
+  mask-image: linear-gradient(120deg, transparent 30%, #000 100%);
+  pointer-events: none;
+  position: absolute;
+}
+
+.dash-pro-hero-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dash-hero-avatar {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: none !important;
+}
+
+.dash-hero-avatar::before,
+.dash-hero-avatar::after {
+  display: none !important;
+}
+
+.dash-hero-avatar span {
+  background: linear-gradient(135deg, #4ea5ea, #7c5cf6) !important;
+  border: 3px solid rgba(255, 255, 255, 0.85) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.dash-hero-copy .dash-panel-label {
+  color: #8cc8f5 !important;
+}
+
+.dash-hero-copy h2 {
+  color: #ffffff !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.03em !important;
+}
+
+.dash-hero-copy > span {
+  color: rgba(226, 236, 248, 0.78) !important;
+}
+
+.dash-hero-actions .primary-button {
+  background: #ffffff !important;
+  color: #0b1d33 !important;
+}
+
+.dash-hero-actions .primary-button:not(:disabled):hover {
+  background: #e8f2fb !important;
+  box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.5) !important;
+}
+
+.dash-hero-actions .ghost-button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+}
+
+.dash-hero-actions .ghost-button:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+.dash-ai-card {
+  border-radius: var(--ds-radius-lg) !important;
+  text-align: start;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease !important;
+}
+
+.dash-ai-card:hover {
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-md) !important;
+  transform: translateY(-2px);
+}
+
+.dash-ai-card > span {
+  background: var(--ds-violet-soft) !important;
+  border: 0 !important;
+  color: var(--ds-violet) !important;
+}
+
+.dash-ai-card + .dash-ai-card > span {
+  background: var(--ds-primary-soft) !important;
+  color: var(--ds-primary) !important;
+}
+
+.dash-ai-card strong {
+  color: var(--ds-text) !important;
+}
+
+.dash-ai-card small {
+  color: var(--ds-muted) !important;
+}
+
+.dash-today-card {
+  border-radius: var(--ds-radius-lg) !important;
+}
+
+.dash-schedule-item {
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: none !important;
+  color: var(--ds-text) !important;
+}
+
+.dash-schedule-item:hover {
+  background: var(--ds-surface) !important;
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-sm) !important;
+}
+
+.dash-schedule-item > span {
+  background: var(--ds-primary-soft) !important;
+  color: var(--ds-primary-strong) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-schedule-item strong {
+  color: var(--ds-text) !important;
+}
+
+.dash-panel-label {
+  color: var(--ds-muted) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.08em !important;
+}
+
+.dash-panel-header h2 {
+  color: var(--ds-text) !important;
+  font-size: 17px !important;
+}
+
+/* KPI tiles */
+.dash-kpi-row {
+  gap: 16px !important;
+}
+
+.dash-kpi {
+  align-items: flex-start !important;
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius-lg) !important;
+  box-shadow: var(--ds-shadow-sm) !important;
+  color: var(--ds-text) !important;
+  overflow: hidden;
+  padding: 18px 20px !important;
+  position: relative;
+  text-align: start;
+  transition: transform 160ms ease, box-shadow 160ms ease !important;
+}
+
+.dash-kpi::before {
+  display: none !important;
+}
+
+.dash-kpi::after {
+  background: var(--kpi-color, var(--ds-primary));
+  content: "";
+  height: 3px;
+  inset: 0 0 auto 0;
+  opacity: 0.9;
+  position: absolute;
+}
+
+button.dash-kpi:hover {
+  box-shadow: var(--ds-shadow-md) !important;
+  transform: translateY(-2px);
+}
+
+.dash-kpi-blue { --kpi-color: var(--ds-primary); --kpi-soft: var(--ds-primary-soft); }
+.dash-kpi-green { --kpi-color: var(--ds-success); --kpi-soft: var(--ds-success-soft); }
+.dash-kpi-red { --kpi-color: var(--ds-danger); --kpi-soft: var(--ds-danger-soft); }
+.dash-kpi-amber { --kpi-color: var(--ds-warning); --kpi-soft: var(--ds-warning-soft); }
+.dash-kpi-muted { --kpi-color: var(--ds-faint); --kpi-soft: var(--ds-surface-3); }
+
+.dash-kpi-icon {
+  background: var(--kpi-soft, var(--ds-primary-soft)) !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  color: var(--kpi-color, var(--ds-primary)) !important;
+}
+
+.dash-kpi-body > span {
+  color: var(--ds-muted) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+}
+
+.dash-kpi-body strong {
+  color: var(--ds-text) !important;
+  font-size: 30px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750 !important;
+  letter-spacing: -0.03em !important;
+  line-height: 1.15 !important;
+}
+
+.dash-kpi-body small {
+  color: var(--kpi-color, var(--ds-muted)) !important;
+  font-weight: 600 !important;
+}
+
+.dash-filter-panel,
+.dash-visual-analytics,
+.dash-executive-panel,
+.dash-focus-panel,
+.dash-online-panel,
+.dash-manager-review {
+  border-radius: var(--ds-radius-lg) !important;
+}
+
+.dash-bar-track,
+.dash-report-track {
+  background: var(--ds-surface-3) !important;
+}
+
+/* Floating chat dock */
+.chat-dock,
+.floating-chat-button,
+.messages-dock {
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: var(--ds-shadow-lg) !important;
+}
+
+/* ---------- Active tasks ---------- */
+
+.task-view-tabs {
+  gap: 10px !important;
+}
+
+.task-view-tabs button {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: none !important;
+  color: var(--ds-text) !important;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease !important;
+}
+
+.task-view-tabs button:hover {
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-sm) !important;
+}
+
+.task-view-tabs button.active {
+  background: var(--ds-primary-soft) !important;
+  border-color: var(--ds-primary) !important;
+  box-shadow: 0 0 0 3px var(--ds-primary-ring) !important;
+}
+
+.task-view-tabs button strong {
+  color: var(--ds-text) !important;
+}
+
+.task-view-tabs button small {
+  color: var(--ds-muted) !important;
+}
+
+.task-view-tabs button b {
+  border-radius: 10px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-card,
+.archive-task-card {
+  border-radius: var(--ds-radius-lg) !important;
+  overflow: hidden;
+  transition: border-color 160ms ease, box-shadow 160ms ease !important;
+}
+
+.task-card:hover,
+.archive-task-card:hover {
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-md) !important;
+}
+
+.active-task-summary,
+.archive-task-card > summary {
+  background: var(--ds-surface) !important;
+  border-color: transparent !important;
+}
+
+.active-task-card[open],
+.archive-task-card[open] {
+  background: var(--ds-surface) !important;
+  border-color: var(--mab-open-border) !important;
+  box-shadow: var(--ds-shadow-md) !important;
+}
+
+.active-task-card[open] > .active-task-summary,
+.archive-task-card[open] > summary {
+  background: var(--ds-surface-2) !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+}
+
+.task-card-body,
+.archive-task-details,
+.task-open-workspace,
+.workflow-chatter,
+.task-documents,
+.task-checklist,
+.task-card-meta,
+.task-card-footer,
+.dash-focus-card,
+.dash-insight-card,
+.metric-grid span,
+.archive-summary span,
+.hero-metrics span,
+.archive-filter-panel,
+.active-task-filter-panel,
+.worker-task-filter,
+.active-task-advanced-filters,
+.task-card-heading,
+.task-collaboration-details,
+.workflow-chatter article,
+.task-documents li,
+.task-checklist li {
+  background-color: var(--ds-surface-2) !important;
+  border-color: var(--ds-border) !important;
+  color: var(--ds-text);
+}
+
+/* ---------- Kanban ---------- */
+
+.kanban-page {
+  overflow: visible !important;
+}
+
+.kanban-filter-bar {
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  padding: 10px 12px !important;
+}
+
+.kanban-filter-bar label {
+  align-items: center;
+  display: flex !important;
+  font-weight: 600;
+  gap: 10px !important;
+}
+
+.kanban-filter-bar select {
+  min-width: 240px;
+}
+
+.kanban-board {
+  align-items: start !important;
+  gap: 16px !important;
+  grid-template-columns: repeat(4, minmax(250px, 1fr)) !important;
+  min-height: 520px !important;
+}
+
+.kanban-column {
+  align-self: stretch;
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius-lg) !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.kanban-column header {
+  align-items: center;
+  background: transparent !important;
+  border-bottom: 0 !important;
+  color: var(--ds-text) !important;
+  display: flex;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  gap: 8px;
+  padding: 14px 14px 10px !important;
+  position: relative;
+}
+
+.kanban-column header::before {
+  border-radius: 50% !important;
+  content: "";
+  flex: none;
+  height: 8px !important;
+  position: static !important;
+  width: 8px !important;
+}
+
+.kanban-column header span {
+  flex: 1;
+}
+
+.kanban-column header strong {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 999px !important;
+  color: var(--ds-muted) !important;
+  font-size: 11.5px !important;
+  font-variant-numeric: tabular-nums;
+  min-width: 24px;
+  padding: 1px 8px !important;
+  text-align: center;
+}
+
+.kanban-card-list {
+  align-content: start !important;
+  display: grid !important;
+  gap: 10px !important;
+  grid-auto-rows: max-content !important;
+  padding: 4px 10px 12px !important;
+}
+
+.kanban-card {
+  align-items: stretch !important;
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-left-width: 1px !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  color: var(--ds-text) !important;
+  cursor: pointer;
+  display: flex !important;
+  flex-direction: column;
+  gap: 8px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 12px 13px !important;
+  position: relative;
+  text-align: start !important;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease !important;
+  white-space: normal !important;
+}
+
+.kanban-card:hover {
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-md) !important;
+  transform: translateY(-2px) !important;
+}
+
+.kanban-card-overdue {
+  border-color: color-mix(in srgb, var(--ds-danger) 45%, var(--ds-border)) !important;
+}
+
+.kanban-card-top {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.kanban-card-code {
+  color: var(--ds-faint);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.kanban-priority {
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  text-transform: uppercase;
+}
+
+.kanban-priority-urgent { background: var(--ds-danger-soft); color: var(--ds-danger); }
+.kanban-priority-high { background: var(--ds-warning-soft); color: var(--ds-warning); }
+.kanban-priority-medium { background: var(--ds-primary-soft); color: var(--ds-primary); }
+.kanban-priority-low { background: var(--ds-surface-3); color: var(--ds-muted); }
+
+.kanban-card > strong {
+  color: var(--ds-text) !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+}
+
+.kanban-card > small {
+  color: var(--ds-muted) !important;
+  font-size: 12px !important;
+  margin-top: -4px;
+}
+
+.kanban-progress-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.kanban-progress-row em {
+  color: var(--ds-muted);
+  font-size: 11px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 30px;
+  text-align: end;
+}
+
+.kanban-progress {
+  background: var(--ds-surface-3) !important;
+  border-radius: 999px !important;
+  flex: 1;
+  height: 5px !important;
+  overflow: hidden;
+}
+
+.kanban-progress i {
+  background: var(--col-color, var(--ds-primary)) !important;
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+}
+
+.kanban-card-footer {
+  align-items: center;
+  border-top: 1px dashed var(--ds-border);
+  display: flex !important;
+  gap: 8px;
+  justify-content: space-between;
+  margin-top: 2px;
+  padding-top: 9px;
+}
+
+.kanban-avatars {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+}
+
+.kanban-avatars i {
+  align-items: center;
+  background: linear-gradient(135deg, #2b87d1, #5b5bd6);
+  border: 2px solid var(--ds-surface);
+  border-radius: 50%;
+  color: #ffffff;
+  display: inline-flex;
+  flex: none;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.kanban-avatars i + i {
+  margin-inline-start: -8px;
+}
+
+.kanban-avatars i.kanban-avatar-empty {
+  background: var(--ds-surface-3);
+  border: 1px dashed var(--ds-border-strong);
+  color: var(--ds-faint);
+}
+
+.kanban-avatars b {
+  color: var(--ds-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  margin-inline-start: 7px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kanban-card-due {
+  align-items: center;
+  color: var(--ds-muted);
+  display: flex;
+  flex: none;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  gap: 8px;
+}
+
+.kanban-card-due em {
+  background: var(--ds-surface-3);
+  border-radius: 6px;
+  font-style: normal;
+  padding: 1px 6px;
+}
+
+.kanban-card-overdue .kanban-card-due time {
+  color: var(--ds-danger);
+}
+
+.kanban-assigned { --col-color: var(--ds-primary); }
+.kanban-in_progress { --col-color: var(--ds-warning); }
+.kanban-under_review { --col-color: var(--ds-violet); }
+.kanban-done { --col-color: var(--ds-success); }
+
+.kanban-column header::before {
+  background: var(--col-color) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--col-color) 22%, transparent);
+}
+
+.kanban-empty {
+  border: 1px dashed var(--ds-border-strong) !important;
+  border-radius: var(--ds-radius) !important;
+  color: var(--ds-faint) !important;
+  font-size: 12.5px !important;
+  padding: 22px 12px !important;
+  text-align: center;
+}
+
+/* ---------- People directory ---------- */
+
+.directory-card {
+  border-radius: var(--ds-radius-lg) !important;
+  transition: box-shadow 160ms ease, border-color 160ms ease, transform 160ms ease !important;
+}
+
+.directory-card:hover {
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-md) !important;
+  transform: translateY(-2px);
+}
+
+/* ---------- Projects ---------- */
+
+.project-card {
+  border-radius: var(--ds-radius-lg) !important;
+  overflow: hidden;
+  position: relative;
+  transition: box-shadow 160ms ease, border-color 160ms ease !important;
+}
+
+.project-card::before {
+  background: linear-gradient(90deg, var(--ds-primary), #7c5cf6);
+  content: "";
+  height: 3px;
+  inset: 0 0 auto 0;
+  position: absolute;
+}
+
+.project-card:hover {
+  border-color: var(--ds-border-strong) !important;
+  box-shadow: var(--ds-shadow-md) !important;
+}
+
+.project-card h3 {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+}
+
+/* ---------- Tables ---------- */
+
+.workspace table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.workspace thead th {
+  background: var(--ds-surface-2) !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+  color: var(--ds-muted) !important;
+  font-size: 11.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.workspace tbody td {
+  border-bottom: 1px solid var(--ds-border) !important;
+  color: var(--ds-text-2);
+}
+
+.workspace tbody tr:hover td {
+  background: var(--ds-surface-2) !important;
+}
+
+/* ---------- Dark theme: neutralise legacy hard-coded light surfaces ---------- */
+
+:root[data-theme="dark"] .ghost-button {
+  background: var(--ds-surface-3) !important;
+}
+
+:root[data-theme="dark"] .workspace-page-header h2,
+:root[data-theme="dark"] .panel-header h2,
+:root[data-theme="dark"] .workspace h2,
+:root[data-theme="dark"] .workspace h3 {
+  color: var(--ds-text) !important;
+}
+
+:root[data-theme="dark"] .kanban-avatars i {
+  border-color: var(--ds-surface);
+}
+
+/* ---------- Motion preferences ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
+
+:root[data-reduce-motion="true"] * {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .kanban-board {
+    grid-template-columns: repeat(4, minmax(240px, 280px)) !important;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .workspace {
+    padding: 0 16px 32px !important;
+  }
+
+  .topbar {
+    margin: 0 -16px 18px !important;
+    padding: 8px 16px !important;
+  }
+
+  .workspace-page-header h2 {
+    font-size: 22px !important;
+  }
+
+  .workspace-page-icon {
+    height: 42px !important;
+    width: 42px !important;
+  }
+
+  .panel,
+  .page-panel {
+    padding: 16px !important;
+  }
+}
+
+/* ---------- Refinements after visual review ---------- */
+
+select {
+  font-weight: 500 !important;
+}
+
+.workspace-page-header p.workspace-page-greeting {
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0 !important;
+  margin: 4px 0 0 !important;
+  text-transform: none !important;
+}
+
+/* Dashboard hero: a clean full-bleed banner without the avatar frame. */
+.dash-pro-hero-card {
+  align-content: center;
+  grid-template-columns: minmax(0, 1fr) !important;
+  min-height: 0 !important;
+  padding: 36px 40px !important;
+}
+
+.dash-hero-avatar {
+  display: none !important;
+}
+
+.dash-hero-copy h2 {
+  font-size: clamp(26px, 2.6vw, 36px) !important;
+  line-height: 1.1 !important;
+  margin: 6px 0 10px !important;
+}
+
+.dash-hero-copy > span {
+  display: block;
+  font-size: 15px !important;
+  max-width: 560px;
+}
+
+.dash-hero-actions {
+  margin-top: 22px !important;
+}
+
+/* AI cards: icon on the left, title + caption stacked beside it. */
+.dash-ai-stack {
+  gap: 16px !important;
+}
+
+.dash-ai-card {
+  align-content: center !important;
+  column-gap: 14px !important;
+  display: grid !important;
+  grid-template-columns: 42px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  padding: 18px !important;
+  row-gap: 2px !important;
+}
+
+.dash-ai-card > span {
+  align-self: center !important;
+  border-radius: 12px !important;
+  grid-column: 1 !important;
+  grid-row: 1 / span 2 !important;
+  height: 42px !important;
+  justify-content: center;
+  margin: 0 !important;
+  width: 42px !important;
+}
+
+.dash-ai-card strong,
+.dash-ai-card small {
+  align-self: end;
+  grid-column: 2 !important;
+  margin: 0 !important;
+}
+
+.dash-ai-card strong {
+  font-size: 15px !important;
+}
+
+.dash-ai-card small {
+  align-self: start;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+/* Kanban: fit four columns without clipping on laptop widths. */
+.kanban-board {
+  grid-template-columns: repeat(4, minmax(220px, 1fr)) !important;
+  overflow-x: auto !important;
+}
+
+.kanban-column {
+  min-width: 0 !important;
+}
+
+.kanban-avatars i {
+  font-size: 9.5px !important;
+  height: 24px !important;
+  line-height: 1 !important;
+  min-width: 24px !important;
+  padding: 0 !important;
+  width: 24px !important;
+}
+
+/* Project cards: clear name, stats strip, completion bar, member avatars. */
+.project-card {
+  display: flex !important;
+  flex-direction: column;
+  gap: 14px !important;
+  padding: 22px 20px 20px !important;
+}
+
+.project-card .member-heading {
+  align-items: flex-start !important;
+  gap: 12px;
+}
+
+.project-card .member-heading strong {
+  color: var(--ds-text) !important;
+  display: block;
+  font-size: 17px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.015em;
+}
+
+.project-card .member-heading p {
+  color: var(--ds-muted) !important;
+  font-size: 13px !important;
+  margin: 3px 0 0 !important;
+}
+
+.project-card .member-heading > span {
+  background: var(--ds-primary-soft);
+  border-radius: 999px;
+  color: var(--ds-primary-strong) !important;
+  flex: none;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.project-stats {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.project-stats span {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: 10px;
+  color: var(--ds-muted);
+  display: grid;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 8px 10px;
+}
+
+.project-stats b {
+  color: var(--ds-text);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.project-completion {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.project-completion > div {
+  background: var(--ds-surface-3);
+  border-radius: 999px;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+}
+
+.project-completion i {
+  background: linear-gradient(90deg, var(--ds-primary), #7c5cf6);
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+}
+
+.project-completion small {
+  color: var(--ds-muted) !important;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.project-card .project-members {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.project-card .project-members strong {
+  color: var(--ds-muted) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.project-card .project-members span {
+  color: var(--ds-text-2) !important;
+  font-size: 13px !important;
+}
+
+.project-avatar-row {
+  display: flex !important;
+  margin: 6px 0 4px;
+}
+
+.project-avatar-row i {
+  align-items: center;
+  background: linear-gradient(135deg, #2b87d1, #5b5bd6);
+  border: 2px solid var(--ds-surface);
+  border-radius: 50%;
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.project-avatar-row i:nth-child(3n + 2) { background: linear-gradient(135deg, #0f9f8f, #2b87d1); }
+.project-avatar-row i:nth-child(3n + 3) { background: linear-gradient(135deg, #d97706, #db2777); }
+
+.project-avatar-row i + i {
+  margin-inline-start: -9px;
+}
+
+.project-avatar-row i.project-avatar-more {
+  background: var(--ds-surface-3);
+  color: var(--ds-text-2);
+}
+
+.project-card details > summary {
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+.project-card details:last-child,
+.project-card > :last-child {
+  margin-top: auto;
+}
+
+/* Inputs that live inside a bordered wrapper stay borderless. */
+.people-search,
+.audit-header > label {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border-strong) !important;
+  border-radius: 10px !important;
+  min-height: 40px;
+}
+
+.people-search:focus-within,
+.audit-header > label:focus-within {
+  border-color: var(--ds-primary) !important;
+  box-shadow: 0 0 0 4px var(--ds-primary-ring) !important;
+  outline: none !important;
+}
+
+.people-search input,
+.audit-header > label input,
+.login-card .input-with-icon input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  min-height: 0;
+}
+
+.project-avatar-row i,
+.kanban-avatars i {
+  flex: none !important;
+}
+
+.project-avatar-row i {
+  height: 30px !important;
+  width: 30px !important;
+}
+
+/* Login page: inputs sit inside icon wrappers, so they stay borderless. */
+.login-card input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.login-card label > span,
+.login-card .login-input {
+  border-radius: 10px !important;
+}
+
+/* Login page toggles keep their labels; only the workspace top bar collapses them. */
+.login-shell .theme-toggle {
+  padding: 0 14px !important;
+  width: auto !important;
+}
+
+.login-shell .theme-toggle span {
+  display: inline !important;
+}
+
+/* Work Intelligence health score */
+.intelligence-hero > strong {
+  color: var(--ds-text) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.intelligence-hero > strong small {
+  color: var(--ds-muted) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.07em;
+}
+
+.login-card label span {
+  background: var(--ds-surface) !important;
+  border-color: var(--ds-border-strong) !important;
+  min-height: 44px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.login-card label span:focus-within {
+  border-color: var(--ds-primary) !important;
+  box-shadow: 0 0 0 4px var(--ds-primary-ring);
+}
+
+/* Task card owner + progress blocks follow the theme. */
+.task-responsible {
+  background: var(--ds-surface-2) !important;
+  border-color: var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  color: var(--ds-text) !important;
+}
+
+.task-responsible strong {
+  color: var(--ds-text) !important;
+}
+
+.task-responsible small {
+  color: var(--ds-muted) !important;
+}
+
+.task-responsible.unassigned {
+  background: var(--ds-warning-soft) !important;
+  border-color: color-mix(in srgb, var(--ds-warning) 35%, var(--ds-border)) !important;
+}
+
+.active-task-summary .archive-completed,
+.archive-completed {
+  background: var(--ds-surface) !important;
+  border-color: var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+}
+
+.archive-completed strong {
+  color: var(--ds-primary) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.task-summary-action {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  color: var(--ds-primary) !important;
+}
+
+.kanban-avatars i {
+  height: 26px !important;
+  min-width: 26px !important;
+  width: 26px !important;
+}
+
+:root[data-theme="dark"] .dash-hero-actions .primary-button {
+  background: #ffffff !important;
+  color: #0b1d33 !important;
+}
+
+/* Tablet and phone: the sidebar becomes a compact top strip with a
+   horizontally scrolling navigation row. */
+@media (max-width: 1080px) {
+  .app-shell {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .sidebar {
+    padding: 12px 16px 0 !important;
+    position: relative;
+  }
+
+  .sidebar .brand {
+    border: 0 !important;
+    margin: 0 0 8px !important;
+    padding: 0 !important;
+  }
+
+  .sidebar-context,
+  .sidebar-nav-label,
+  .sidebar-user {
+    display: none !important;
+  }
+
+  .sidebar nav {
+    display: flex !important;
+    gap: 4px !important;
+    margin: 0 -16px;
+    overflow-x: auto;
+    padding: 0 12px 10px;
+    scrollbar-width: none;
+  }
+
+  .sidebar nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar-nav-button {
+    display: inline-flex !important;
+    flex: none;
+    gap: 8px !important;
+    min-height: 36px !important;
+    padding: 0 12px !important;
+  }
+
+  .sidebar-nav-button.active::after {
+    display: none;
+  }
+
+  .workspace {
+    padding: 0 20px 32px !important;
+  }
+
+  .topbar {
+    margin: 0 -20px 18px !important;
+    padding: 8px 20px !important;
+    position: static;
+  }
+
+  .dash-pro-cockpit,
+  .dash-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dash-pro-hero-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .workspace {
+    padding: 0 16px 28px !important;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    margin: 0 -16px 16px !important;
+    padding: 8px 16px !important;
+  }
+
+  .topbar-title p {
+    display: none;
+  }
+
+  .topbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .topbar-ai-button span:not(.feature-badge),
+  .topbar-actions .language-toggle span,
+  .topbar-create-button span {
+    display: none !important;
+  }
+
+  .topbar-ai-button,
+  .topbar-actions .language-toggle,
+  .topbar-create-button {
+    padding: 0 10px !important;
+  }
+
+  .sidebar-nav-button svg {
+    height: 16px !important;
+    padding: 0 !important;
+    width: 16px !important;
+  }
+
+  .workspace-page-header {
+    gap: 12px !important;
+  }
+
+  .workspace-page-header h2 {
+    font-size: 22px !important;
+  }
+
+  .dash-pro-cockpit,
+  .dash-kpi-row,
+  .dash-ai-stack {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .dash-pro-hero-card {
+    padding: 24px 22px !important;
+  }
+
+  .dash-hero-actions {
+    flex-wrap: wrap;
+  }
+
+  .kanban-board {
+    grid-template-columns: repeat(4, 82vw) !important;
+    scroll-snap-type: x mandatory;
+  }
+
+  .kanban-column {
+    scroll-snap-align: start;
+  }
+
+  .project-stats b {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .app-shell {
+    display: grid !important;
+  }
+
+  .sidebar {
+    display: block !important;
+    height: auto !important;
+    max-width: 100vw;
+    min-width: 0 !important;
+    overflow: hidden;
+    position: relative !important;
+    width: auto !important;
+  }
+
+  .sidebar nav {
+    max-width: calc(100% + 32px);
+    min-width: 0;
+  }
+
+  .workspace {
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .dash-side,
+  .dash-side > *,
+  .dash-layout > * {
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+}
+
+
+/* ==========================================================================
+   Opened task
+   Layout:  card header (title, code, status)            [Duplicate]
+            ┌ main ─────────────────────────┐ ┌ Details ───────┐
+            │ progress                      │ │ status, people │
+            │ workflow banner + Finish      │ │ deadline, ...  │
+            │ [Documents][Work steps][Activity] └────────────────┘
+            │ active tab panel              │
+            └───────────────────────────────┘
+            action bar (Assign / Edit / Delete), review bar
+   ========================================================================== */
+
+/* ---------- Card frame & header ---------- */
+
+.active-task-card[open] {
+  border-color: var(--ds-border-strong) !important;
+  border-left-width: 1px !important;
+  box-shadow: var(--ds-shadow-lg) !important;
+}
+
+/* Owner and progress are shown in the body; hide the summary copies. */
+.active-task-card[open] > .active-task-summary .task-responsible,
+.active-task-card[open] > .active-task-summary .archive-completed {
+  display: none !important;
+}
+
+.active-task-card[open] > .active-task-summary {
+  background: var(--ds-surface) !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+  padding: 18px 24px !important;
+}
+
+.active-task-card[open] > .active-task-summary strong,
+.active-task-card[open] > .active-task-summary h3 {
+  font-size: 19px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+}
+
+.active-task-card[open] > .task-row {
+  background: var(--ds-surface) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* ---------- Body grid ---------- */
+
+.task-open-workspace {
+  align-items: start;
+  background: var(--ds-surface) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  display: grid !important;
+  gap: 24px !important;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  margin: 0 !important;
+  padding: 22px 24px 24px !important;
+}
+
+.task-open-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.task-open-main > * {
+  margin: 0 !important;
+}
+
+/* ---------- Progress ---------- */
+
+.task-open-progress {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+}
+
+.task-open-progress-head {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.task-open-progress-head span {
+  color: var(--ds-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.task-open-progress .task-progress-value {
+  color: var(--ds-text) !important;
+  font-size: 20px !important;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750 !important;
+  letter-spacing: -0.02em;
+}
+
+.task-open-progress .task-progress {
+  background: var(--ds-surface-3) !important;
+  border-radius: 999px !important;
+  height: 8px !important;
+  overflow: hidden;
+}
+
+.task-open-progress .task-progress span {
+  background: linear-gradient(90deg, var(--ds-primary), #7c5cf6) !important;
+  border-radius: 999px;
+  display: block;
+  height: 100%;
+}
+
+.task-open-progress small {
+  color: var(--ds-muted) !important;
+  font-size: 12.5px;
+}
+
+/* ---------- Workflow banner ---------- */
+
+.task-open-main .task-workflow-summary {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column;
+  gap: 16px !important;
+  padding: 0 !important;
+}
+
+.task-open-main .workflow-summary-head {
+  align-items: center;
+  background: var(--ds-primary-soft) !important;
+  border: 1px solid color-mix(in srgb, var(--ds-primary) 22%, transparent) !important;
+  border-radius: var(--ds-radius) !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+  padding: 12px 16px !important;
+}
+
+.task-open-main .workflow-summary-head span {
+  align-items: center;
+  color: var(--ds-primary-strong) !important;
+  display: inline-flex;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  gap: 8px;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+.task-open-main .workflow-summary-head strong {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--ds-text) !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  padding: 0 !important;
+}
+
+.task-open-main .workflow-status-done .workflow-summary-head {
+  background: var(--ds-success-soft) !important;
+  border-color: color-mix(in srgb, var(--ds-success) 25%, transparent) !important;
+}
+
+.task-open-main .workflow-status-done .workflow-summary-head span {
+  color: var(--ds-success) !important;
+}
+
+.task-open-main .workflow-approval-strip {
+  align-items: center;
+  background: transparent !important;
+  border: 0 !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: -6px;
+  padding: 0 !important;
+}
+
+.task-open-main .workflow-approval-strip > span {
+  border-radius: 999px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  padding: 4px 10px !important;
+}
+
+.task-open-main .workflow-finish-button {
+  margin-inline-start: auto;
+}
+
+/* ---------- Workspace (documents / steps / activity) ---------- */
+
+.task-open-main .workflow-chatter {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex-direction: column;
+  gap: 16px !important;
+  padding: 0 !important;
+}
+
+.task-open-main .workflow-chatter::before,
+.task-open-main .task-chatter-header,
+.task-open-main .workflow-chatter-meta {
+  display: none !important;
+}
+
+/* Tabs */
+.task-tabs {
+  border-bottom: 1px solid var(--ds-border);
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.task-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.task-tabs button {
+  align-items: center;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--ds-muted) !important;
+  display: inline-flex;
+  flex: none;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  gap: 8px;
+  margin-bottom: -1px;
+  min-height: 42px !important;
+  padding: 0 12px !important;
+  transform: none !important;
+}
+
+.task-tabs button:hover {
+  color: var(--ds-text) !important;
+}
+
+.task-tabs button.active {
+  border-bottom-color: var(--ds-primary) !important;
+  color: var(--ds-text) !important;
+}
+
+.task-tabs button.active svg {
+  color: var(--ds-primary);
+}
+
+.task-tabs b {
+  background: var(--ds-surface-3);
+  border-radius: 999px;
+  color: var(--ds-muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 22px;
+  padding: 1px 7px;
+  text-align: center;
+}
+
+.task-tabs button.active b {
+  background: var(--ds-primary-soft);
+  color: var(--ds-primary-strong);
+}
+
+/* Documents */
+.task-open-main .task-document-groups {
+  display: grid !important;
+  gap: 12px !important;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+  margin: 0 !important;
+}
+
+.task-open-main .task-document-group {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: none !important;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px !important;
+  position: relative;
+}
+
+.task-open-main .task-document-group::before {
+  background: var(--doc-color, var(--ds-primary));
+  border-radius: 3px;
+  content: "";
+  height: 3px;
+  inset-inline-start: 14px;
+  position: absolute;
+  top: -1px;
+  width: 28px;
+}
+
+.task-open-main .task-document-group:nth-child(2) { --doc-color: var(--ds-violet); }
+.task-open-main .task-document-group:nth-child(3) { --doc-color: var(--ds-success); }
+.task-open-main .task-document-group:nth-child(4) { --doc-color: var(--ds-faint); }
+
+.task-open-main .task-document-group header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.task-open-main .task-document-group header strong {
+  color: var(--ds-text) !important;
+  font-size: 13.5px !important;
+  font-weight: 650 !important;
+}
+
+.task-open-main .task-document-group header span {
+  background: var(--ds-surface-3);
+  border-radius: 999px;
+  color: var(--ds-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  min-width: 22px;
+  padding: 1px 7px;
+  text-align: center;
+}
+
+.task-open-main .task-document-group > p {
+  color: var(--ds-muted) !important;
+  font-size: 12.5px !important;
+  margin: 0 !important;
+}
+
+.task-open-main .document-list {
+  display: grid;
+  gap: 6px;
+}
+
+.task-open-main .document-empty {
+  border: 1px dashed var(--ds-border-strong);
+  border-radius: 10px;
+  color: var(--ds-faint) !important;
+  display: block;
+  font-size: 12px !important;
+  margin-top: 4px;
+  padding: 14px 8px;
+  text-align: center;
+}
+
+.task-open-main .document-row {
+  align-items: center;
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 10px !important;
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 10px !important;
+}
+
+.task-open-main .document-row > svg {
+  color: var(--doc-color, var(--ds-primary));
+  flex: none;
+}
+
+.task-open-main .document-info {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.task-open-main .document-info strong,
+.task-open-main .document-info small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-open-main .document-info strong {
+  font-size: 12.5px !important;
+}
+
+.task-open-main .document-info small {
+  font-size: 11px !important;
+}
+
+.task-open-main .document-row .icon-button {
+  flex: none;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  width: 28px !important;
+}
+
+.task-open-main .document-row .document-editor {
+  flex-basis: 100%;
+}
+
+.task-open-main .document-upload {
+  align-self: flex-start;
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 8px !important;
+  color: var(--ds-text-2) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  margin-top: auto;
+  padding: 6px 12px !important;
+}
+
+.task-open-main .document-upload:hover {
+  background: var(--ds-surface-3) !important;
+  color: var(--ds-text) !important;
+}
+
+/* Work steps */
+.task-open-main .task-checklist {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 16px !important;
+}
+
+.task-open-main .task-checklist li {
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+  border-radius: 0 !important;
+}
+
+.task-open-main .task-checklist li:last-child {
+  border-bottom: 0 !important;
+}
+
+.task-open-main .task-checklist input[type="checkbox"] {
+  height: 18px;
+  width: 18px;
+}
+
+/* Activity: composer on top, newest updates below. */
+.task-activity-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.task-activity-panel > .chatter-composer {
+  order: -1;
+}
+
+.task-open-main .chatter-feed {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  max-height: none !important;
+  padding: 0 !important;
+}
+
+.task-open-main .chatter-item {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  column-gap: 12px !important;
+  padding: 0 0 16px !important;
+  position: relative;
+}
+
+.task-open-main .chatter-item::before {
+  background: var(--ds-border);
+  bottom: 0;
+  content: "";
+  inset-inline-start: 15px;
+  position: absolute;
+  top: 34px;
+  width: 2px;
+}
+
+.task-open-main .chatter-item:last-child::before {
+  display: none;
+}
+
+.task-open-main .chatter-avatar {
+  border: 2px solid var(--ds-surface);
+  box-shadow: 0 0 0 1px var(--ds-border);
+  height: 32px !important;
+  width: 32px !important;
+}
+
+.task-open-main .chatter-meta strong {
+  font-size: 13px !important;
+}
+
+.task-open-main .chatter-meta small {
+  color: var(--ds-faint) !important;
+}
+
+.task-open-main .chatter-line p {
+  color: var(--ds-text-2) !important;
+  font-size: 13.5px !important;
+}
+
+.task-open-main .chatter-message .chatter-line p {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: 4px 12px 12px 12px;
+  display: inline-block;
+  padding: 8px 12px;
+}
+
+.task-open-main .chatter-composer {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border-strong) !important;
+  border-radius: var(--ds-radius) !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  margin: 0 !important;
+  padding: 12px !important;
+}
+
+.task-open-main .chatter-composer:focus-within {
+  border-color: var(--ds-primary) !important;
+  box-shadow: 0 0 0 4px var(--ds-primary-ring) !important;
+}
+
+.task-open-main .chatter-composer-main input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ---------- Details sidebar ---------- */
+
+.task-open-aside {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  position: sticky;
+  top: 84px;
+}
+
+.task-open-aside h4 {
+  border-bottom: 1px solid var(--ds-border);
+  color: var(--ds-text) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  margin: 0;
+  padding: 14px 18px;
+}
+
+.task-properties {
+  display: grid;
+  gap: 0 16px;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 4px 18px 8px;
+}
+
+.task-properties > div {
+  border-bottom: 1px solid var(--ds-border);
+  min-width: 0;
+  padding: 11px 0;
+}
+
+.task-properties > .task-property-wide {
+  grid-column: 1 / -1;
+}
+
+.task-properties > div:last-child,
+.task-properties > div:nth-last-child(2):not(.task-property-wide) {
+  border-bottom: 0;
+}
+
+.task-properties dt {
+  color: var(--ds-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.task-properties dd {
+  align-items: center;
+  color: var(--ds-text);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  font-weight: 550;
+  gap: 6px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-properties dd > svg {
+  color: var(--ds-faint);
+  flex: none;
+}
+
+.task-properties dd small {
+  color: var(--ds-muted) !important;
+  flex-basis: 100%;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.task-properties dd.is-overdue,
+.task-properties dd.is-overdue svg,
+.task-properties dd.is-overdue small {
+  color: var(--ds-danger) !important;
+}
+
+.task-properties .task-card-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-properties .assignee-chip {
+  align-items: center;
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 999px !important;
+  color: var(--ds-text-2) !important;
+  display: inline-flex;
+  font-size: 12.5px !important;
+  font-weight: 500 !important;
+  gap: 6px;
+  padding: 3px 10px 3px 3px !important;
+}
+
+.task-properties .assignee-avatar {
+  height: 24px !important;
+  width: 24px !important;
+}
+
+.complexity-meter {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.complexity-meter i {
+  background: var(--ds-surface-3);
+  border: 1px solid var(--ds-border);
+  border-radius: 2px;
+  height: 10px;
+  width: 6px;
+}
+
+.complexity-meter i.on {
+  background: var(--ds-primary);
+  border-color: var(--ds-primary);
+}
+
+/* ---------- Action bars below the body ---------- */
+
+.active-task-card[open] .task-actions {
+  background: var(--ds-surface) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-top: 1px solid var(--ds-border) !important;
+  box-shadow: none !important;
+  justify-content: flex-end;
+  margin: 0 !important;
+  padding: 12px 24px !important;
+}
+
+.active-task-card[open] .review-box {
+  background: var(--ds-surface-2) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-top: 1px solid var(--ds-border) !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 14px 24px !important;
+}
+
+.task-action-button {
+  border-radius: var(--ds-radius-sm) !important;
+  font-size: 13px !important;
+}
+
+.task-action-button.secondary {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  color: var(--ds-text-2) !important;
+}
+
+.edit-task-panel,
+.quick-assign-panel {
+  background: var(--ds-surface) !important;
+  border-color: var(--ds-border) !important;
+  color: var(--ds-text);
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .task-open-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Details come first on narrow screens so the key facts are visible. */
+  .task-open-aside {
+    order: -1;
+    position: static;
+  }
+
+  .task-properties {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .task-properties > .task-property-wide {
+    grid-column: span 2;
+  }
+
+  .task-properties > div {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .active-task-card[open] > .active-task-summary {
+    padding: 14px 16px !important;
+  }
+
+  .task-open-workspace {
+    gap: 16px !important;
+    padding: 16px 14px 18px !important;
+  }
+
+  .task-properties {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-properties > .task-property-wide {
+    grid-column: 1 / -1;
+  }
+
+  .task-open-main .workflow-finish-button {
+    margin-inline-start: 0;
+    width: 100%;
+  }
+
+  .active-task-card[open] .task-actions,
+  .active-task-card[open] .review-box {
+    padding: 12px 16px !important;
+  }
+}
+
+
+/* Breadcrumb truncates instead of overlapping the top-bar actions. */
+.topbar-title,
+.topbar-title > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.topbar-actions {
+  flex: none;
+}
+
+/* ==========================================================================
+   Opened task, v3: Details strip on top, workspace left, messages right.
+   ========================================================================== */
+
+.task-open-workspace {
+  grid-template-areas:
+    "details details"
+    "main messages" !important;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 400px) !important;
+}
+
+.task-open-aside {
+  grid-area: details;
+  order: 0 !important;
+  position: static !important;
+}
+
+.task-open-main {
+  grid-area: main;
+}
+
+/* Details: one horizontal strip of properties */
+.task-open-aside h4 {
+  display: none;
+}
+
+.task-properties {
+  gap: 0 !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  padding: 4px 6px !important;
+}
+
+.task-properties > div,
+.task-properties > .task-property-wide {
+  border-bottom: 0 !important;
+  border-inline-end: 1px solid var(--ds-border);
+  grid-column: span 1 !important;
+  padding: 12px 14px !important;
+}
+
+.task-properties > .task-property-wide {
+  grid-column: span 2 !important;
+}
+
+.task-properties > div:nth-child(6n),
+.task-properties > div:last-child {
+  border-inline-end: 0;
+}
+
+/* Workflow messages column */
+.task-open-messages {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  display: flex;
+  flex-direction: column;
+  grid-area: messages;
+  max-height: calc(100vh - 110px);
+  min-height: 360px;
+  min-width: 0;
+  overflow: hidden;
+  position: sticky;
+  top: 84px;
+}
+
+.task-open-messages > header {
+  align-items: center;
+  background: var(--ds-surface-2);
+  border-bottom: 1px solid var(--ds-border);
+  display: flex;
+  flex: none;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.task-open-messages > header svg {
+  color: var(--ds-primary);
+}
+
+.task-open-messages > header h4 {
+  color: var(--ds-text) !important;
+  font-size: 14px !important;
+  font-weight: 650 !important;
+  margin: 0;
+}
+
+.task-open-messages > header span {
+  color: var(--ds-muted);
+  font-size: 12px;
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+
+.task-open-messages .workflow-chatter {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  display: flex !important;
+  flex: 1;
+  flex-direction: column;
+  gap: 0 !important;
+  min-height: 0;
+  padding: 0 !important;
+}
+
+.task-open-messages .workflow-chatter::before,
+.task-open-messages .task-chatter-header,
+.task-open-messages .workflow-chatter-meta {
+  display: none !important;
+}
+
+.task-open-messages .task-activity-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.task-open-messages .chatter-composer {
+  background: var(--ds-surface) !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  flex: none;
+  margin: 0 !important;
+  order: -1;
+  padding: 12px 16px !important;
+}
+
+.task-open-messages .chatter-composer:focus-within {
+  background: var(--ds-primary-soft) !important;
+  box-shadow: none !important;
+}
+
+.task-open-messages .chatter-composer-main {
+  align-items: center;
+  display: flex !important;
+  gap: 8px;
+}
+
+.task-open-messages .chatter-composer-main input {
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 10px !important;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px !important;
+}
+
+.task-open-messages .chatter-composer-main .task-action-button {
+  flex: none;
+  padding: 0 12px !important;
+}
+
+.task-open-messages .chatter-tools {
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.task-open-messages .chatter-feed {
+  background: transparent !important;
+  border: 0 !important;
+  flex: 1;
+  max-height: none !important;
+  min-height: 0;
+  overflow-y: auto !important;
+  padding: 16px !important;
+}
+
+.task-open-messages .chatter-item {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  column-gap: 12px !important;
+  padding: 0 0 16px !important;
+  position: relative;
+}
+
+.task-open-messages .chatter-item::before {
+  background: var(--ds-border);
+  bottom: 0;
+  content: "";
+  inset-inline-start: 15px;
+  position: absolute;
+  top: 34px;
+  width: 2px;
+}
+
+.task-open-messages .chatter-item:last-child::before {
+  display: none;
+}
+
+.task-open-messages .chatter-avatar {
+  border: 2px solid var(--ds-surface);
+  box-shadow: 0 0 0 1px var(--ds-border);
+  height: 32px !important;
+  width: 32px !important;
+}
+
+.task-open-messages .chatter-meta strong {
+  font-size: 13px !important;
+}
+
+.task-open-messages .chatter-meta small {
+  color: var(--ds-faint) !important;
+}
+
+.task-open-messages .chatter-line p {
+  color: var(--ds-text-2) !important;
+  font-size: 13.5px !important;
+}
+
+.task-open-messages .chatter-message .chatter-line p {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: 4px 12px 12px 12px;
+  display: inline-block;
+  padding: 8px 12px;
+}
+
+.task-open-messages .chatter-item.mine .chatter-line p {
+  background: var(--ds-primary-soft);
+  border-color: color-mix(in srgb, var(--ds-primary) 20%, transparent);
+}
+
+.task-open-messages .empty-state,
+.task-open-messages .locked-note,
+.task-open-messages .conversation-status {
+  margin: 0 !important;
+}
+
+/* Responsive */
+@media (max-width: 1280px) {
+  .task-properties {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .task-properties > div:nth-child(6n) {
+    border-inline-end: 1px solid var(--ds-border);
+  }
+}
+
+@media (max-width: 1180px) {
+  .task-open-workspace {
+    grid-template-areas:
+      "details"
+      "main"
+      "messages" !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .task-open-messages {
+    max-height: 640px;
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-properties {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .task-properties > div,
+  .task-properties > .task-property-wide {
+    border-bottom: 1px solid var(--ds-border) !important;
+    border-inline-end: 0 !important;
+  }
+
+  .task-properties > .task-property-wide {
+    grid-column: 1 / -1 !important;
+  }
+
+  .task-open-messages .chatter-composer-main {
+    flex-wrap: wrap;
+  }
+}
+
+/* Details strip: uniform cells that wrap evenly, no column rules. */
+.task-properties {
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+  padding: 6px 8px !important;
+}
+
+.task-properties > div,
+.task-properties > .task-property-wide {
+  border: 0 !important;
+  grid-column: auto !important;
+  padding: 10px 12px !important;
+}
+
+/* Composer: full-width input, send button under it beside the tools. */
+.task-open-messages .chatter-composer-main {
+  flex-wrap: wrap;
+}
+
+.task-open-messages .chatter-composer-main input {
+  flex: 1 1 calc(100% - 48px);
+  min-height: 40px;
+}
+
+.task-open-messages .chatter-composer-main .task-action-button {
+  margin-inline-start: auto;
+  min-height: 34px !important;
+}
+
+@media (max-width: 720px) {
+  .task-properties {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .task-properties > div,
+  .task-properties > .task-property-wide {
+    border-bottom: 1px solid var(--ds-border) !important;
+  }
+}
+
+/* Details strip: 6 columns on wide screens (two even rows), icons inline. */
+@media (min-width: 1281px) {
+  .task-properties {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (min-width: 721px) and (max-width: 1280px) {
+  .task-properties {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+.task-properties dd {
+  display: block !important;
+}
+
+.task-properties dd > svg {
+  margin-inline-end: 6px;
+  vertical-align: -2px;
+}
+
+.task-properties dd > small {
+  display: block;
+  margin-top: 3px;
+}
+
+.task-properties dd .complexity-meter {
+  margin-inline-end: 8px;
+  vertical-align: 0;
+}
+
+/* ==========================================================================
+   Opened task, v5
+   Left:  details, workflow status, progress, work steps, documents (collapsed)
+   Right: workflow messages as one full-height column, composer at the bottom
+   ========================================================================== */
+
+.task-open-workspace {
+  align-items: stretch !important;
+  grid-template-areas: "main messages" !important;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px) !important;
+}
+
+.task-open-main {
+  grid-area: main;
+}
+
+/* Details card at the top of the left column, packed to the left. */
+.task-open-aside {
+  grid-area: auto !important;
+  position: static !important;
+}
+
+.task-properties {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)) !important;
+  justify-content: start;
+}
+
+.task-properties .task-card-people {
+  justify-content: flex-start !important;
+  margin: 0 !important;
+}
+
+.task-properties .assignee-chip {
+  margin: 0 !important;
+}
+
+/* Documents accordion: closed until clicked. */
+.task-docs-accordion {
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius);
+  overflow: hidden;
+}
+
+.task-docs-accordion > summary {
+  align-items: center;
+  background: var(--ds-surface) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: var(--ds-text);
+  cursor: pointer;
+  display: flex;
+  font-size: 14px;
+  font-weight: 650;
+  gap: 10px;
+  list-style: none;
+  padding: 14px 16px;
+}
+
+.task-docs-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-docs-accordion > summary svg {
+  color: var(--ds-primary);
+}
+
+.task-docs-accordion > summary b {
+  background: var(--ds-surface-3);
+  border-radius: 999px;
+  color: var(--ds-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  min-width: 22px;
+  padding: 1px 7px;
+  text-align: center;
+}
+
+.task-docs-accordion > summary::after {
+  border-bottom: 2px solid var(--ds-muted);
+  border-right: 2px solid var(--ds-muted);
+  content: "";
+  height: 7px;
+  margin-inline-start: auto;
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+  width: 7px;
+}
+
+.task-docs-accordion[open] > summary {
+  border-bottom: 1px solid var(--ds-border) !important;
+}
+
+.task-docs-accordion[open] > summary::after {
+  transform: rotate(-135deg);
+}
+
+.task-docs-accordion > summary:hover {
+  background: var(--ds-surface-2) !important;
+}
+
+.task-docs-accordion > section {
+  padding: 14px;
+}
+
+/* ---------- Right column: workflow messages ---------- */
+
+.task-open-messages {
+  align-self: start;
+  grid-area: messages;
+  height: calc(100vh - 110px);
+  max-height: none !important;
+  min-height: 520px;
+  position: sticky !important;
+  top: 84px;
+}
+
+.task-open-messages > header h4 {
+  font-size: 15px !important;
+}
+
+/* Composer at the bottom, like a chat. */
+.task-open-messages .chatter-composer {
+  border-bottom: 0 !important;
+  border-top: 1px solid var(--ds-border) !important;
+  order: 2 !important;
+}
+
+/* Oldest at the top, newest just above the composer. */
+.task-open-messages .chatter-feed {
+  display: flex !important;
+  flex-direction: column-reverse;
+  gap: 0;
+  padding: 16px 16px 4px !important;
+}
+
+/* Less indent: smaller avatar and a tighter gap. */
+.task-open-messages .chatter-item {
+  column-gap: 10px !important;
+  display: grid !important;
+  grid-template-columns: 28px minmax(0, 1fr) !important;
+  padding: 0 0 14px !important;
+}
+
+.task-open-messages .chatter-avatar {
+  font-size: 10px !important;
+  height: 28px !important;
+  width: 28px !important;
+}
+
+.task-open-messages .chatter-item::before {
+  inset-inline-start: 13px;
+  top: 30px;
+}
+
+.task-open-messages .chatter-item:last-child::before {
+  display: block;
+}
+
+.task-open-messages .chatter-item:first-child::before {
+  display: none;
+}
+
+.task-open-messages .chatter-line {
+  min-width: 0;
+}
+
+.task-open-messages .chatter-meta {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.task-open-messages .chatter-line p {
+  font-size: 14px !important;
+  line-height: 1.45;
+  margin: 0 !important;
+}
+
+/* Workflow events read as plain lines, without tinted bars. */
+.task-open-messages .chatter-event .chatter-line,
+.task-open-messages .chatter-event .chatter-line p,
+.task-open-messages .chatter-item.mine.chatter-event .chatter-line p {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.task-open-messages .chatter-event .chatter-line p b {
+  color: var(--ds-text) !important;
+  font-weight: 600;
+}
+
+.task-open-messages .chatter-event .chatter-line p {
+  color: var(--ds-muted) !important;
+  font-size: 13px !important;
+}
+
+/* Comments read as chat bubbles. */
+.task-open-messages .chatter-message .chatter-line {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.task-open-messages .chatter-message .chatter-line p {
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 4px 12px 12px 12px !important;
+  display: inline-block;
+  padding: 9px 13px !important;
+}
+
+.task-open-messages .chatter-item.mine.chatter-message .chatter-line p {
+  background: var(--ds-primary-soft) !important;
+  border-color: color-mix(in srgb, var(--ds-primary) 22%, transparent) !important;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 1180px) {
+  .task-open-workspace {
+    grid-template-areas:
+      "main"
+      "messages" !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .task-open-messages {
+    height: 620px;
+    position: static !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-open-messages {
+    height: 560px;
+    min-height: 0;
+  }
+}
+
+/* Messages column leaves room for the floating Messages bubble. */
+.task-open-messages {
+  height: calc(100vh - 200px);
+}
+
+/* Composer: input on the first row; attach, emojis and send on the second. */
+.task-open-messages .chatter-composer {
+  align-items: center;
+  column-gap: 10px;
+  display: grid !important;
+  grid-template-areas:
+    "avatar input input"
+    "tools tools send"
+    "extra extra extra";
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  row-gap: 10px;
+}
+
+.task-open-messages .chatter-composer-main {
+  display: contents !important;
+}
+
+.task-open-messages .chatter-composer-main > .chatter-avatar {
+  grid-area: avatar;
+}
+
+.task-open-messages .chatter-composer-main > input {
+  flex: none !important;
+  grid-area: input;
+  width: 100%;
+}
+
+.task-open-messages .chatter-composer-main > .task-action-button {
+  grid-area: send;
+  margin: 0 !important;
+}
+
+.task-open-messages .chatter-tools {
+  grid-area: tools;
+  justify-content: flex-start;
+  margin: 0 !important;
+  min-width: 0;
+}
+
+.task-open-messages .task-mention-picker,
+.task-open-messages .conversation-status,
+.task-open-messages .locked-note {
+  grid-column: 1 / -1;
+}
+
+/* My timeline line replaces the legacy arrow connectors. */
+.task-open-messages .chatter-item::after,
+.task-open-main .chatter-item::after {
+  display: none !important;
+}
+
+/* Composer tools stay on one line where possible. */
+.task-open-messages .chatter-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .task-properties {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .task-open-messages .chatter-composer {
+    grid-template-areas:
+      "avatar input input"
+      "tools tools tools"
+      "send send send"
+      "extra extra extra";
+  }
+
+  .task-open-messages .chatter-composer-main > .task-action-button {
+    justify-self: end;
+  }
+}
+
+/* v6: chat starts at the top, oldest first, composer at the bottom. */
+.task-open-messages .chatter-feed {
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+}
+
+.task-open-messages .chatter-item:first-child::before {
+  display: block;
+}
+
+.task-open-messages .chatter-item:last-child::before {
+  display: none;
+}
+
+/* Work steps tab sits flush under the tabs. */
+.task-open-main .task-tabs {
+  margin-bottom: -4px;
+}
+
+/* ==========================================================================
+   v7: fixed-height opened task. Work steps / documents and the workflow
+   messages scroll inside the card, so every opened task has the same size.
+   ========================================================================== */
+
+@media (min-width: 1181px) {
+  .task-open-workspace {
+    --task-open-height: 820px;
+    align-items: stretch !important;
+    height: var(--task-open-height);
+  }
+
+  .task-open-main {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .task-open-main > .task-open-aside,
+  .task-open-main > .task-workflow-summary,
+  .task-open-main > .task-open-progress,
+  .task-open-main > .review-note {
+    flex: none;
+  }
+
+  /* The workspace section (tabs + panel) takes the remaining height. */
+  .task-open-main > .workflow-workspace {
+    display: flex !important;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 12px !important;
+    min-height: 0;
+  }
+
+  .task-open-main > .workflow-workspace > .task-tabs {
+    flex: none;
+  }
+
+  .task-open-main > .workflow-workspace > .task-checklist,
+  .task-open-main > .workflow-workspace > section {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Messages column fills the card height and scrolls internally. */
+  .task-open-messages {
+    align-self: stretch !important;
+    height: auto !important;
+    min-height: 0 !important;
+    position: static !important;
+  }
+}
+
+/* Stacked layout: cap each scrolling area instead of the whole card. */
+@media (max-width: 1180px) {
+  .task-open-main > .workflow-workspace > .task-checklist,
+  .task-open-main > .workflow-workspace > section {
+    max-height: 420px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .task-open-messages {
+    height: 560px !important;
+  }
+}
+
+/* Tidy scrollbars inside the card. */
+.task-open-messages .chatter-feed::-webkit-scrollbar,
+.task-open-main .task-checklist::-webkit-scrollbar,
+.task-open-main .workflow-workspace > section::-webkit-scrollbar {
+  width: 8px;
+}
+
+.task-open-messages .chatter-feed::-webkit-scrollbar-thumb,
+.task-open-main .task-checklist::-webkit-scrollbar-thumb,
+.task-open-main .workflow-workspace > section::-webkit-scrollbar-thumb {
+  background: var(--ds-border-strong);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+/* Compact the fixed blocks so the scrolling work-steps panel gets more room. */
+@media (min-width: 1181px) {
+  .task-open-main {
+    gap: 12px !important;
+  }
+
+  .task-properties {
+    padding: 4px 6px !important;
+  }
+
+  .task-properties > div,
+  .task-properties > .task-property-wide {
+    padding: 8px 12px !important;
+  }
+
+  .task-properties dt {
+    margin-bottom: 3px;
+  }
+
+  .task-open-progress {
+    gap: 6px;
+    padding: 10px 16px;
+  }
+
+  .task-open-progress .task-progress-value {
+    font-size: 17px !important;
+  }
+
+  .task-open-main .workflow-summary-head {
+    padding: 10px 16px !important;
+  }
+}
+
+@media (min-width: 1181px) {
+  .task-properties {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (min-width: 1181px) and (max-width: 1400px) {
+  .task-open-workspace {
+    --task-open-height: 880px;
+  }
+}
+
+/* ==========================================================================
+   v8: work steps — only the list scrolls; heading and "Add a step" stay put.
+   ========================================================================== */
+
+.task-open-main .task-checklist {
+  display: flex !important;
+  flex-direction: column;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+/* Heading on one line */
+.task-open-main .task-checklist > header {
+  align-items: baseline;
+  border-bottom: 1px solid var(--ds-border);
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  justify-content: space-between;
+  margin: 0 !important;
+  padding: 10px 14px !important;
+}
+
+.task-open-main .task-checklist > header strong {
+  font-size: 13.5px !important;
+}
+
+.task-open-main .task-checklist > header small {
+  font-size: 12px !important;
+}
+
+/* Guidance text stays, as a single quiet line. */
+.task-open-main .task-checklist > p {
+  color: var(--ds-faint) !important;
+  flex: none;
+  font-size: 11.5px !important;
+  margin: 0 !important;
+  overflow: hidden;
+  padding: 6px 14px 0 !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The list is the only scrolling part. */
+.task-open-main .task-checklist .checklist-list-wrap > ul {
+  flex: 1 1 auto;
+  list-style: none;
+  margin: 0 !important;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 14px !important;
+}
+
+/* Compact rows so more steps are visible. */
+.task-open-main .task-checklist li {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 0 !important;
+  padding: 6px 0 !important;
+}
+
+.task-open-main .task-checklist li label {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.task-open-main .task-checklist li label span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.task-open-main .task-checklist li b {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-open-main .task-checklist li small {
+  font-size: 11px !important;
+  line-height: 1.3;
+}
+
+.task-open-main .task-checklist input[type="checkbox"] {
+  flex: none;
+  height: 16px !important;
+  width: 16px !important;
+}
+
+.task-open-main .checklist-item-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.task-open-main .checklist-item-actions .icon-button {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  width: 28px !important;
+}
+
+/* "Add a step" pinned at the bottom of the panel. */
+.task-open-main .checklist-add {
+  align-items: center;
+  background: var(--ds-surface-2) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  border-top: 1px solid var(--ds-border) !important;
+  display: flex !important;
+  flex: none;
+  gap: 8px;
+  margin: 0 !important;
+  padding: 10px 14px !important;
+}
+
+.task-open-main .checklist-add input {
+  flex: 1 1 auto;
+  min-height: 36px !important;
+  min-width: 0;
+}
+
+.task-open-main .checklist-add select {
+  flex: 0 1 170px;
+  min-height: 36px !important;
+}
+
+.task-open-main .checklist-add button {
+  flex: none;
+  min-height: 36px !important;
+}
+
+.task-open-main .task-checklist > p[role="alert"] {
+  color: var(--ds-danger) !important;
+  padding: 6px 14px !important;
+  white-space: normal;
+}
+
+/* Stacked layouts: cap the list, not the panel. */
+@media (max-width: 1180px) {
+  .task-open-main > .workflow-workspace > .task-checklist {
+    max-height: none !important;
+    overflow: hidden !important;
+  }
+
+  .task-open-main .task-checklist .checklist-list-wrap > ul {
+    max-height: 360px;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-open-main .checklist-add {
+    flex-wrap: wrap;
+  }
+
+  .task-open-main .checklist-add select {
+    flex: 1 1 100%;
+  }
+}
+
+@media (min-width: 1181px) {
+  .task-open-workspace {
+    --task-open-height: 860px;
+  }
+
+  /* Details in four columns: three rows instead of four. */
+  .task-properties {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  /* Progress as one slim row: label, bar, percentage. */
+  .task-open-progress {
+    align-items: center;
+    display: grid !important;
+    gap: 4px 14px !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    padding: 10px 16px !important;
+  }
+
+  .task-open-progress-head {
+    display: contents !important;
+  }
+
+  .task-open-progress-head span {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .task-open-progress .task-progress {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .task-open-progress .task-progress-value {
+    font-size: 15px !important;
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .task-open-progress small {
+    display: none;
+  }
+}
+
+/* One-line step rows: title, then who is responsible, side by side. */
+.task-open-main .task-checklist li {
+  padding: 3px 0 !important;
+}
+
+.task-open-main .task-checklist li label span {
+  align-items: baseline;
+  flex-direction: row !important;
+  gap: 8px;
+}
+
+.task-open-main .task-checklist li b {
+  flex: 0 1 auto;
+}
+
+.task-open-main .task-checklist li small {
+  color: var(--ds-faint) !important;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-open-main .checklist-item-actions .icon-button {
+  height: 26px !important;
+  min-height: 26px !important;
+  width: 26px !important;
+}
+
+.task-open-main .task-checklist li label,
+.task-open-main .task-checklist li {
+  min-height: 34px;
+}
+
+.task-open-main .task-checklist li {
+  margin: 0 !important;
+  min-height: 0 !important;
+}
+
+.task-open-main .task-checklist li label {
+  min-height: 0 !important;
+}
+
+/* Narrower laptops: three detail columns and a taller card. */
+@media (min-width: 1181px) and (max-width: 1400px) {
+  .task-open-workspace {
+    --task-open-height: 900px;
+  }
+
+  .task-properties {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ==========================================================================
+   Finish Task call-to-action (assigned users only)
+   ========================================================================== */
+
+.task-finish-cta {
+  align-items: center;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(52, 196, 110, 0.22), transparent 60%),
+    linear-gradient(135deg, #f0fbf4, #e3f6ea);
+  border: 1px solid #a7e3bd;
+  border-radius: var(--ds-radius-lg);
+  box-shadow: 0 10px 24px -14px rgba(22, 163, 74, 0.55);
+  display: grid;
+  flex: none;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 14px 16px;
+}
+
+:root[data-theme="dark"] .task-finish-cta {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(52, 196, 110, 0.18), transparent 60%),
+    linear-gradient(135deg, #0f2a1d, #0c2218);
+  border-color: #1f5c3a;
+}
+
+.task-finish-cta-icon {
+  align-items: center;
+  background: var(--ds-success);
+  border-radius: 12px;
+  color: #ffffff;
+  display: inline-flex;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.task-finish-cta-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.task-finish-cta-text strong {
+  color: var(--ds-text) !important;
+  font-size: 15px !important;
+  font-weight: 700 !important;
+}
+
+.task-finish-cta-text small {
+  color: var(--ds-text-2) !important;
+  font-size: 12.5px !important;
+  line-height: 1.4;
+}
+
+.task-finish-cta-text small b {
+  color: var(--ds-success);
+}
+
+.task-finish-cta-button {
+  align-items: center;
+  background: var(--ds-success) !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 18px -8px rgba(22, 163, 74, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+  color: #ffffff !important;
+  display: inline-flex;
+  font-size: 14.5px !important;
+  font-weight: 700 !important;
+  gap: 8px;
+  min-height: 44px !important;
+  padding: 0 20px !important;
+}
+
+.task-finish-cta-button:not(:disabled):hover {
+  background: #128a3e !important;
+  transform: translateY(-1px);
+}
+
+/* When every step is done, draw attention with a gentle pulse. */
+.task-finish-cta.ready .task-finish-cta-button {
+  animation: finish-pulse 2.2s ease-in-out infinite;
+}
+
+@keyframes finish-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); }
+}
+
+@media (max-width: 720px) {
+  .task-finish-cta {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .task-finish-cta-button {
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Finished tasks use the same opened layout as active tasks.
+   ========================================================================== */
+
+.archive-task-card[open] {
+  border-color: var(--ds-border-strong) !important;
+  border-left-width: 1px !important;
+  box-shadow: var(--ds-shadow-lg) !important;
+  overflow: hidden;
+}
+
+.archive-task-card[open] > summary {
+  background: var(--ds-surface) !important;
+  border-bottom: 1px solid var(--ds-border) !important;
+  padding: 16px 24px !important;
+}
+
+.archive-task-card[open] > summary .archive-task-name strong {
+  font-size: 17px !important;
+  font-weight: 700 !important;
+}
+
+.archive-task-card .task-open-archive {
+  border-radius: 0 !important;
+}
+
+.task-open-archive .archive-review-note {
+  background: var(--ds-success-soft) !important;
+  border: 1px solid color-mix(in srgb, var(--ds-success) 25%, transparent) !important;
+  border-radius: var(--ds-radius) !important;
+  color: var(--ds-text-2) !important;
+  flex: none;
+  font-size: 13px;
+  padding: 10px 14px !important;
+}
+
+/* Read-only messages column: no composer, so the feed fills it. */
+.task-open-archive .task-open-messages .task-activity-panel {
+  flex: 1;
+}
+
+.archive-task-card[open] .archive-reopen {
+  background: var(--ds-surface-2) !important;
+  border-top: 1px solid var(--ds-border) !important;
+  margin: 0 !important;
+  padding: 14px 24px !important;
+}
+
+/* ==========================================================================
+   Finish Task banner in the site theme (blue), not green.
+   ========================================================================== */
+.task-finish-cta {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(124, 92, 246, 0.16), transparent 60%),
+    linear-gradient(135deg, #eef6fd, #e3effb) !important;
+  border-color: color-mix(in srgb, var(--ds-primary) 35%, transparent) !important;
+  box-shadow: 0 10px 24px -14px rgba(21, 112, 184, 0.6) !important;
+}
+
+:root[data-theme="dark"] .task-finish-cta {
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(124, 92, 246, 0.2), transparent 60%),
+    linear-gradient(135deg, #13283f, #0f2034) !important;
+  border-color: #24507a !important;
+}
+
+.task-finish-cta-icon {
+  background: linear-gradient(135deg, var(--ds-primary), #5b5bd6) !important;
+}
+
+.task-finish-cta-text small b {
+  color: var(--ds-primary-strong) !important;
+}
+
+.task-finish-cta-button {
+  background: var(--ds-primary) !important;
+  box-shadow: 0 8px 18px -8px rgba(21, 112, 184, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+}
+
+.task-finish-cta-button:not(:disabled):hover {
+  background: var(--ds-primary-strong) !important;
+}
+
+:root[data-theme="dark"] .task-finish-cta-button {
+  background: #2b87d1 !important;
+}
+
+:root[data-theme="dark"] .task-finish-cta-button:not(:disabled):hover {
+  background: #3a96e0 !important;
+}
+
+@keyframes finish-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(21, 112, 184, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(21, 112, 184, 0); }
+}
+
+/* ==========================================================================
+   Comments look exactly like workflow updates: same size, colour, no bubble.
+   ========================================================================== */
+.task-open-messages .chatter-message .chatter-line p,
+.task-open-messages .chatter-item.mine.chatter-message .chatter-line p,
+.task-open-messages .chatter-event .chatter-line p {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  color: var(--ds-text-2) !important;
+  display: block !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  padding: 0 !important;
+}
+
+.task-open-messages .chatter-message .chatter-line,
+.task-open-messages .chatter-event .chatter-line {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+@media (min-width: 1181px) and (max-width: 1400px) {
+  .task-finish-cta {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .task-finish-cta-button {
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Work steps: "more steps below" hint.
+   ========================================================================== */
+.checklist-list-wrap {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+}
+
+.checklist-list-wrap > ul {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Soft fade over the last visible rows while more steps are hidden. */
+.checklist-list-wrap:has(.checklist-more)::after {
+  background: linear-gradient(180deg, transparent, var(--ds-surface) 85%);
+  bottom: 0;
+  content: "";
+  height: 56px;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+}
+
+.checklist-more {
+  align-items: center;
+  background: var(--ds-primary) !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  bottom: 10px;
+  box-shadow: 0 8px 18px -6px rgba(21, 112, 184, 0.6) !important;
+  color: #ffffff !important;
+  display: inline-flex;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  gap: 6px;
+  left: 50%;
+  min-height: 30px !important;
+  padding: 0 14px !important;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 2;
+  animation: steps-nudge 2.4s ease-in-out infinite;
+}
+
+.checklist-more:hover {
+  background: var(--ds-primary-strong) !important;
+}
+
+@keyframes steps-nudge {
+  0%, 100% { transform: translate(-50%, 0); }
+  50% { transform: translate(-50%, 3px); }
+}
+
+:root[data-theme="dark"] .checklist-more {
+  background: #2b87d1 !important;
+}
+
+/* ==========================================================================
+   Single-task focus: an opened task replaces its list until "Back".
+   ========================================================================== */
+
+.task-focus-mode > :not(.task-focus-bar):not(.task-list):not(.archive-task-list) {
+  display: none !important;
+}
+
+.task-focus-mode {
+  padding-top: 0 !important;
+}
+
+.task-focus-mode .task-list,
+.task-focus-mode .archive-task-list {
+  margin: 0 !important;
+}
+
+.task-focus-mode .task-card,
+.task-focus-mode .archive-task-card {
+  animation: task-focus-in 220ms ease-out;
+}
+
+@keyframes task-focus-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.task-focus-bar {
+  align-items: center;
+  backdrop-filter: saturate(160%) blur(12px);
+  background: color-mix(in srgb, var(--ds-surface) 92%, transparent);
+  border-bottom: 1px solid var(--ds-border);
+  display: flex;
+  gap: 14px;
+  margin: 0 -22px 18px;
+  padding: 12px 22px;
+  position: sticky;
+  top: 64px;
+  z-index: 30;
+}
+
+.task-focus-back {
+  align-items: center;
+  background: var(--ds-primary) !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 6px 14px -8px var(--ds-primary) !important;
+  color: #ffffff !important;
+  display: inline-flex;
+  flex: none;
+  font-size: 13.5px !important;
+  font-weight: 650 !important;
+  gap: 8px;
+  min-height: 38px !important;
+  padding: 0 16px !important;
+}
+
+.task-focus-back:hover {
+  background: var(--ds-primary-strong) !important;
+}
+
+:root[data-theme="dark"] .task-focus-back {
+  background: #2b87d1 !important;
+}
+
+.task-focus-crumb {
+  align-items: center;
+  color: var(--ds-muted);
+  display: flex;
+  font-size: 13px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.task-focus-crumb strong {
+  color: var(--ds-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.task-focus-nav {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+
+.task-focus-nav small {
+  color: var(--ds-muted) !important;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  margin-inline-end: 4px;
+  white-space: nowrap;
+}
+
+.task-focus-nav button {
+  align-items: center;
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--ds-shadow-xs) !important;
+  color: var(--ds-text-2) !important;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  min-height: 34px !important;
+  padding: 0 !important;
+  width: 34px;
+}
+
+.task-focus-nav button:not(:disabled):hover {
+  background: var(--ds-surface-3) !important;
+  color: var(--ds-text) !important;
+}
+
+.task-focus-nav button:disabled {
+  opacity: 0.4;
+}
+
+.task-focus-nav kbd {
+  background: var(--ds-surface-3);
+  border: 1px solid var(--ds-border);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  color: var(--ds-muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  margin-inline-start: 6px;
+  padding: 2px 6px;
+}
+
+[dir="rtl"] .task-focus-back svg,
+[dir="rtl"] .task-focus-nav svg,
+[dir="rtl"] .task-focus-crumb svg {
+  transform: scaleX(-1);
+}
+
+@media (max-width: 1080px) {
+  .task-focus-bar {
+    top: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-focus-bar {
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 -16px 14px;
+    padding: 10px 16px;
+  }
+
+  .task-focus-crumb,
+  .task-focus-nav kbd {
+    display: none;
+  }
+
+  .task-focus-back span {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+/* ==========================================================================
+   Focus bar v2: a floating toolbar inside the panel (no edge bleed), calmer
+   Back button, segmented previous / position / next control.
+   ========================================================================== */
+
+.task-focus-bar {
+  background: var(--ds-surface) !important;
+  backdrop-filter: none !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px -14px rgba(15, 23, 42, 0.25), var(--ds-shadow-xs) !important;
+  gap: 12px !important;
+  margin: 0 0 18px !important;
+  padding: 8px 10px !important;
+  top: 76px !important;
+}
+
+:root[data-theme="dark"] .task-focus-bar {
+  box-shadow: 0 10px 28px -14px rgba(0, 0, 0, 0.7) !important;
+}
+
+/* Back: secondary button that turns blue on hover. */
+.task-focus-back {
+  background: var(--ds-surface-2) !important;
+  border: 1px solid var(--ds-border) !important;
+  box-shadow: none !important;
+  color: var(--ds-text) !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  gap: 8px !important;
+  min-height: 36px !important;
+  padding: 0 14px 0 8px !important;
+}
+
+.task-focus-back svg {
+  background: var(--ds-primary);
+  border-radius: 7px;
+  box-sizing: content-box;
+  color: #ffffff;
+  height: 14px;
+  padding: 4px;
+  width: 14px;
+}
+
+.task-focus-back:hover {
+  background: var(--ds-primary-soft) !important;
+  border-color: color-mix(in srgb, var(--ds-primary) 35%, transparent) !important;
+  color: var(--ds-primary-strong) !important;
+}
+
+/* Breadcrumb separated from the button by a thin divider. */
+.task-focus-crumb {
+  border-inline-start: 1px solid var(--ds-border);
+  padding-inline-start: 12px;
+}
+
+/* Segmented control: [‹][2 of 3][›] then the Esc hint. */
+.task-focus-nav {
+  gap: 0 !important;
+}
+
+.task-focus-nav button[aria-label="Previous task"] { order: 1; }
+.task-focus-nav small { order: 2; }
+.task-focus-nav button[aria-label="Next task"] { order: 3; }
+.task-focus-nav kbd { order: 4; }
+
+.task-focus-nav button {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  height: 34px !important;
+  width: 34px !important;
+}
+
+.task-focus-nav button[aria-label="Previous task"] {
+  border-radius: 9px 0 0 9px !important;
+}
+
+.task-focus-nav button[aria-label="Next task"] {
+  border-radius: 0 9px 9px 0 !important;
+}
+
+.task-focus-nav small {
+  align-items: center;
+  background: var(--ds-surface-2);
+  border-block: 1px solid var(--ds-border);
+  color: var(--ds-text-2) !important;
+  display: inline-flex;
+  font-weight: 600;
+  height: 34px;
+  margin: 0 !important;
+  padding: 0 12px;
+}
+
+.task-focus-nav kbd {
+  margin-inline-start: 10px !important;
+}
+
+[dir="rtl"] .task-focus-nav button[aria-label="Previous task"] {
+  border-radius: 0 9px 9px 0 !important;
+}
+
+[dir="rtl"] .task-focus-nav button[aria-label="Next task"] {
+  border-radius: 9px 0 0 9px !important;
+}
+
+/* The focused card sits below the toolbar with matching spacing. */
+.task-focus-mode .active-task-card,
+.task-focus-mode .archive-task-card {
+  margin: 0 !important;
+  scroll-margin-top: 140px;
+}
+
+.task-focus-mode .task-list,
+.task-focus-mode .archive-task-list {
+  display: block !important;
+  padding: 0 !important;
+}
+
+/* Consistent header padding for active, review and finished cards. */
+.active-task-card[open] > .active-task-summary,
+.archive-task-card[open] > summary {
+  padding: 18px 24px !important;
+}
+
+@media (max-width: 1080px) {
+  .task-focus-bar {
+    top: 8px !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .task-focus-bar {
+    margin: 0 0 14px !important;
+    padding: 8px !important;
+  }
+
+  .task-focus-crumb {
+    display: none !important;
+  }
+
+  .active-task-card[open] > .active-task-summary,
+  .archive-task-card[open] > summary {
+    padding: 14px 16px !important;
+  }
+}
+
+/* ==========================================================================
+   Focus mode fits the screen.
+   ========================================================================== */
+
+/* Finished panel normally has no padding and clips overflow, which broke the
+   toolbar spacing and sticky positioning while a task is focused. */
+.finished-panel.task-focus-mode {
+  overflow: visible !important;
+  padding: 22px !important;
+}
+
+/* While a task is focused the page title block is redundant: the toolbar
+   says where you are. Hiding it gives the task the room. */
+.workspace:has(.task-focus-mode) > .workspace-page-header {
+  display: none !important;
+}
+
+.task-focus-mode {
+  padding: 14px !important;
+}
+
+.task-focus-bar {
+  margin-bottom: 12px !important;
+}
+
+/* The opened task fills the visible window height (desktop):
+   window - top bar - toolbar - card header - action bar - spacing. */
+@media (min-width: 1181px) {
+  .task-focus-mode .task-open-workspace {
+    --task-open-height: max(440px, calc(100vh - 330px)) !important;
+    height: var(--task-open-height) !important;
+    padding-bottom: 16px !important;
+    padding-top: 16px !important;
+  }
+
+  .task-focus-mode .active-task-card[open] > .active-task-summary,
+  .task-focus-mode .archive-task-card[open] > summary {
+    padding-bottom: 12px !important;
+    padding-top: 12px !important;
+  }
+
+  .task-focus-mode .active-task-card[open] .task-actions,
+  .task-focus-mode .active-task-card[open] .review-box,
+  .task-focus-mode .archive-task-card[open] .archive-reopen {
+    padding-bottom: 10px !important;
+    padding-top: 10px !important;
+  }
+}
+
+@media (min-width: 1181px) {
+  /* Base: card header + one action bar. */
+  .task-focus-mode .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 392px)) !important;
+  }
+
+  /* Tasks with the approval / reopen bar as well. */
+  .task-focus-mode .active-task-card:has(.review-box) .task-open-workspace {
+    --task-open-height: max(400px, calc(100vh - 456px)) !important;
+  }
+
+  /* Finished tasks: header + reopen bar only. */
+  .task-focus-mode .archive-task-card .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 380px)) !important;
+  }
+
+  /* Leave no trailing gap under the focused card. */
+  .task-focus-mode,
+  .finished-panel.task-focus-mode {
+    margin-bottom: 0 !important;
+    padding-bottom: 12px !important;
+  }
+
+  .workspace:has(.task-focus-mode) {
+    padding-bottom: 12px !important;
+  }
+}
+
+@media (min-width: 1181px) {
+  .task-focus-mode .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 402px)) !important;
+  }
+
+  .task-focus-mode .active-task-card:has(.review-box) .task-open-workspace {
+    --task-open-height: max(400px, calc(100vh - 466px)) !important;
+  }
+}
+
+/* Breadcrumb list name is a link back to the list. */
+.task-focus-crumb-link {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+  color: var(--ds-muted) !important;
+  cursor: pointer;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  min-height: 0 !important;
+  padding: 3px 6px !important;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
+  transform: none !important;
+  transition: background-color 140ms ease, color 140ms ease, text-decoration-color 140ms ease;
+}
+
+.task-focus-crumb-link:hover,
+.task-focus-crumb-link:focus-visible {
+  background: var(--ds-primary-soft) !important;
+  color: var(--ds-primary-strong) !important;
+  text-decoration-color: currentColor;
+}
+
+.task-focus-crumb-link:active {
+  background: color-mix(in srgb, var(--ds-primary) 18%, transparent) !important;
+}
+
+.task-focus-crumb {
+  gap: 2px !important;
+}
+
+/* Short screens: never squeeze work steps away. The steps panel keeps a
+   usable minimum and the left column scrolls inside the card instead. */
+@media (min-width: 1181px) {
+  .task-open-main {
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain;
+    padding-inline-end: 4px;
+    scrollbar-gutter: stable;
+  }
+
+  .task-open-main > .workflow-workspace {
+    min-height: 300px !important;
+  }
+
+  .task-open-main::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .task-open-main::-webkit-scrollbar-thumb {
+    background: var(--ds-border-strong);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+  }
+}
+
+/* ==========================================================================
+   Opened task sizing v3 (desktop): fit the screen, never hide the add box.
+   - The card is at least the screen-fit height and only grows when a task's
+     fixed content (details, notes, workflow) needs more room.
+   - The left column never scrolls; the work-steps / documents panel takes the
+     remaining space (min 200px) and only its list scrolls.
+   - The messages column contributes no height of its own (contain: size), so
+     it always matches the card height and scrolls internally.
+   ========================================================================== */
+@media (min-width: 1181px) {
+  .task-open-workspace,
+  .task-focus-mode .task-open-workspace {
+    height: auto !important;
+    min-height: var(--task-open-height) !important;
+  }
+
+  .task-open-main {
+    height: auto !important;
+    overflow: visible !important;
+    padding-inline-end: 0 !important;
+    scrollbar-gutter: auto !important;
+  }
+
+  .task-open-main > .workflow-workspace {
+    flex: 1 1 0 !important;
+    min-height: auto !important;
+  }
+
+  .task-open-main > .workflow-workspace > .task-checklist,
+  .task-open-main > .workflow-workspace > section {
+    flex: 1 1 0 !important;
+    min-height: 200px !important;
+  }
+
+  .task-open-messages {
+    contain: size;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+}
+
+@media (min-width: 1181px) {
+  /* Tabs (~46px) + gap + a 200px panel: the workspace never collapses. */
+  .task-open-main > .workflow-workspace {
+    min-height: 260px !important;
+    overflow: visible !important;
+  }
+}
+
+/* Compact the fixed blocks so a focused task fits a ~900px window. */
+@media (min-width: 1181px) {
+  .task-focus-mode .task-open-main {
+    gap: 10px !important;
+  }
+
+  .task-focus-mode .task-properties {
+    padding: 2px 4px !important;
+  }
+
+  .task-focus-mode .task-properties > div,
+  .task-focus-mode .task-properties > .task-property-wide {
+    padding: 6px 12px !important;
+  }
+
+  .task-focus-mode .task-properties dt {
+    font-size: 10.5px !important;
+    margin-bottom: 2px !important;
+  }
+
+  .task-focus-mode .task-properties dd {
+    font-size: 13px !important;
+  }
+
+  .task-focus-mode .task-properties .assignee-chip {
+    padding: 2px 9px 2px 2px !important;
+  }
+
+  .task-focus-mode .task-properties .assignee-avatar {
+    height: 20px !important;
+    width: 20px !important;
+  }
+
+  .task-focus-mode .task-open-main .workflow-summary-head {
+    padding: 8px 14px !important;
+  }
+
+  .task-focus-mode .task-open-progress {
+    padding: 8px 14px !important;
+  }
+
+  .task-focus-mode .task-tabs button {
+    min-height: 36px !important;
+  }
+
+  .task-focus-mode .task-open-workspace {
+    gap: 18px !important;
+    padding: 12px 18px 14px !important;
+  }
+
+  .task-focus-mode .task-finish-cta {
+    padding: 10px 14px !important;
+  }
+
+  .task-focus-mode .task-finish-cta-icon {
+    height: 36px;
+    width: 36px;
+  }
+
+  .task-focus-bar {
+    margin-bottom: 10px !important;
+    padding: 6px 8px !important;
+  }
+
+  .task-focus-mode {
+    padding: 10px 12px !important;
+  }
+
+  .workspace:has(.task-focus-mode) > .topbar {
+    margin-bottom: 14px !important;
+  }
+
+  /* Recalculate the screen-fit height for the tighter chrome. */
+  .task-focus-mode .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 330px)) !important;
+  }
+
+  .task-focus-mode .active-task-card:has(.review-box) .task-open-workspace {
+    --task-open-height: max(400px, calc(100vh - 394px)) !important;
+  }
+
+  .task-focus-mode .archive-task-card .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 318px)) !important;
+  }
+}
+
+/* Denser details block (all opened tasks, desktop). */
+@media (min-width: 1181px) {
+  .task-open-aside .task-properties,
+  .task-focus-mode .task-open-aside .task-properties {
+    gap: 0 !important;
+    grid-auto-flow: row dense;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important;
+    padding: 4px 6px !important;
+  }
+
+  .task-open-aside .task-properties > .task-property-wide {
+    grid-column: span 2 !important;
+  }
+
+  .task-open-aside .task-properties > div,
+  .task-open-aside .task-properties > .task-property-wide {
+    padding: 6px 10px !important;
+  }
+
+  .task-open-aside .task-properties dt {
+    font-size: 10px !important;
+    letter-spacing: 0.07em !important;
+    margin-bottom: 2px !important;
+  }
+
+  .task-open-aside .task-properties dd {
+    font-size: 12.5px !important;
+    line-height: 1.35;
+  }
+
+  .task-open-aside .task-properties dd small {
+    font-size: 11px !important;
+    margin-top: 1px !important;
+  }
+
+  .task-open-aside .status-pill,
+  .task-open-aside .priority,
+  .task-open-aside .risk-pill {
+    font-size: 10px !important;
+    padding: 2px 8px !important;
+  }
+
+  .task-open-aside .task-card-people {
+    gap: 4px !important;
+  }
+
+  .task-open-aside .assignee-chip {
+    font-size: 12px !important;
+    gap: 5px !important;
+    padding: 1px 8px 1px 1px !important;
+  }
+
+  .task-open-aside .assignee-avatar {
+    font-size: 8.5px !important;
+    height: 18px !important;
+    width: 18px !important;
+  }
+
+  .task-open-aside .complexity-meter i {
+    height: 9px;
+    width: 5px;
+  }
+}
+
+@media (min-width: 1181px) {
+  .task-open-aside .task-properties,
+  .task-focus-mode .task-open-aside .task-properties {
+    grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)) !important;
+  }
+
+  .task-open-aside .task-properties > .task-property-wide {
+    grid-column: auto !important;
+  }
+}
+
+/* ==========================================================================
+   Focused task: more room for work steps.
+   ========================================================================== */
+@media (min-width: 1181px) {
+  /* Progress bar + tab count already show completion; guidance moves to the
+     Work steps tab tooltip. */
+  .task-focus-mode .task-open-main .task-checklist > header,
+  .task-focus-mode .task-open-main .task-checklist > p:not([role="alert"]) {
+    display: none !important;
+  }
+
+  .task-focus-mode .task-open-main .checklist-list-wrap > ul {
+    padding-top: 6px !important;
+  }
+
+  /* Slimmer card header. */
+  .task-focus-mode .active-task-card[open] > .active-task-summary,
+  .task-focus-mode .archive-task-card[open] > summary {
+    min-height: 0 !important;
+    padding: 10px 18px !important;
+  }
+
+  .task-focus-mode .active-task-card[open] > .active-task-summary .archive-task-name strong,
+  .task-focus-mode .archive-task-card[open] > summary .archive-task-name strong {
+    font-size: 16px !important;
+  }
+
+  .task-focus-mode .active-task-summary .archive-check,
+  .task-focus-mode .archive-task-card > summary .archive-check {
+    height: 34px !important;
+    width: 34px !important;
+  }
+
+  /* Slimmer workflow banner and progress row. */
+  .task-focus-mode .task-open-main .workflow-summary-head,
+  .task-focus-mode .task-open-progress {
+    padding: 6px 14px !important;
+  }
+
+  .task-focus-mode .task-open-main .workflow-summary-head strong {
+    font-size: 13px !important;
+  }
+
+  .task-focus-mode .task-open-progress .task-progress-value {
+    font-size: 14px !important;
+  }
+
+  .task-focus-mode .task-open-main .workflow-approval-strip {
+    margin-top: -4px !important;
+  }
+
+  .task-focus-mode .task-open-main .workflow-approval-strip > span {
+    padding: 2px 9px !important;
+  }
+
+  /* Give the saved height to the workspace. */
+  .task-focus-mode .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 296px)) !important;
+  }
+
+  .task-focus-mode .active-task-card:has(.review-box) .task-open-workspace {
+    --task-open-height: max(400px, calc(100vh - 360px)) !important;
+  }
+
+  .task-focus-mode .archive-task-card .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 286px)) !important;
+  }
+
+  /* The panel no longer has a heading: its minimum can shrink too. */
+  .task-open-main > .workflow-workspace {
+    min-height: 230px !important;
+  }
+
+  .task-open-main > .workflow-workspace > .task-checklist,
+  .task-open-main > .workflow-workspace > section {
+    min-height: 170px !important;
+  }
+}
+
+@media (min-width: 1181px) {
+  .task-focus-mode .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 336px)) !important;
+  }
+
+  .task-focus-mode .active-task-card:has(.review-box) .task-open-workspace {
+    --task-open-height: max(400px, calc(100vh - 400px)) !important;
+  }
+
+  .task-focus-mode .archive-task-card .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 316px)) !important;
+  }
+}
+
+/* ==========================================================================
+   Task action zone: approve / finish / reopen / edit / assign / delete live
+   right under the task title, never behind floating widgets.
+   ========================================================================== */
+.task-action-zone {
+  align-items: center;
+  background: var(--ds-surface-2);
+  border-bottom: 1px solid var(--ds-border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px 18px;
+}
+
+.task-action-zone:empty {
+  display: none;
+}
+
+/* Reset the old bottom-bar styling for blocks now living here. */
+.task-action-zone > *,
+.active-task-card[open] .task-action-zone .review-box,
+.active-task-card[open] .task-action-zone .task-actions,
+.archive-task-card[open] .task-action-zone .archive-reopen {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* Review / reopen: comment field grows, buttons stay together. */
+.task-action-zone .review-box,
+.task-action-zone .archive-reopen {
+  align-items: center;
+  display: flex !important;
+  flex: 1 1 420px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-action-zone .review-box > input,
+.task-action-zone .review-box input,
+.task-action-zone .archive-reopen > input {
+  flex: 1 1 220px;
+  min-height: 36px !important;
+  min-width: 0;
+}
+
+.task-action-zone .review-box > div,
+.task-action-zone .review-box .row-actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+/* Edit / assign / delete: compact group on the right. */
+.task-action-zone .task-actions {
+  align-items: center;
+  display: flex !important;
+  flex: none;
+  gap: 8px;
+  margin-inline-start: auto !important;
+}
+
+.task-action-zone .task-action-button,
+.task-action-zone .icon-button {
+  min-height: 36px !important;
+}
+
+.task-action-zone .icon-button {
+  width: 36px;
+}
+
+/* Notes (allocation, claims, waiting, completion stamp) span the full row. */
+.task-action-zone .claim-request-note,
+.task-action-zone .review-note,
+.task-action-zone .finished-stamp {
+  flex: 1 1 100%;
+}
+
+.task-action-zone .claim-request-note,
+.task-action-zone .finished-stamp {
+  background: var(--ds-surface) !important;
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius) !important;
+  padding: 10px 14px !important;
+}
+
+.task-action-zone .review-note {
+  color: var(--ds-text-2) !important;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .task-action-zone {
+    padding: 10px 14px;
+  }
+
+  .task-action-zone .task-actions {
+    justify-content: flex-end;
+    margin-inline-start: 0 !important;
+    width: 100%;
+  }
+}
+
+/* ==========================================================================
+   Edit / assign panels: Save stays visible (sticky, aligned to the start so
+   the floating Messages button never covers it).
+   ========================================================================== */
+.edit-task-panel,
+.quick-assign-panel {
+  border: 1px solid var(--ds-border) !important;
+  border-radius: var(--ds-radius-lg) !important;
+  margin: 12px 18px !important;
+  overflow: visible !important;
+}
+
+.edit-task-panel-actions {
+  align-items: center;
+  background: var(--ds-surface) !important;
+  border-top: 1px solid var(--ds-border) !important;
+  bottom: 0;
+  box-shadow: 0 -8px 18px -12px rgba(15, 23, 42, 0.25);
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 10px;
+  justify-content: flex-start !important;
+  margin: 12px -16px -16px !important;
+  padding: 12px 16px !important;
+  position: sticky;
+  z-index: 5;
+  border-radius: 0 0 var(--ds-radius-lg) var(--ds-radius-lg);
+}
+
+.edit-task-panel-actions .task-action-button:first-child {
+  min-width: 140px;
+}
+
+/* The task row hosting the edit panel must not clip the sticky bar. */
+.active-task-card[open] > .task-row {
+  overflow: visible !important;
+}
+
+/* Messages launcher shrinks to a round icon while a task is focused. */
+body:has(.task-focus-mode) .chat-launcher {
+  border-radius: 999px !important;
+  min-width: 0 !important;
+  padding: 6px !important;
+  width: auto !important;
+}
+
+body:has(.task-focus-mode) .chat-launcher .chat-launcher-copy {
+  display: none !important;
+}
+
+/* overflow: clip keeps rounded corners without creating a scroll container,
+   so sticky children (Save bar, focus toolbar) keep working. */
+.task-card,
+.archive-task-card,
+.active-task-card[open],
+.archive-task-card[open] {
+  overflow: clip !important;
+}
+
+/* Keep the review controls and edit/delete on one row when there is space. */
+.task-action-zone .review-box,
+.task-action-zone .archive-reopen {
+  flex: 1 1 0 !important;
+}
+
+.task-action-zone .review-box > input,
+.task-action-zone .archive-reopen > input {
+  flex: 1 1 160px !important;
+}
+
+.task-action-zone .task-actions {
+  flex: none !important;
+}
+
+@media (max-width: 900px) {
+  .task-action-zone .review-box,
+  .task-action-zone .archive-reopen {
+    flex: 1 1 100% !important;
+  }
+}
+
+/* Legacy review box was a 3-column grid at full width; make it a flexible row. */
+.task-action-zone .review-box {
+  grid-template-columns: none !important;
+  width: auto !important;
+}
+
+.task-action-zone .review-box,
+.task-action-zone .archive-reopen {
+  flex-wrap: nowrap !important;
+}
+
+@media (max-width: 900px) {
+  .task-action-zone .review-box,
+  .task-action-zone .archive-reopen {
+    flex-wrap: wrap !important;
+  }
+}
+
+/* Reopen disabled until a reason is typed: show why. */
+.task-action-zone .task-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.task-action-zone .review-box:has(.task-action-button.secondary:disabled) > input:placeholder-shown,
+.task-action-zone .archive-reopen:has(button:disabled) > input:placeholder-shown {
+  border-color: color-mix(in srgb, var(--ds-warning) 55%, var(--ds-border)) !important;
+}
+
+.task-action-zone .task-actions,
+.task-action-zone .row-actions.task-actions {
+  flex: 0 0 auto !important;
+  grid-column: auto !important;
+  justify-content: flex-end !important;
+  width: auto !important;
+}
+
+@media (min-width: 1181px) {
+  /* The approval bar is now one row like the other action bars. */
+  .task-focus-mode .active-task-card:has(.review-box) .task-open-workspace {
+    --task-open-height: max(420px, calc(100vh - 352px)) !important;
+  }
+}
