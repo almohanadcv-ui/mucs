@@ -11506,6 +11506,53 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--mab-blue)
   font-size: 13px;
 }
 
+.ai-history-row {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+}
+
+.ai-history-row:hover,
+.ai-history-row.active {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.ai-history-row .ai-history-item {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  min-width: 0;
+}
+
+.ai-history-delete {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.62);
+  display: flex;
+  height: 30px;
+  justify-content: center;
+  min-height: 30px;
+  opacity: 0;
+  padding: 0;
+  width: 30px;
+}
+
+.ai-history-row:hover .ai-history-delete,
+.ai-history-row.active .ai-history-delete,
+.ai-history-delete:focus-visible {
+  opacity: 1;
+}
+
+.ai-history-delete:hover {
+  background: rgba(220, 38, 38, 0.16);
+  color: #fecaca;
+}
+
 .ai-message {
   align-items: flex-start;
   display: grid;
@@ -11569,6 +11616,76 @@ button:focus-visible, summary:focus-visible { outline: 2px solid var(--mab-blue)
   font-size: 11px;
   margin: 8px 2px 0;
   text-align: center;
+}
+
+.productivity-subtasks {
+  background: transparent;
+  border: 1px solid var(--mab-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  overflow: hidden;
+}
+
+.productivity-subtasks-title {
+  align-items: baseline;
+  background: var(--mab-surface-soft);
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.productivity-subtasks-title > strong {
+  color: var(--mab-blue-dark);
+  font-size: 12px;
+}
+
+.productivity-subtasks-title small {
+  color: var(--mab-text-muted);
+  font-size: 11px;
+}
+
+.productivity-subtask-table {
+  display: grid;
+  overflow-x: auto;
+}
+
+.productivity-subtask-row {
+  border-top: 1px solid var(--mab-border);
+  color: var(--mab-text);
+  display: grid;
+  font-size: 12px;
+  grid-template-columns: minmax(88px, 0.85fr) minmax(145px, 1.25fr) minmax(145px, 1.35fr) 72px 82px;
+  min-width: 650px;
+}
+
+.productivity-subtask-row.heading {
+  background: #f8fbfe;
+  color: var(--mab-blue-dark);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.productivity-subtask-row span {
+  border-left: 1px solid var(--mab-border);
+  min-width: 0;
+  overflow: hidden;
+  padding: 7px 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.productivity-subtask-row span:first-child {
+  border-left: 0;
+}
+
+.productivity-subtask-row:not(.heading) span:nth-child(4),
+.productivity-subtask-row:not(.heading) span:nth-child(5) {
+  color: var(--mab-text-muted);
+  font-size: 11px;
+  text-align: right;
 }
 
 /* Final AI scroll lock: the full-screen shell never scrolls; only messages do. */

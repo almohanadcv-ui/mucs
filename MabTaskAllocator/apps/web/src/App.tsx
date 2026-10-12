@@ -446,6 +446,57 @@ function median(values: number[]) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+type MetricTask = Pick<ManagedTask, "id" | "title" | "taskCode" | "status" | "progress" | "complexity" | "assigneeIds" | "checklist" | "completedAtIso" | "startedAt" | "createdAt" | "dueDate" | "reopenCount">;
+type WorkUnit = {
+  task: MetricTask;
+  id: string;
+  title: string;
+  kind: "task" | "step";
+  completed: boolean;
+  progress: number;
+  complexity: number;
+  share: number;
+};
+
+function formatMetricNumber(value: number, digits = 1) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(digits);
+}
+
+function workUnitsForUser(task: MetricTask, userId: string): WorkUnit[] {
+  const steps = task.checklist ?? [];
+  if (!steps.length) {
+    if (!task.assigneeIds.includes(userId)) return [];
+    const share = 1 / Math.max(1, task.assigneeIds.length);
+    return [{
+      task,
+      id: task.id,
+      title: task.title,
+      kind: "task",
+      completed: task.status === "done",
+      progress: task.progress,
+      complexity: complexityPoints(task) * share,
+      share
+    }];
+  }
+
+  const stepWeight = 1 / steps.length;
+  return steps.flatMap((step): WorkUnit[] => {
+    const owners = step.assigneeId ? [step.assigneeId] : task.assigneeIds;
+    if (!owners.includes(userId)) return [];
+    const share = stepWeight / Math.max(1, owners.length);
+    return [{
+      task,
+      id: step.id,
+      title: step.title,
+      kind: "step",
+      completed: task.status === "done" || Boolean(step.completed),
+      progress: step.completed || task.status === "done" ? 100 : 0,
+      complexity: complexityPoints(task) * share,
+      share
+    }];
+  });
+}
+
 function currentRiyadhDate() {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
@@ -1944,8 +1995,8 @@ export function App() {
 
   function performanceMetrics(userId: string, month = "") {
     const user = users.find((candidate) => candidate.id === userId);
-    const assigned = performanceTasks.filter((task) => task.assigneeIds.includes(userId));
-    const completed = assigned.filter((task) => task.status === "done" && (!month || task.completedAtIso?.startsWith(month)));
+    const assigned = performanceTasks.filter((task) => task.assigneeIds.includes(userId) || (task.checklist ?? []).some((step) => step.assigneeId === userId));
+    const completed = assigned.flatMap((task) => workUnitsForUser(task, userId)).filter((unit) => unit.completed && (!month || unit.task.completedAtIso?.startsWith(month)));
     const departmentCompleted = performanceTasks.filter((task) =>
       task.status === "done" &&
       (!user || sameDepartment(task.department, user.department)) &&
@@ -1957,9 +2008,11 @@ export function App() {
     let teamworkTasks = 0;
     let onTimeTasks = 0;
     let reopenTotal = 0;
+    let achievementPoints = 0;
 
-    for (const task of completed) {
-      const complexity = complexityPoints(task);
+    for (const unit of completed) {
+      const task = unit.task;
+      const complexity = unit.complexity;
       const duration = completionDays(task);
       const comparableDurations = departmentCompleted
         .filter((candidate) => complexityPoints(candidate) === complexity)
@@ -1974,25 +2027,26 @@ export function App() {
       const onTime = Boolean(task.completedAtIso && task.dueDate && task.completedAtIso.slice(0, 10) <= task.dueDate);
       const timelinessFactor = task.dueDate ? (onTime ? 1.1 : 0.88) : 1;
       const teamSize = Math.max(1, task.assigneeIds.length);
-      const collaborationFactor = teamSize > 1 ? Math.min(1.2, 1 + (teamSize - 1) * 0.08) : 1;
-      const contributionFactor = 1 / Math.sqrt(teamSize);
+      const collaborationFactor = unit.kind === "step" ? 1 : teamSize > 1 ? Math.min(1.2, 1 + (teamSize - 1) * 0.08) : 1;
       const base = complexity * 20;
       basePoints += base;
-      earnedPoints += base * speedFactor * qualityFactor * timelinessFactor * collaborationFactor * contributionFactor;
+      earnedPoints += base * speedFactor * qualityFactor * timelinessFactor * collaborationFactor;
+      achievementPoints += base / 2;
       speedTotal += speedFactor;
-      reopenTotal += task.reopenCount ?? 0;
+      reopenTotal += (task.reopenCount ?? 0) * unit.share;
       if (onTime) onTimeTasks += 1;
-      if (teamSize > 1) teamworkTasks += 1;
+      if (unit.kind === "step" || teamSize > 1) teamworkTasks += 1;
     }
 
     const rawEfficiency = basePoints ? Math.min(120, (earnedPoints / basePoints) * 100) : 0;
-    const confidence = completed.length / (completed.length + 3);
+    const completedCount = completed.reduce((sum, unit) => sum + unit.share, 0);
+    const confidence = completedCount / (completedCount + 3);
     const deliveryIndex = completed.length ? Math.round(50 + confidence * (rawEfficiency - 50)) : 0;
     const attendance = attendanceMetrics(userId, month);
     const productivityIndex = completed.length
       ? Math.round(deliveryIndex * 0.85 + (attendance.expectedDays ? attendance.attendanceRate * 100 : deliveryIndex) * 0.15)
       : 0;
-    const strongOutput = earnedPoints / 2 >= 100 && reopenTotal === 0;
+    const strongOutput = achievementPoints >= 100 && reopenTotal === 0;
     const status = completed.length < 2
       ? "Building history"
       : productivityIndex >= 85
@@ -2004,21 +2058,21 @@ export function App() {
             : "Needs support";
     const evaluationReasons = [
       completed.length ? `${Math.round((speedTotal / completed.length) * 100)}% speed versus comparable work` : "No completed work in this period",
-      `${reopenTotal} reopen${reopenTotal === 1 ? "" : "s"}`,
+      `${formatMetricNumber(reopenTotal)} reopen${reopenTotal === 1 ? "" : "s"}`,
       attendance.expectedDays ? `${Math.round(attendance.attendanceRate * 100)}% attendance` : "Attendance baseline is still forming",
-      `${Math.round(earnedPoints / 2)} complexity-weighted achievement points`
+      `${Math.round(achievementPoints)} subtask-share achievement points`
     ];
     return {
       completed: completed.length,
-      complexityDelivered: completed.reduce((sum, task) => sum + complexityPoints(task), 0),
-      achievementPoints: Math.round(earnedPoints / 2),
+      complexityDelivered: completed.reduce((sum, unit) => sum + unit.complexity, 0),
+      achievementPoints: Math.round(achievementPoints),
       productivityIndex,
       deliveryIndex,
       attendance,
       averageSpeedFactor: completed.length ? speedTotal / completed.length : 0,
       teamworkTasks,
       onTimeRate: completed.length ? onTimeTasks / completed.length : 0,
-      reopenTotal,
+      reopenTotal: Number(reopenTotal.toFixed(1)),
       reopenRate: completed.length ? reopenTotal / completed.length : 0,
       status,
       evaluationReasons
@@ -2026,26 +2080,46 @@ export function App() {
   }
 
   function userMetrics(userId: string, month = "") {
-    const assigned = tasks.filter((task) => task.assigneeIds.includes(userId));
+    const assigned = tasks.filter((task) => task.assigneeIds.includes(userId) || (task.checklist ?? []).some((step) => step.assigneeId === userId));
+    const units = assigned.flatMap((task) => workUnitsForUser(task, userId));
     const inPeriod = month
-      ? assigned.filter((task) => task.createdAt.startsWith(month) || task.completedAtIso?.startsWith(month))
-      : assigned;
-    const completed = inPeriod.filter((task) => task.status === "done");
-    const durations = completed.map(completionDays).filter((value): value is number => value !== null);
-    const onTime = completed.filter((task) => task.completedAtIso && task.dueDate && task.completedAtIso.slice(0, 10) <= task.dueDate);
-    const overdue = inPeriod.filter((task) => task.status !== "done" && task.dueDate && task.dueDate < new Date().toISOString().slice(0, 10));
-    const assignedComplexity = inPeriod.reduce((sum, task) => sum + complexityPoints(task), 0);
-    const activeComplexity = assigned.filter((task) => task.status !== "done").reduce((sum, task) => sum + complexityPoints(task), 0);
-    const completedComplexity = completed.reduce((sum, task) => sum + complexityPoints(task), 0);
+      ? units.filter((unit) => unit.task.createdAt.startsWith(month) || unit.task.completedAtIso?.startsWith(month))
+      : units;
+    const completed = inPeriod.filter((unit) => unit.completed);
+    const durations = completed.map((unit) => completionDays(unit.task)).filter((value): value is number => value !== null);
+    const onTime = completed.filter((unit) => unit.task.completedAtIso && unit.task.dueDate && unit.task.completedAtIso.slice(0, 10) <= unit.task.dueDate);
+    const overdue = inPeriod.filter((unit) => !unit.completed && unit.task.dueDate && unit.task.dueDate < new Date().toISOString().slice(0, 10));
+    const assignedComplexity = inPeriod.reduce((sum, unit) => sum + unit.complexity, 0);
+    const activeComplexity = units.filter((unit) => !unit.completed).reduce((sum, unit) => sum + unit.complexity, 0);
+    const completedComplexity = completed.reduce((sum, unit) => sum + unit.complexity, 0);
+    const subtaskGroups = Array.from(units.filter((unit) => unit.kind === "step").reduce((groups, unit) => {
+      const existing = groups.get(unit.task.id) ?? {
+        taskId: unit.task.id,
+        taskCode: unit.task.taskCode,
+        taskTitle: unit.task.title,
+        total: 0,
+        done: 0,
+        points: 0,
+        share: 0,
+        items: [] as WorkUnit[]
+      };
+      existing.total += 1;
+      existing.done += unit.completed ? 1 : 0;
+      existing.points += unit.complexity;
+      existing.share += unit.share;
+      existing.items.push(unit);
+      groups.set(unit.task.id, existing);
+      return groups;
+    }, new Map<string, { taskId: string; taskCode: string; taskTitle: string; total: number; done: number; points: number; share: number; items: WorkUnit[] }>()).values());
     const performance = performanceMetrics(userId, month);
     return {
       assigned: inPeriod.length,
-      active: assigned.filter((task) => task.status !== "done").length,
+      active: units.filter((unit) => !unit.completed).length,
       completed: completed.length,
-      completedInMonth: assigned.filter((task) => task.completedAtIso?.startsWith(teamMonth)).length,
+      completedInMonth: units.filter((unit) => unit.completed && unit.task.completedAtIso?.startsWith(teamMonth)).length,
       overdue: overdue.length,
       averageProgress: assignedComplexity
-        ? Math.round(inPeriod.reduce((sum, task) => sum + task.progress * complexityPoints(task), 0) / assignedComplexity)
+        ? Math.round(inPeriod.reduce((sum, unit) => sum + unit.progress * unit.complexity, 0) / assignedComplexity)
         : 0,
       assignedComplexity,
       activeComplexity,
@@ -2053,7 +2127,8 @@ export function App() {
       averageCompletionDays: average(durations),
       completionRate: assignedComplexity ? completedComplexity / assignedComplexity : 0,
       onTimeRate: completed.length ? onTime.length / completed.length : 0,
-      performance
+      performance,
+      subtaskGroups
     };
   }
 
@@ -4095,10 +4170,13 @@ export function App() {
             </div>
             <div className="ai-chat-history">
               {aiChats.map((chat) => (
-                <button className={`ai-history-item ${chat.id === activeAiChat.id ? "active" : ""}`} key={chat.id} onClick={() => { setActiveAiChatId(chat.id); setShowAiResetConfirm(false); setAiDraft(""); setAiFiles([]); }} type="button">
-                  <MessageSquare aria-hidden="true" size={14} />
-                  <span>{chat.title}</span>
-                </button>
+                <div className={`ai-history-row ${chat.id === activeAiChat.id ? "active" : ""}`} key={chat.id}>
+                  <button className="ai-history-item" onClick={() => { setActiveAiChatId(chat.id); setShowAiResetConfirm(false); setAiDraft(""); setAiFiles([]); }} type="button">
+                    <MessageSquare aria-hidden="true" size={14} />
+                    <span>{chat.title}</span>
+                  </button>
+                  <button className="ai-history-delete" onClick={() => deleteAiChat(chat.id)} type="button" aria-label={`Delete ${chat.title}`} title="Delete chat"><Trash2 size={13} /></button>
+                </div>
               ))}
             </div>
             <div className="ai-sidebar-footer">
@@ -4111,7 +4189,6 @@ export function App() {
             <span><Sparkles aria-hidden="true" size={17} /></span>
             <div><strong>{activeAiChat.title}</strong><small>Full AI chat for tasks, documents, messages and planning</small></div>
             <button className="icon-button" type="button" onClick={() => setShowAiResetConfirm(true)} aria-label="Reset chat" title="Reset conversation"><RotateCcw size={14} /></button>
-            <button className="icon-button danger" type="button" onClick={() => deleteAiChat(activeAiChat.id)} aria-label="Delete chat" title="Delete chat"><Trash2 size={14} /></button>
             <button className="icon-button" type="button" onClick={() => setShowAiAssistant(false)} aria-label="Close AI assistant"><X size={15} /></button>
           </header>
           {showAiResetConfirm && (
@@ -5905,6 +5982,34 @@ export function App() {
                       <span><strong>{metrics.performance.reopenTotal}</strong>Admin reopens</span>
                       <span><strong>{metrics.performance.attendance.expectedDays ? `${Math.round(metrics.performance.attendance.attendanceRate * 100)}%` : "—"}</strong>Attendance KPI</span>
                     </div>
+                    {metrics.subtaskGroups.length ? (
+                      <div className="productivity-subtasks">
+                        <div className="productivity-subtasks-title">
+                          <strong>Subtasks counted in KPI</strong>
+                          <small>Each row is a real subtask share from its parent task.</small>
+                        </div>
+                        <div className="productivity-subtask-table" role="table" aria-label={`${user.name} subtask productivity breakdown`}>
+                          <div className="productivity-subtask-row heading" role="row">
+                            <span>User</span>
+                            <span>Task</span>
+                            <span>Subtask</span>
+                            <span>Share</span>
+                            <span>Points</span>
+                          </div>
+                          {metrics.subtaskGroups.flatMap((group, groupIndex) =>
+                            group.items.map((unit, unitIndex) => (
+                              <div className="productivity-subtask-row" role="row" key={`${group.taskId}-${unit.id}`}>
+                                <span>{groupIndex === 0 && unitIndex === 0 ? user.name : ""}</span>
+                                <span>{unitIndex === 0 ? group.taskTitle : ""}</span>
+                                <span>{unit.title}</span>
+                                <span>{Math.round(unit.share * 100)}%</span>
+                                <span>{formatMetricNumber(unit.complexity, 2)} pts</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                     <button className="ghost-button" type="button" onClick={() => downloadProductivityReport(user.id, productivityMonth)}>
                       <Download aria-hidden="true" size={16} /> Download {productivityMonth || "All-time"} Excel
                     </button>

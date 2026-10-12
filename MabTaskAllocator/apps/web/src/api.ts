@@ -99,7 +99,7 @@ export type ManagedTask = {
   mentionableUsers?: Array<{ id: string; name: string }>;
 };
 
-export type PerformanceTask = Pick<ManagedTask, "id" | "department" | "status" | "priority" | "taskType" | "progress" | "complexity" | "startedAt" | "createdAt" | "completedAtIso" | "dueDate" | "assigneeIds" | "reopenCount">;
+export type PerformanceTask = Pick<ManagedTask, "id" | "taskCode" | "title" | "department" | "status" | "priority" | "taskType" | "progress" | "complexity" | "startedAt" | "createdAt" | "completedAtIso" | "dueDate" | "assigneeIds" | "reopenCount" | "checklist">;
 
 export type OperationalIntelligence = {
   generatedAt: string;

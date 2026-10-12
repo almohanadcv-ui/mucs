@@ -389,6 +389,8 @@ async function serializePerformanceTask(row) {
   const reopenCount = (await db.prepare("SELECT count(*) AS count FROM task_reopen_events WHERE task_id = ?").get(row.id)).count;
   return {
     id: row.id,
+    taskCode: row.task_code,
+    title: row.title,
     department: row.department,
     status: row.status,
     priority: row.priority,
@@ -400,7 +402,8 @@ async function serializePerformanceTask(row) {
     completedAtIso: isoDateTime(row.completed_at),
     dueDate: row.due_date ?? "",
     assigneeIds,
-    reopenCount
+    reopenCount,
+    checklist: row.checklist ?? []
   };
 }
 
@@ -419,6 +422,8 @@ async function serializePerformanceTasks(rows) {
   const reopensByTask = new Map(reopenRows.map((row) => [row.task_id, row.count]));
   return rows.map((row) => ({
     id: row.id,
+    taskCode: row.task_code,
+    title: row.title,
     department: row.department,
     status: row.status,
     priority: row.priority,
@@ -430,7 +435,8 @@ async function serializePerformanceTasks(rows) {
     completedAtIso: isoDateTime(row.completed_at),
     dueDate: row.due_date ?? "",
     assigneeIds: assigneesByTask.get(row.id) ?? [],
-    reopenCount: reopensByTask.get(row.id) ?? 0
+    reopenCount: reopensByTask.get(row.id) ?? 0,
+    checklist: row.checklist ?? []
   }));
 }
 
@@ -1241,21 +1247,45 @@ async function buildProductivityReport(user, month = "") {
   const rows = await db.prepare(`
     SELECT DISTINCT tasks.id, tasks.task_code, tasks.title, tasks.department, tasks.priority, tasks.status,
       tasks.due_date, tasks.complexity, tasks.started_at, tasks.progress, tasks.created_at, tasks.updated_at, tasks.completed_at,
-      tasks.task_type, projects.name AS project_name,
+      tasks.task_type, tasks.checklist, projects.name AS project_name,
       (SELECT count(*) FROM task_reopen_events WHERE task_reopen_events.task_id = tasks.id)::int AS reopen_count
     FROM tasks
-    JOIN task_assignees ON task_assignees.task_id = tasks.id
+    LEFT JOIN task_assignees ON task_assignees.task_id = tasks.id
     LEFT JOIN projects ON projects.id = tasks.project_id
-    WHERE task_assignees.user_id = ?
+    WHERE (task_assignees.user_id = ? OR tasks.checklist @> ?::jsonb)
       AND (? = '' OR substr(tasks.created_at, 1, 7) = ? OR substr(tasks.completed_at, 1, 7) = ?)
     ORDER BY tasks.created_at DESC
-  `).all(user.id, monthFilter, monthFilter, monthFilter);
+  `).all(user.id, JSON.stringify([{ assigneeId: user.id }]), monthFilter, monthFilter, monthFilter);
+  const assigneeRows = rows.length ? await db.prepare(`
+    SELECT task_id, user_id FROM task_assignees WHERE task_id IN (${rows.map(() => "?").join(",")})
+  `).all(...rows.map((task) => task.id)) : [];
+  const assigneesByTask = new Map();
+  for (const row of assigneeRows) {
+    const list = assigneesByTask.get(row.task_id) ?? [];
+    list.push(row.user_id);
+    assigneesByTask.set(row.task_id, list);
+  }
+  const units = rows.flatMap((task) => {
+    const assigneeIds = assigneesByTask.get(task.id) ?? [user.id];
+    const checklist = task.checklist ?? [];
+    if (!checklist.length) {
+      const share = 1 / Math.max(1, assigneeIds.length);
+      return [{ task, title: task.title, kind: "Task", completed: task.status === "done", progress: task.progress, complexity: normalizeComplexity(task.complexity) * share, share }];
+    }
+    const stepWeight = 1 / checklist.length;
+    return checklist.flatMap((step) => {
+      const owners = step.assigneeId ? [step.assigneeId] : assigneeIds;
+      if (!owners.includes(user.id)) return [];
+      const share = stepWeight / Math.max(1, owners.length);
+      return [{ task, title: step.title, kind: "Subtask", completed: task.status === "done" || Boolean(step.completed), progress: task.status === "done" || step.completed ? 100 : 0, complexity: normalizeComplexity(task.complexity) * share, share }];
+    });
+  });
   const today = new Date().toISOString().slice(0, 10);
-  const completed = rows.filter((task) => task.status === "done");
-  const overdue = rows.filter((task) => task.status !== "done" && task.due_date && task.due_date < today);
-  const onTime = completed.filter((task) => task.due_date && task.completed_at?.slice(0, 10) <= task.due_date);
+  const completed = units.filter((unit) => unit.completed);
+  const overdue = units.filter((unit) => !unit.completed && unit.task.due_date && unit.task.due_date < today);
+  const onTime = completed.filter((unit) => unit.task.due_date && unit.task.completed_at?.slice(0, 10) <= unit.task.due_date);
   const completionDurations = completed
-    .map((task) => (new Date(`${task.completed_at.replace(" ", "T")}Z`).getTime() - new Date(`${(task.started_at ?? task.created_at).replace(" ", "T")}Z`).getTime()) / 86_400_000)
+    .map((unit) => (new Date(`${unit.task.completed_at.replace(" ", "T")}Z`).getTime() - new Date(`${(unit.task.started_at ?? unit.task.created_at).replace(" ", "T")}Z`).getTime()) / 86_400_000)
     .filter((duration) => Number.isFinite(duration) && duration >= 0)
     .sort((a, b) => a - b);
   const averageCompletionDays = completionDurations.length
@@ -1266,18 +1296,19 @@ async function buildProductivityReport(user, month = "") {
       ? completionDurations[Math.floor(completionDurations.length / 2)]
       : (completionDurations[completionDurations.length / 2 - 1] + completionDurations[completionDurations.length / 2]) / 2
     : 0;
-  const totalComplexity = rows.reduce((sum, task) => sum + normalizeComplexity(task.complexity), 0);
-  const activeComplexity = rows.filter((task) => task.status !== "done").reduce((sum, task) => sum + normalizeComplexity(task.complexity), 0);
-  const completedComplexity = completed.reduce((sum, task) => sum + normalizeComplexity(task.complexity), 0);
+  const totalComplexity = units.reduce((sum, unit) => sum + unit.complexity, 0);
+  const activeComplexity = units.filter((unit) => !unit.completed).reduce((sum, unit) => sum + unit.complexity, 0);
+  const completedComplexity = completed.reduce((sum, unit) => sum + unit.complexity, 0);
   const totalReopens = rows.reduce((sum, task) => sum + (task.reopen_count ?? 0), 0);
   const averageProgress = totalComplexity
-    ? Math.round(rows.reduce((sum, task) => sum + task.progress * normalizeComplexity(task.complexity), 0) / totalComplexity)
+    ? Math.round(units.reduce((sum, unit) => sum + unit.progress * unit.complexity, 0) / totalComplexity)
     : 0;
 
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "MAB Task Allocator";
   workbook.created = new Date();
   const summary = workbook.addWorksheet("Summary", { views: [{ showGridLines: false }] });
+  const breakdown = workbook.addWorksheet("User Subtasks", { views: [{ state: "frozen", ySplit: 1, showGridLines: false }] });
   const tasks = workbook.addWorksheet("Task Details", { views: [{ state: "frozen", ySplit: 1, showGridLines: false }] });
   const titleFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1178B8" } };
   const paleFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEEF8FF" } };
@@ -1298,10 +1329,10 @@ async function buildProductivityReport(user, month = "") {
   summary.getCell("A6").value = "Reporting Period";
   summary.getCell("B6").value = monthFilter || "All time";
   const metrics = [
-    ["Assigned Tasks", rows.length],
-    ["Completed Tasks", completed.length],
-    ["Open Tasks", rows.length - completed.length],
-    ["Overdue Tasks", overdue.length],
+    ["Assigned Work Items", units.length],
+    ["Completed Work Items", completed.length],
+    ["Open Work Items", units.length - completed.length],
+    ["Overdue Work Items", overdue.length],
     ["Completed On Time", onTime.length],
     ["Weighted Completion Rate", totalComplexity ? completedComplexity / totalComplexity : 0],
     ["Complexity-Weighted Progress", averageProgress / 100],
@@ -1332,9 +1363,50 @@ async function buildProductivityReport(user, month = "") {
   summary.getCell("B18").numFmt = "0%";
   summary.columns = [{ width: 24 }, { width: 28 }, { width: 4 }, { width: 4 }];
 
+  breakdown.columns = [
+    { header: "User", key: "user", width: 22 },
+    { header: "Task", key: "task", width: 38 },
+    { header: "Subtask", key: "subtask", width: 40 },
+    { header: "Share", key: "share", width: 12 },
+    { header: "Points", key: "points", width: 12 },
+    { header: "Status", key: "status", width: 14 }
+  ];
+  breakdown.getRow(1).eachCell((cell) => {
+    cell.fill = titleFill;
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.alignment = { vertical: "middle" };
+  });
+  const taskRowCounts = new Map();
+  for (const unit of units) taskRowCounts.set(unit.task.id, (taskRowCounts.get(unit.task.id) ?? 0) + 1);
+  const printedTasks = new Set();
+  units.forEach((unit, index) => {
+    const showTask = !printedTasks.has(unit.task.id);
+    if (showTask) printedTasks.add(unit.task.id);
+    const row = breakdown.addRow({
+      user: index === 0 ? user.name : "",
+      task: showTask ? unit.task.title : "",
+      subtask: unit.kind === "Subtask" ? unit.title : unit.task.title,
+      share: unit.share,
+      points: unit.complexity,
+      status: unit.completed ? "Done" : "Open"
+    });
+    if (showTask && (taskRowCounts.get(unit.task.id) ?? 0) > 1) {
+      row.getCell("task").font = { bold: true, color: { argb: "FF0B456B" } };
+    }
+  });
+  breakdown.getColumn("share").numFmt = "0%";
+  breakdown.getColumn("points").numFmt = "0.00";
+  breakdown.autoFilter = { from: "A1", to: "F1" };
+  breakdown.eachRow((row, rowNumber) => {
+    if (rowNumber > 1 && rowNumber % 2 === 0) row.eachCell((cell) => { cell.fill = paleFill; });
+  });
+
   tasks.columns = [
     { header: "Task ID", key: "taskCode", width: 16 },
     { header: "Task", key: "title", width: 38 },
+    { header: "Work Item", key: "workItem", width: 38 },
+    { header: "Item Type", key: "itemType", width: 14 },
+    { header: "Task Share", key: "taskShare", width: 12 },
     { header: "Project", key: "project", width: 24 },
     { header: "Task Type", key: "taskType", width: 18 },
     { header: "Department", key: "department", width: 38 },
@@ -1355,36 +1427,41 @@ async function buildProductivityReport(user, month = "") {
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
     cell.alignment = { vertical: "middle" };
   });
-  for (const task of rows) {
+  for (const unit of units) {
+    const task = unit.task;
     const completedDate = task.completed_at ? new Date(`${task.completed_at.replace(" ", "T")}Z`) : null;
     tasks.addRow({
       taskCode: task.task_code,
       title: task.title,
+      workItem: unit.title,
+      itemType: unit.kind,
+      taskShare: unit.share,
       project: task.project_name ?? "No project",
       taskType: task.task_type ?? "Technical",
       department: task.department,
       priority: task.priority,
       status: task.status.replaceAll("_", " "),
-      complexity: normalizeComplexity(task.complexity),
-      progress: task.progress / 100,
+      complexity: unit.complexity,
+      progress: unit.progress / 100,
       created: new Date(`${task.created_at.replace(" ", "T")}Z`),
       started: task.started_at ? new Date(`${task.started_at.replace(" ", "T")}Z`) : null,
       due: task.due_date ? new Date(`${task.due_date}T00:00:00`) : null,
       completed: completedDate,
-      onTime: completedDate && task.due_date ? (task.completed_at.slice(0, 10) <= task.due_date ? "Yes" : "No") : "",
+      onTime: unit.completed && completedDate && task.due_date ? (task.completed_at.slice(0, 10) <= task.due_date ? "Yes" : "No") : "",
       cycleTime: completedDate
         ? (completedDate.getTime() - new Date(`${(task.started_at ?? task.created_at).replace(" ", "T")}Z`).getTime()) / 86_400_000
         : null,
       reopens: task.reopen_count ?? 0
     });
   }
+  tasks.getColumn("taskShare").numFmt = "0%";
   tasks.getColumn("progress").numFmt = "0%";
   tasks.getColumn("created").numFmt = "yyyy-mm-dd";
   tasks.getColumn("started").numFmt = "yyyy-mm-dd hh:mm";
   tasks.getColumn("due").numFmt = "yyyy-mm-dd";
   tasks.getColumn("completed").numFmt = "yyyy-mm-dd hh:mm";
   tasks.getColumn("cycleTime").numFmt = "0.0";
-  tasks.autoFilter = { from: "A1", to: "P1" };
+  tasks.autoFilter = { from: "A1", to: "S1" };
   tasks.eachRow((row, rowNumber) => {
     if (rowNumber > 1 && rowNumber % 2 === 0) row.eachCell((cell) => { cell.fill = paleFill; });
   });
