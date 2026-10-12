@@ -1244,6 +1244,7 @@ for (const task of await db.prepare("SELECT id FROM tasks").all()) await ensureT
 
 async function buildProductivityReport(user, month = "") {
   const monthFilter = /^\d{4}-\d{2}$/.test(month) ? month : "";
+  const roundedComplexity = (value) => Math.round(Number(value) || 0);
   const rows = await db.prepare(`
     SELECT DISTINCT tasks.id, tasks.task_code, tasks.title, tasks.department, tasks.priority, tasks.status,
       tasks.due_date, tasks.complexity, tasks.started_at, tasks.progress, tasks.created_at, tasks.updated_at, tasks.completed_at,
@@ -1296,9 +1297,9 @@ async function buildProductivityReport(user, month = "") {
       ? completionDurations[Math.floor(completionDurations.length / 2)]
       : (completionDurations[completionDurations.length / 2 - 1] + completionDurations[completionDurations.length / 2]) / 2
     : 0;
-  const totalComplexity = units.reduce((sum, unit) => sum + unit.complexity, 0);
-  const activeComplexity = units.filter((unit) => !unit.completed).reduce((sum, unit) => sum + unit.complexity, 0);
-  const completedComplexity = completed.reduce((sum, unit) => sum + unit.complexity, 0);
+  const totalComplexity = roundedComplexity(units.reduce((sum, unit) => sum + unit.complexity, 0));
+  const activeComplexity = roundedComplexity(units.filter((unit) => !unit.completed).reduce((sum, unit) => sum + unit.complexity, 0));
+  const completedComplexity = roundedComplexity(completed.reduce((sum, unit) => sum + unit.complexity, 0));
   const totalReopens = rows.reduce((sum, task) => sum + (task.reopen_count ?? 0), 0);
   const averageProgress = totalComplexity
     ? Math.round(units.reduce((sum, unit) => sum + unit.progress * unit.complexity, 0) / totalComplexity)
@@ -1347,7 +1348,10 @@ async function buildProductivityReport(user, month = "") {
     ["Average Reopens per Completed Task", completed.length ? totalReopens / completed.length : 0]
   ];
   summary.getCell("A7").value = "Productivity Summary";
-  summary.getCell("A7").font = { bold: true, color: { argb: "FF0B456B" }, size: 13 };
+  summary.mergeCells("A7:B7");
+  summary.getCell("A7").fill = titleFill;
+  summary.getCell("A7").font = { bold: true, color: { argb: "FFFFFFFF" }, size: 13 };
+  summary.getCell("A7").alignment = { vertical: "middle" };
   metrics.forEach(([label, value], index) => {
     const row = 8 + index;
     summary.getCell(row, 1).value = label;
@@ -1387,7 +1391,7 @@ async function buildProductivityReport(user, month = "") {
       task: showTask ? unit.task.title : "",
       subtask: unit.kind === "Subtask" ? unit.title : unit.task.title,
       share: unit.share,
-      points: unit.complexity,
+      points: roundedComplexity(unit.complexity),
       status: unit.completed ? "Done" : "Open"
     });
     if (showTask && (taskRowCounts.get(unit.task.id) ?? 0) > 1) {
@@ -1395,7 +1399,7 @@ async function buildProductivityReport(user, month = "") {
     }
   });
   breakdown.getColumn("share").numFmt = "0%";
-  breakdown.getColumn("points").numFmt = "0.00";
+  breakdown.getColumn("points").numFmt = "0";
   breakdown.autoFilter = { from: "A1", to: "F1" };
   breakdown.eachRow((row, rowNumber) => {
     if (rowNumber > 1 && rowNumber % 2 === 0) row.eachCell((cell) => { cell.fill = paleFill; });
@@ -1441,7 +1445,7 @@ async function buildProductivityReport(user, month = "") {
       department: task.department,
       priority: task.priority,
       status: task.status.replaceAll("_", " "),
-      complexity: unit.complexity,
+      complexity: roundedComplexity(unit.complexity),
       progress: unit.progress / 100,
       created: new Date(`${task.created_at.replace(" ", "T")}Z`),
       started: task.started_at ? new Date(`${task.started_at.replace(" ", "T")}Z`) : null,
@@ -1455,6 +1459,7 @@ async function buildProductivityReport(user, month = "") {
     });
   }
   tasks.getColumn("taskShare").numFmt = "0%";
+  tasks.getColumn("complexity").numFmt = "0";
   tasks.getColumn("progress").numFmt = "0%";
   tasks.getColumn("created").numFmt = "yyyy-mm-dd";
   tasks.getColumn("started").numFmt = "yyyy-mm-dd hh:mm";
