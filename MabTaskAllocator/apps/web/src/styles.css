@@ -12129,3 +12129,84 @@ button.primary-button {
 .queue-flag {
   border: 1px solid rgba(31, 48, 61, 0.08) !important;
 }
+
+/* Finished tasks: clickable column headers for sorting (Task / Priority / Completed). */
+.archive-sort-header {
+  align-items: center;
+  color: var(--mab-text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 15px;
+}
+
+.archive-sort-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--mab-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 5px;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.archive-sort-button:hover {
+  background: var(--mab-surface-soft, #f1f8fd);
+  color: var(--mab-blue-dark);
+}
+
+.archive-sort-button.active {
+  background: #ecf7ff;
+  border-color: #b9ddef;
+  color: var(--mab-blue-dark);
+}
+
+.archive-sort-button span {
+  font-size: 13px;
+  opacity: 0.8;
+}
+
+.archive-sort-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+/* On wide screens the header and every card share fixed columns so the headers
+   sit exactly above Task, Priority and Completed. */
+@media (min-width: 1081px) {
+  .archive-sort-header,
+  .archive-task-list .archive-task-card > summary {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 120px minmax(140px, 200px) 160px 120px;
+  }
+  .archive-task-list .archive-task-card > summary > .priority,
+  .archive-sort-header > .archive-sort-button:nth-of-type(2) {
+    justify-self: start;
+  }
+  .archive-task-list .archive-task-card > summary > .archive-completed,
+  .archive-sort-header > .archive-sort-button:nth-of-type(3) {
+    justify-self: end;
+  }
+  .archive-sort-header > .archive-sort-button:first-of-type {
+    justify-self: start;
+    margin-left: -8px;
+  }
+}
+
+@media (max-width: 1080px) {
+  .archive-sort-header > span[aria-hidden="true"],
+  .archive-sort-label {
+    display: none;
+  }
+}

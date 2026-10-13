@@ -3,6 +3,15 @@ import { useEffect } from "react";
 export type SiteLanguage = "en" | "ar";
 
 const arabic: Record<string, string> = {
+  "Task": "المهمة",
+  "Completed": "تاريخ الإنجاز",
+  "Assignee": "المسؤول",
+  "Work location": "مكان العمل",
+  "Work location (attendance weekend)": "مكان العمل (لحساب العطلة في الحضور)",
+  "Saudi Arabia": "السعودية",
+  "Jordan": "الأردن",
+  "Saudi Arabia (Friday off)": "السعودية (عطلة الجمعة)",
+  "Jordan (Friday + Saturday off)": "الأردن (عطلة الجمعة والسبت)",
   "Available capacity": "طاقة متاحة",
   "Without active work": "بدون مهام نشطة",
   "No active tasks — ready to be assigned": "لا توجد مهام نشطة — جاهز للتكليف",

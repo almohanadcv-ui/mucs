@@ -19,6 +19,10 @@ ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
 ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('superadmin', 'admin', 'technical_manager', 'team_leader', 'user'));
 -- Per-user opt-out for notification emails (in-app notifications are unaffected).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_notifications boolean NOT NULL DEFAULT true;
+-- Work country drives the attendance weekend: SA = Friday off, JO = Friday + Saturday off.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS work_country text NOT NULL DEFAULT 'SA';
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_work_country_check;
+ALTER TABLE users ADD CONSTRAINT users_work_country_check CHECK (work_country IN ('SA', 'JO'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_name_ci ON departments (lower(name));
 ALTER TABLE departments ADD COLUMN IF NOT EXISTS parent_id text REFERENCES departments(id) ON DELETE RESTRICT;

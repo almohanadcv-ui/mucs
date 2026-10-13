@@ -188,8 +188,18 @@ function publicUser(row) {
     name: row.name,
     username: row.username,
     role: row.role,
-    department: row.department
+    department: row.department,
+    workCountry: row.work_country ?? "SA"
   };
+}
+
+// SA = Saudi Arabia (Friday off), JO = Jordan (Friday + Saturday off).
+const WORK_COUNTRIES = new Set(["SA", "JO"]);
+function normalizeWorkCountry(value, fallback = "SA") {
+  if (value === undefined || value === null || value === "") return fallback;
+  const country = String(value).trim().toUpperCase();
+  if (!WORK_COUNTRIES.has(country)) fail(400, "Work country must be Saudi Arabia (SA) or Jordan (JO).");
+  return country;
 }
 
 function sameDepartment(first, second) {
@@ -1806,11 +1816,12 @@ const server = createServer(async (request, response) => {
         canAccessDepartment(actor, user.department)
       ));
       const attendanceUsers = actor.role === "superadmin"
-        ? await db.prepare("SELECT id, created_at FROM users WHERE role = 'user' ORDER BY name").all()
-        : await db.prepare("SELECT id, created_at FROM users WHERE role = 'user' AND lower(trim(department)) = ANY(?::text[]) ORDER BY name").all(departmentScope(actor));
+        ? await db.prepare("SELECT id, created_at, work_country FROM users WHERE role = 'user' ORDER BY name").all()
+        : await db.prepare("SELECT id, created_at, work_country FROM users WHERE role = 'user' AND lower(trim(department)) = ANY(?::text[]) ORDER BY name").all(departmentScope(actor));
       const attendanceProfiles = await Promise.all(attendanceUsers.map(async (user) => ({
         userId: user.id,
         employmentStart: user.created_at.slice(0, 10),
+        workCountry: user.work_country ?? "SA",
         records: (await db.prepare(`
           SELECT work_date, first_login_at, last_login_at, login_count
           FROM attendance_records WHERE user_id = ? ORDER BY work_date DESC
@@ -1975,7 +1986,8 @@ const server = createServer(async (request, response) => {
         username: String(body.username ?? "").trim(),
         password: String(body.password ?? ""),
         role: body.role ?? "user",
-        department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department
+        department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department,
+        work_country: normalizeWorkCountry(body.workCountry)
       };
       validateUserScope(actor, target);
       target.department = target.role === "superadmin" ? "Executive" : target.role === "technical_manager" ? "Technical Department" : await requireDepartment(target.department);
@@ -1987,9 +1999,9 @@ const server = createServer(async (request, response) => {
       }
       await db.transaction(async () => {
         await db.prepare(`
-          INSERT INTO users (id, name, username, password_hash, role, department)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(target.id, target.name, target.username, hashPassword(target.password), target.role, target.department);
+          INSERT INTO users (id, name, username, password_hash, role, department, work_country)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(target.id, target.name, target.username, hashPassword(target.password), target.role, target.department, target.work_country);
         if (project) await db.prepare("INSERT INTO project_members (project_id, user_id) VALUES (?, ?)").run(project.id, target.id);
       });
       await audit(actor, "created", "user", target.id, target.department, `Created ${target.role} ${target.name} (${target.username})`);
@@ -2011,7 +2023,8 @@ const server = createServer(async (request, response) => {
           name: String(body.name ?? existing.name).trim(),
           username: String(body.username ?? existing.username).trim(),
           role: body.role ?? existing.role,
-          department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department
+          department: ["admin", "team_leader"].includes(actor.role) ? actor.department : body.department,
+          work_country: normalizeWorkCountry(body.workCountry, existing.work_country ?? "SA")
         };
         if (!isOwner(actor)) validateUserScope(actor, target);
         if (existing.role === "superadmin" && target.role !== "superadmin") {
@@ -2020,8 +2033,8 @@ const server = createServer(async (request, response) => {
         }
         target.department = target.role === "superadmin" ? "Executive" : target.role === "technical_manager" ? "Technical Department" : await requireDepartment(target.department);
         if (!target.name || !target.username) throw new Error("Name and username are required.");
-        await db.prepare("UPDATE users SET name = ?, username = ?, role = ?, department = ? WHERE id = ?")
-          .run(target.name, target.username, target.role, target.department, target.id);
+        await db.prepare("UPDATE users SET name = ?, username = ?, role = ?, department = ?, work_country = ? WHERE id = ?")
+          .run(target.name, target.username, target.role, target.department, target.work_country, target.id);
         if (body.password) {
           validatePassword(String(body.password));
           await db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hashPassword(body.password), target.id);

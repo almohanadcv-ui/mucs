@@ -113,6 +113,7 @@ export type AuditLog = { id: string; actorName: string; action: string; entityTy
 export type AttendanceProfile = {
   userId: string;
   employmentStart: string;
+  workCountry?: "SA" | "JO";
   records: Array<{ workDate: string; firstLoginAt?: string; lastLoginAt?: string; loginCount: number }>;
 };
 
@@ -397,7 +398,7 @@ export const api = {
   deleteAllTodos: () => request<{ deleted: number }>("/api/todos", { method: "DELETE" }),
   deleteTodo: (todoId: string) => request(`/api/todos/${todoId}`, { method: "DELETE" }),
   loadChat: () => request<{ chatChannels: ChatChannel[]; chatMessages: ChatMessage[] }>("/api/chat"),
-  createUser: (user: { name: string; username: string; password: string; role: UserRole; department: DepartmentName; projectId?: string }) =>
+  createUser: (user: { name: string; username: string; password: string; role: UserRole; department: DepartmentName; workCountry?: "SA" | "JO"; projectId?: string }) =>
     request("/api/users", { method: "POST", body: JSON.stringify(user) }),
   updateUser: (user: AppUser & { password?: string }) =>
     request(`/api/users/${user.id}`, { method: "PUT", body: JSON.stringify(user) }),

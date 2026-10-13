@@ -8,6 +8,9 @@ export type UserRole = "superadmin" | "admin" | "technical_manager" | "team_lead
 
 export type DepartmentName = string;
 
+/** SA = Saudi Arabia (Friday off), JO = Jordan (Friday + Saturday off). */
+export type WorkCountry = "SA" | "JO";
+
 export interface AppUser {
   id: string;
   name: string;
@@ -15,6 +18,7 @@ export interface AppUser {
   password?: string;
   role: UserRole;
   department: DepartmentName;
+  workCountry?: WorkCountry;
 }
 
 export interface TeamMember {

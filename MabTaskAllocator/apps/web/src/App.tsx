@@ -53,7 +53,7 @@ import {
   ArrowLeft,
   ChevronLeft
 } from "lucide-react";
-import type { AppUser, DepartmentName, TaskPriority, TaskStatus, TaskType, UserRole } from "@mab/shared";
+import type { AppUser, DepartmentName, TaskPriority, TaskStatus, TaskType, UserRole, WorkCountry } from "@mab/shared";
 import { api, getLastActivity, hasSession, inactivityLimitMs, markActivity } from "./api";
 import type { AppNotification, AttendanceProfile, AuditLog, ChatChannel, ChatMessage, ChatMessageFile, ManagedTask, OperationalIntelligence, PerformanceTask, Project, TodoItem } from "./api";
 import { PersonPlacementFields, technicalDepartment, technicalDisciplines, isTechnicalDiscipline, disciplineLabel, departmentPath, positionLabel } from "./components/PersonPlacementFields";
@@ -96,6 +96,13 @@ const defaultDepartments: DepartmentName[] = [
 ];
 
 const taskTypes: TaskType[] = ["Technical", "QS", "Shop Drawings", "BIM", "Variation"];
+// Weekend days per work country (0 = Sunday … 5 = Friday, 6 = Saturday).
+const weekendDays: Record<WorkCountry, number[]> = { SA: [5], JO: [5, 6] };
+const workCountryLabels: Record<WorkCountry, string> = {
+  SA: "Saudi Arabia (Friday off)",
+  JO: "Jordan (Friday + Saturday off)"
+};
+const workCountryShort: Record<WorkCountry, string> = { SA: "Saudi Arabia", JO: "Jordan" };
 const complexityLabels = ["", "Very low", "Low", "Moderate", "High", "Very high"];
 // Every typed character counts — letters, numbers and spaces — but it can't be only spaces.
 const minTaskTitleLength = 10;
@@ -248,6 +255,10 @@ const priorityLabels: Record<TaskPriority, string> = {
   high: "High",
   urgent: "Urgent"
 };
+
+const priorityRank: Record<TaskPriority, number> = { low: 1, medium: 2, high: 3, urgent: 4 };
+
+type ArchiveSortKey = "title" | "priority" | "completed";
 
 const statusLabels: Record<TaskStatus, string> = {
   new: "New",
@@ -1105,6 +1116,7 @@ export function App() {
     to: ""
   });
   const [archivePeriod, setArchivePeriod] = useState("");
+  const [archiveSort, setArchiveSort] = useState<{ key: ArchiveSortKey; direction: "asc" | "desc" } | null>(null);
 
   const themeOwnerId = currentUser?.id ?? "login";
   const darkMode = themePreference.darkMode;
@@ -1772,6 +1784,28 @@ export function App() {
   );
 
   const filteredArchiveTasks = useMemo(() => filterArchive(finishedTasks, archiveFilters), [finishedTasks, archiveFilters]);
+  const sortedArchiveTasks = useMemo(() => {
+    if (!archiveSort) return filteredArchiveTasks;
+    const factor = archiveSort.direction === "asc" ? 1 : -1;
+    const completedKey = (task: ManagedTask) => task.completedAtIso ?? "";
+    return [...filteredArchiveTasks].sort((first, second) => {
+      if (archiveSort.key === "title") return first.title.localeCompare(second.title, undefined, { sensitivity: "base", numeric: true });
+      if (archiveSort.key === "priority") {
+        const byPriority = (priorityRank[first.priority] - priorityRank[second.priority]) * factor;
+        return byPriority || completedKey(second).localeCompare(completedKey(first));
+      }
+      return completedKey(first).localeCompare(completedKey(second)) * factor;
+    });
+  }, [filteredArchiveTasks, archiveSort]);
+
+  // Task: A→Z, then back to the original order. Priority: most important first, then reverse.
+  // Completed: newest first, then oldest first.
+  function toggleArchiveSort(key: ArchiveSortKey) {
+    setArchiveSort((current) => {
+      if (key === "title") return current?.key === "title" ? null : { key, direction: "asc" };
+      return current?.key === key && current.direction === "desc" ? { key, direction: "asc" } : { key, direction: "desc" };
+    });
+  }
   const finishedProjects = useMemo(() => archiveProjects(finishedTasks), [finishedTasks]);
   const finishedSummary = archiveSummary(filteredArchiveTasks);
   const finishedDepartments = useMemo(() => [...new Set(finishedTasks.map((t) => t.department).filter(Boolean))].sort(), [finishedTasks]);
@@ -2203,22 +2237,22 @@ export function App() {
     const startCandidates = [requestedStart, trackingStart, profile?.employmentStart ?? trackingStart].sort();
     const start = startCandidates[startCandidates.length - 1] ?? requestedStart;
     const end = requestedEnd < today ? requestedEnd : today;
+    const workCountry: WorkCountry = profile?.workCountry ?? users.find((user) => user.id === userId)?.workCountry ?? "SA";
+    const weekend = weekendDays[workCountry];
     let expectedDays = 0;
     if (start <= end) {
       const cursor = new Date(`${start}T00:00:00Z`);
       const last = new Date(`${end}T00:00:00Z`);
       while (cursor <= last) {
-        const day = cursor.getUTCDay();
-        if (day !== 5) expectedDays += 1;
+        if (!weekend.includes(cursor.getUTCDay())) expectedDays += 1;
         cursor.setUTCDate(cursor.getUTCDate() + 1);
       }
     }
     const records = profile?.records.filter((record) => record.workDate >= start && record.workDate <= end) ?? [];
-    const presentDays = records.filter((record) => {
-      const day = new Date(`${record.workDate}T00:00:00Z`).getUTCDay();
-      return day !== 5;
-    }).length;
+    // A login on a weekend day is not counted as a workday.
+    const presentDays = records.filter((record) => !weekend.includes(new Date(`${record.workDate}T00:00:00Z`).getUTCDay())).length;
     return {
+      workCountry,
       expectedDays,
       presentDays,
       attendanceRate: expectedDays ? Math.min(1, presentDays / expectedDays) : 0,
@@ -2651,6 +2685,9 @@ export function App() {
   function renderCreateUserFields() {
     return <>
       {currentUser ? <PersonPlacementFields key={`${currentUser.id}-${peopleFormVersion}`} actor={currentUser} departments={managedDepartments} /> : null}
+      <label>Work location (attendance weekend)<select name="workCountry" defaultValue="SA">
+        {(Object.keys(workCountryLabels) as WorkCountry[]).map((country) => <option key={country} value={country}>{workCountryLabels[country]}</option>)}
+      </select></label>
       {currentUser?.role === "team_leader" ? <label>Existing project (optional)<select name="projectId" defaultValue=""><option value="">Assign to a project later</option>{projects.filter((project) => inDepartmentScope(project.department) || projectContainsDepartment(project.department, currentUser!.department)).map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label> : null}
     </>;
   }
@@ -2728,7 +2765,8 @@ export function App() {
     }
 
     try {
-      await api.createUser({ name, username, password, role, department, projectId: String(formData.get("projectId") ?? "") || undefined });
+      const workCountry: WorkCountry = formData.get("workCountry") === "JO" ? "JO" : "SA";
+      await api.createUser({ name, username, password, role, department, workCountry, projectId: String(formData.get("projectId") ?? "") || undefined });
       await refreshData(true);
       form.reset();
       setPeopleFormVersion((version) => version + 1);
@@ -5929,6 +5967,9 @@ export function App() {
                         <label>New password <small>Leave blank to keep the current password</small><div className="password-field"><input onChange={(event) => setEditDraft({ ...editDraft, password: event.target.value })} placeholder={`Unchanged (min ${PASSWORD_MIN} chars)`} type={showPassword ? "text" : "password"} value={editDraft.password} /><button type="button" className="password-eye" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
                         {passwordWarning(editDraft.password) ? <p className="form-error">⚠️ {passwordWarning(editDraft.password)}</p> : null}
                         <PersonPlacementFields actor={currentUser} departments={managedDepartments} value={editDraft} locked={editingLastSuperAdmin} onChange={(placement) => setEditDraft({ ...editDraft, ...placement })} />
+                        <label>Work location (attendance weekend)<select onChange={(event) => setEditDraft({ ...editDraft, workCountry: event.target.value === "JO" ? "JO" : "SA" })} value={editDraft.workCountry ?? "SA"}>
+                          {(Object.keys(workCountryLabels) as WorkCountry[]).map((country) => <option key={country} value={country}>{workCountryLabels[country]}</option>)}
+                        </select></label>
                         <div className="directory-edit-actions">
                           <button className="ghost-button" onClick={() => { setEditingUserId(null); setEditDraft(null); }} type="button"><X aria-hidden="true" size={16} />Cancel</button>
                           <button className="primary-button" onClick={saveEditUser} type="button"><Save aria-hidden="true" size={16} />Save Changes</button>
@@ -6255,18 +6296,18 @@ export function App() {
               </div>
               <div className="attendance-table-wrap">
                 <table className="attendance-table">
-                  <thead><tr><th>Employee</th><th>Department</th><th>Present days</th><th>Expected workdays</th><th>Attendance rate</th><th>Login sessions</th><th>Last login</th></tr></thead>
+                  <thead><tr><th>Employee</th><th>Department</th><th>Work location</th><th>Present days</th><th>Expected workdays</th><th>Attendance rate</th><th>Login sessions</th><th>Last login</th></tr></thead>
                   <tbody>{rows.map(({ user, metrics }) => (
                     <tr key={`attendance-${user.id}`}>
                       <td><span className="achievement-person"><i style={{ background: identityColor(user.id, currentUser.id) }}>{initials(user.name)}</i><span><strong>{user.name}</strong><small>{user.username}</small></span></span></td>
-                      <td>{user.department}</td><td><strong>{metrics.presentDays}</strong></td><td>{metrics.expectedDays}</td>
+                      <td>{user.department}</td><td title={workCountryLabels[metrics.workCountry]}>{workCountryShort[metrics.workCountry]}</td><td><strong>{metrics.presentDays}</strong></td><td>{metrics.expectedDays}</td>
                       <td><span className="attendance-rate"><i style={{ width: `${Math.round(metrics.attendanceRate * 100)}%` }} /><strong>{Math.round(metrics.attendanceRate * 100)}%</strong></span></td>
                       <td>{metrics.totalLogins}</td><td>{metrics.lastSeen ? new Date(metrics.lastSeen).toLocaleString("en-GB") : "No login recorded"}</td>
                     </tr>
                   ))}</tbody>
                 </table>
               </div>
-              <p className="attendance-note"><ShieldCheck aria-hidden="true" size={16} />Working days are Saturday–Thursday, with Friday off. Attendance starts from the later of employee creation or system attendance tracking; future days are never counted as absences.</p>
+              <p className="attendance-note"><ShieldCheck aria-hidden="true" size={16} />Working days follow each employee's work location: Saudi Arabia is Saturday–Thursday (Friday off); Jordan is Sunday–Thursday (Friday and Saturday off). Attendance starts from the later of employee creation or system attendance tracking; future days are never counted as absences.</p>
             </section>
           );
         })() : activeView === "achievements" ? (() => {
@@ -6523,7 +6564,30 @@ export function App() {
             </div>
 
             <div className="archive-task-list">
-              {filteredArchiveTasks.length ? focusedSubset(filteredArchiveTasks).map((task) => (
+              {filteredArchiveTasks.length ? (
+                <div className="archive-sort-header" role="toolbar" aria-label="Sort finished tasks">
+                  <span aria-hidden="true" />
+                  {(() => {
+                    const sortButton = (key: ArchiveSortKey, label: string, hint: string) => {
+                      const active = archiveSort?.key === key;
+                      const arrow = !active ? "↕" : archiveSort!.direction === "asc" ? "↑" : "↓";
+                      return (
+                        <button type="button" className={`archive-sort-button${active ? " active" : ""}`} onClick={() => toggleArchiveSort(key)} title={hint} aria-pressed={active}>
+                          {label}<span aria-hidden="true">{arrow}</span>
+                        </button>
+                      );
+                    };
+                    return <>
+                      {sortButton("title", "Task", archiveSort?.key === "title" ? "Click to return to the original order" : "Sort A → Z")}
+                      {sortButton("priority", "Priority", archiveSort?.key === "priority" && archiveSort.direction === "desc" ? "Click for least important first" : "Most important first")}
+                      <span className="archive-sort-label">Assignee</span>
+                      {sortButton("completed", "Completed", archiveSort?.key === "completed" && archiveSort.direction === "desc" ? "Click for oldest first" : "Newest first")}
+                    </>;
+                  })()}
+                  <span aria-hidden="true" />
+                </div>
+              ) : null}
+              {filteredArchiveTasks.length ? focusedSubset(sortedArchiveTasks).map((task) => (
                 <details className="archive-task-card" id={`task-${task.id}`} key={`archive-${task.id}`} open={focusedTaskId === task.id} onToggle={(event) => syncTaskFocus(task.id, event.currentTarget.open)}>
                   <summary>
                     <span className="archive-check"><CheckCircle2 aria-hidden="true" size={17} /></span>
