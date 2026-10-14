@@ -5232,3 +5232,42 @@ body:has(.task-focus-mode) .chat-launcher .chat-launcher-copy {
     --task-open-height: max(420px, calc(100vh - 352px)) !important;
   }
 }
+
+/* Assignees: own wide cell, one clean row per person, names never spill. */
+.task-properties > .task-property-assignees {
+  grid-column: span 2 !important;
+  min-width: 0;
+}
+
+.task-properties .task-property-assignees dd,
+.task-properties .task-property-assignees .task-card-people {
+  min-width: 0;
+  width: 100%;
+}
+
+.task-properties .task-property-assignees .task-card-people {
+  display: grid !important;
+  gap: 4px !important;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+.task-properties .task-property-assignees .assignee-chip {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.task-properties .task-property-assignees .assignee-avatar {
+  flex: none;
+}
+
+.task-properties .task-property-assignees .assignee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .task-properties > .task-property-assignees {
+    grid-column: 1 / -1 !important;
+  }
+}

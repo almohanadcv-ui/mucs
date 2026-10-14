@@ -3678,11 +3678,6 @@ export function App() {
     const daysToDue = task.dueDate ? Math.round((Date.parse(task.dueDate) - Date.parse(currentRiyadhDate())) / 86_400_000) : null;
     const dueHint = daysToDue === null || task.status === "done" ? "" : daysToDue < 0 ? `${-daysToDue} day${daysToDue === -1 ? "" : "s"} overdue` : daysToDue === 0 ? "Due today" : `${daysToDue} day${daysToDue === 1 ? "" : "s"} left`;
     const taskInsight = intelligence.taskInsights.find((insight) => insight.taskId === task.id);
-    const departmentAdmins = users.filter(person => person.role === "superadmin" || (person.role === "admin" && sameDepartment(person.department, task.department)) || (person.role === "technical_manager" && isTechnicalDiscipline(task.department)));
-    const departmentLeaders = users.filter(person => person.role === "team_leader" && sameDepartment(person.department, task.department));
-    const adminNames = departmentAdmins.filter(person => person.role !== "superadmin").map(person => person.name).join(", ") || "Superadmin";
-    const leaderNames = departmentLeaders.map(person => person.name).join(", ");
-    const pendingWith = task.status === "done" && !actionPending ? "Nobody - completed" : actionPending || allocationPending ? adminNames : task.status === "under_review" ? (requiresLeaderApproval ? leaderNames || adminNames : adminNames) : !task.assigneeIds.length ? (leaderNames ? leaderNames + "; " : "") + adminNames : task.pendingApprovalNames.join(", ") || task.candidateNames.join(", ");
     const workflowStatusText = actionPending ? `Waiting for admin approval to ${task.actionRequest!.action}` : allocationPending ? "Waiting for allocation approval" : task.allocationRequest?.isNew ? "Allocation rejected — revise and resubmit" : task.status === "done"
       ? "Completed and locked"
       : task.status === "under_review"
@@ -4054,21 +4049,20 @@ export function App() {
                   <dl className="task-properties">
                     <div><dt>Status</dt><dd><span className={`status-pill status-${task.status}`}>{allocationPending ? "Allocation pending" : task.allocationRequest?.isNew ? "Allocation rejected" : statusLabels[task.status]}</span></dd></div>
                     <div><dt>Priority</dt><dd><span className={`priority priority-${task.priority}`}>{priorityLabels[task.priority]}</span></dd></div>
-                    <div className="task-property-wide"><dt>Assignees</dt><dd>
+                    <div className="task-property-wide task-property-assignees"><dt>Assignees</dt><dd>
                       <div className="task-card-people">
                           {task.assigneeIds.length ? task.assigneeIds.map((assigneeId, index) => (
                             <span className="assignee-chip" key={assigneeId}>
                               <span className="assignee-avatar" style={{ background: identityColor(assigneeId, currentUser?.id) }}>
                                 {initials(task.candidateNames[index] ?? "?")}
                               </span>
-                              {task.candidateNames[index]}
+                              <span className="assignee-name" title={task.candidateNames[index]}>{task.candidateNames[index]}</span>
                             </span>
                           )) : (
                             <span className="assignee-chip unassigned"><Hand aria-hidden="true" size={13} />Unassigned</span>
                           )}
                         </div>
                     </dd></div>
-                    <div className="task-property-wide"><dt>Action needed from</dt><dd>{pendingWith}</dd></div>
                     <div><dt>Deadline</dt><dd className={overdue ? "is-overdue" : ""}><Calendar aria-hidden="true" size={14} />{task.dueDate || "Not set"}{dueHint ? <small>{dueHint}</small> : null}</dd></div>
                     <div><dt>Started</dt><dd>{task.startedAt ? new Date(task.startedAt).toLocaleDateString("en-GB") : "Not started"}</dd></div>
                     <div className="task-property-wide"><dt>Project</dt><dd><FolderKanban aria-hidden="true" size={14} />{task.projectName ?? "No project"}</dd></div>
